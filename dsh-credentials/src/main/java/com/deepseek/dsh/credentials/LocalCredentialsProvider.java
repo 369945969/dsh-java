@@ -34,8 +34,10 @@ public final class LocalCredentialsProvider
         return CredentialsService.class;
     }
 
-    /** 从 .env 文件加载凭据。 */
+    /** 从 .env 文件加载凭据（叠加当前进程环境变量）。 */
     public void loadFromEnvFile(java.nio.file.Path envFile) {
+        // 进程环境变量始终叠加（即便 .env 不存在/不可读）
+        System.getenv().forEach(store::put);
         if (!java.nio.file.Files.isReadable(envFile)) return;
         try (var lines = java.nio.file.Files.lines(envFile)) {
             lines.filter(l -> !l.isBlank() && !l.startsWith("#") && l.contains("="))
@@ -49,8 +51,6 @@ public final class LocalCredentialsProvider
         } catch (Exception e) {
             // .env 不存在或不可读是正常的，不阻断
         }
-        // 叠加进程环境变量（进程环境优先级更高）
-        System.getenv().forEach(store::put);
     }
 
     @Override

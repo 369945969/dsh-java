@@ -116,6 +116,14 @@ mvn test
 cd dsh-frontend && pnpm install && pnpm build
 ```
 
+### 单元测试覆盖
+108 个单元测试覆盖 22 个后端模块的核心纯逻辑（无网络、无外部依赖）：
+核心层（Context 作用域/事件总线、SessionLog 事件溯源、ToolRegistry、ReActAgentLoop）、
+LLM 层（TokenMeter 累计、Retry、DeepSeek 适配器协议）、
+交互层（PermissionPreset 三态判定链、CommandRegistry 注册/注销、审批、ask-user）、
+能力层（上下文 @file 引用解析/截断/缓存、Compaction 摘要/裁剪、Spill 外溢策略、Storage 原子持久化）、
+集成层（SDK JSON-RPC 客户端/服务端帧、Subagent ACP 桥接、Teams fan-out 聚合、Telemetry Span/Metric、Subprocess 环境清洗）等。
+
 ## 配置（模型 Key）
 
 后端用环境变量配置模型，脚本从仓库根 `.env` 自动加载（**`.env` 已 gitignore，绝不提交**）：
@@ -234,7 +242,7 @@ SSE 示例：`curl -N -X POST http://localhost:8765/api/agent/stream -H 'Content
 ## 与原项目的关系
 
 本重写聚焦**核心 + 最小可用**及**高级能力**范围，覆盖原 TypeScript Harness 的主要能力域。
-已实现（37 个模块，181 个 Java 文件，56 个测试全绿）：
+已实现（37 个模块，188 个 Java 源文件，108 个单元测试全绿）：
 
 **核心层**：插件基座（Context/Plugin + 可逆副作用 + 作用域遮蔽 + Event Bus 四模式 + Middleware 链）、
 agent loop（ReAct + turn/step/round，模板方法 + 状态机，可注入中间件管线）、事件溯源会话日志（"模型可见⟺已记录"）、
