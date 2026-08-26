@@ -95,6 +95,7 @@ public final class BaseBundle {
 
         // 高级能力插件
         runner.add(new BasicCompactionProvider());  // 上下文压缩
+        runner.add(new com.deepseek.dsh.subagent.fork.ForkInProcessProvider()); // subagent 委派
         runner.add(new GoalService());               // 目标持久化
         runner.add(new PlanModeService());           // 计划模式
         runner.add(new WorkerThreadWorkflowProvider()); // 工作流（虚拟线程）
@@ -114,7 +115,22 @@ public final class BaseBundle {
         var teams = new com.deepseek.dsh.teams.DefaultTeamsProvider();
         runner.add(teams);
 
-        // 启动插件
+        // 凭据/设置/存储/子进程/外溢 能力缝（本地提供者，需在 start 前加入以注册到上下文）
+        var credentials = new com.deepseek.dsh.credentials.LocalCredentialsProvider(
+                dataDir.resolve(".env"));
+        runner.add(credentials);
+        runner.add(new com.deepseek.dsh.settings.FileSettingsProvider(
+                dataDir.resolve("settings.json")));
+        runner.add(new com.deepseek.dsh.storage.LocalStorageProvider(dataDir));
+        runner.add(new com.deepseek.dsh.subprocess.LocalSubprocessProvider());
+        var spillStore = new com.deepseek.dsh.spill.LocalSpillStore(dataDir.resolve("spill"));
+        runner.add(spillStore);
+
+        // 技能注册表能力缝（先加入，start 后再挂文件系统提供者）
+        var skills = new com.deepseek.dsh.skill.SkillRegistry();
+        runner.add(skills);
+
+        // 启动插件（所有能力缝须在此之前加入，apply 才会注册到上下文）
         runner.start(ctx);
 
         // 注册具体能力提供者 + 工具
@@ -144,23 +160,10 @@ public final class BaseBundle {
         // todo 工具
         toolRegistry.register(new com.deepseek.dsh.todo.TodoWriteTool());
 
-        // 凭据/设置/存储/子进程 能力缝（本地提供者）
-        var credentials = new com.deepseek.dsh.credentials.LocalCredentialsProvider(
-                dataDir.resolve(".env"));
-        runner.add(credentials);
-        runner.add(new com.deepseek.dsh.settings.FileSettingsProvider(
-                dataDir.resolve("settings.json")));
-        runner.add(new com.deepseek.dsh.storage.LocalStorageProvider(dataDir));
-        runner.add(new com.deepseek.dsh.subprocess.LocalSubprocessProvider());
-
-        // 外溢存储 + 大输出外溢策略中间件
-        var spillStore = new com.deepseek.dsh.spill.LocalSpillStore(dataDir.resolve("spill"));
-        runner.add(spillStore);
+        // 大输出外溢策略中间件（spillStore 已在 start 前注册）
         var spillPolicy = new com.deepseek.dsh.spill.SpillPolicy(65_536L, spillStore);
 
-        // 技能注册表 + 文件系统提供者 + skill 工具
-        var skills = new com.deepseek.dsh.skill.SkillRegistry();
-        runner.add(skills);
+        // 技能：挂文件系统提供者 + skill 工具（skills 已注册为 SkillService）
         skills.registerProvider(new com.deepseek.dsh.skill.FilesystemSkillProvider(
                 null, java.util.List.of(), dataDir.toString()));
         toolRegistry.register(new com.deepseek.dsh.skill.SkillTool(skills));

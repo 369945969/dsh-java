@@ -41,10 +41,15 @@ else
   fail "GET /api/agent/health" "未返回 ok"
 fi
 
-# 2) 一次性对话
-SEND=$(curl -s -X POST "$BASE/api/agent/send" \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"你好，请用一句话介绍你自己。"}' || true)
+# 2) 一次性对话（对瞬时模型失败重试 2 次）
+SEND=""
+for _ in 1 2 3; do
+  SEND=$(curl -s -X POST "$BASE/api/agent/send" \
+    -H 'Content-Type: application/json' \
+    -d '{"message":"你好，请用一句话介绍你自己。"}' || true)
+  if echo "$SEND" | jq -e '.reply and (.reply|length>0)' >/dev/null 2>&1; then break; fi
+  sleep 2
+done
 if echo "$SEND" | jq -e '.reply and (.reply|length>0)' >/dev/null 2>&1; then
   pass "POST /api/agent/send"
   echo "    回复: $(echo "$SEND" | jq -r '.reply' | head -c 120)…"

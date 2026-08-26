@@ -46,7 +46,8 @@ public class DshApplication implements AgentContextHolder {
         String apiKey = System.getenv().getOrDefault("DEEPSEEK_API_KEY", "");
         String baseUrl = System.getenv().getOrDefault("DSH_BASE_URL", "https://api.deepseek.com");
         String model = System.getenv().getOrDefault("DSH_MODEL", "deepseek-chat");
-        Path dataDir = Path.of(System.getProperty("user.home"), ".dsh");
+        Path dataDir = Path.of(System.getenv().getOrDefault("DSH_DATA_DIR",
+                Path.of(System.getProperty("user.home"), ".dsh").toString()));
 
         log.info("装配 profile: model={}, baseUrl={}, dataDir={}", model, baseUrl, dataDir);
         this.context = Context.root();

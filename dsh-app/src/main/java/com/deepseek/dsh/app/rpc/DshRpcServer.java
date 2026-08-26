@@ -1,6 +1,7 @@
 package com.deepseek.dsh.app.rpc;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -20,7 +21,16 @@ import com.deepseek.dsh.core.util.PluginRunner;
 import com.deepseek.dsh.llm.meter.TokenMeterService;
 import com.deepseek.dsh.sdk.protocol.JsonRpcDispatcher;
 import com.deepseek.dsh.session.Sessions;
+import com.deepseek.dsh.session.log.ChatMessage;
+import com.deepseek.dsh.session.log.SessionEvent;
 import com.deepseek.dsh.session.log.SessionLog;
+import com.deepseek.dsh.subagent.DelegationResult;
+import com.deepseek.dsh.subagent.SubagentService;
+import com.deepseek.dsh.compaction.CompactionService;
+import com.deepseek.dsh.skill.SkillDefinition;
+import com.deepseek.dsh.skill.SkillRenderer;
+import com.deepseek.dsh.skill.SkillService;
+import com.deepseek.dsh.teams.DefaultTeamsProvider;
 
 /**
  * RPC 服务端入口 —— 对应原 Harness 的 {@code dsh-jsonrpc-agent}（stdio 运行时）。
@@ -129,6 +139,129 @@ public final class DshRpcServer {
             return r;
         });
 
+        // session/fork —— fork 出保留父会话记忆的子会话（回放父事件）
+        dispatcher.register("session/fork", (params, ctx) -> {
+            String parentSid = params.path("sessionId").asText();
+            SessionId parentId = sessions.get(parentSid);
+            ObjectNode r = ctx.mapper().createObjectNode();
+            if (parentId == null) {
+                r.put("error", "父会话不存在: " + parentSid);
+                return r;
+            }
+            Sessions svc = context.require(Sessions.class);
+            SessionLog parent = svc.getOrCreate(parentId);
+            SessionLog child = svc.create();
+            int n = 0;
+            for (SessionEvent e : parent.snapshot()) {
+                child.append(e.type(), e.payload(), e.lineage());
+                n++;
+            }
+            sessions.put(child.sessionId().value(), child.sessionId());
+            r.put("childSessionId", child.sessionId().value());
+            r.put("parentSessionId", parentSid);
+            r.put("replayedEvents", n);
+            return r;
+        });
+
+        // session/compact —— 对会话历史触发上下文压缩
+        dispatcher.register("session/compact", (params, ctx) -> {
+            String sid = params.path("sessionId").asText();
+            int maxTokens = params.path("maxTokens").asInt(2048);
+            SessionId sessionId = sessions.get(sid);
+            ObjectNode r = ctx.mapper().createObjectNode();
+            if (sessionId == null) {
+                r.put("error", "会话不存在: " + sid);
+                return r;
+            }
+            Sessions svc = context.require(Sessions.class);
+            SessionLog log = svc.getOrCreate(sessionId);
+            List<ChatMessage> msgs = log.deriveMessages().messages();
+            CompactionService comp = context.get(CompactionService.class).orElse(null);
+            r.put("sessionId", sid);
+            r.put("before", msgs.size());
+            if (comp == null) {
+                r.put("error", "compaction 服务未注册");
+                return r;
+            }
+            List<ChatMessage> compacted = comp.compact(msgs, maxTokens);
+            r.put("after", compacted.size());
+            r.put("compacted", compacted.size() < msgs.size());
+            return r;
+        });
+
+        // skill/list —— 列出已发现技能
+        dispatcher.register("skill/list", (params, ctx) -> {
+            SkillService skills = context.get(SkillService.class).orElse(null);
+            ObjectNode r = ctx.mapper().createObjectNode();
+            if (skills == null) {
+                r.put("error", "skill 服务未注册");
+                return r;
+            }
+            var arr = r.putArray("skills");
+            for (var s : skills.list(null)) {
+                var o = arr.addObject();
+                o.put("name", s.name());
+                o.put("description", s.description());
+                o.put("source", s.source());
+                o.put("provider", s.provider());
+            }
+            r.put("count", skills.list(null).size());
+            return r;
+        });
+
+        // skill/get —— 加载并渲染单个技能（<skill_content> 块）
+        dispatcher.register("skill/get", (params, ctx) -> {
+            String name = params.path("name").asText();
+            SkillService skills = context.get(SkillService.class).orElse(null);
+            ObjectNode r = ctx.mapper().createObjectNode();
+            if (skills == null) {
+                r.put("error", "skill 服务未注册");
+                return r;
+            }
+            java.util.Optional<SkillDefinition> def = skills.get(name, null);
+            if (def.isEmpty()) {
+                r.put("found", false);
+                r.put("name", name);
+                return r;
+            }
+            r.put("found", true);
+            r.put("name", name);
+            r.put("rendered", SkillRenderer.render(def.get()));
+            return r;
+        });
+
+        // subagent/task —— 委派子任务给子 agent（多 agent 编排：父子委派）
+        dispatcher.register("subagent/task", (params, ctx) -> {
+            String sid = params.path("sessionId").asText();
+            String task = params.path("task").asText();
+            SessionId sessionId = sessions.computeIfAbsent(sid, SessionId::of);
+            SubagentService sub = context.get(SubagentService.class).orElse(null);
+            ObjectNode r = ctx.mapper().createObjectNode();
+            if (sub == null) {
+                r.put("error", "subagent 服务未注册");
+                return r;
+            }
+            DelegationResult res = sub.delegate(sessionId, ScopeKey.random(), context, agent, task);
+            r.put("report", res.report());
+            r.put("success", res.success());
+            return r;
+        });
+
+        // team/run —— 多 agent 并行编排（临时团队，主 agent 扮演两名成员）
+        dispatcher.register("team/run", (params, ctx) -> {
+            String task = params.path("task").asText();
+            ObjectNode r = ctx.mapper().createObjectNode();
+            DefaultTeamsProvider teams = new DefaultTeamsProvider();
+            teams.setContext(context);
+            teams.registerMember("审查员", agent);
+            teams.registerMember("测试员", agent);
+            var res = teams.runTeamTask(task);
+            r.put("summary", res.summary());
+            r.put("memberCount", res.reports().size());
+            r.put("allSucceeded", res.allSucceeded());
+            return r;
+        });
+
         // shutdown —— 对齐 TS SDK 协议
         dispatcher.register("shutdown", (params, ctx) -> {
             ObjectNode r = ctx.mapper().createObjectNode();
@@ -152,7 +285,8 @@ public final class DshRpcServer {
         String apiKey = System.getenv().getOrDefault("DEEPSEEK_API_KEY", "");
         String baseUrl = System.getenv().getOrDefault("DSH_BASE_URL", "https://api.deepseek.com");
         String model = System.getenv().getOrDefault("DSH_MODEL", "deepseek-chat");
-        Path dataDir = Path.of(System.getProperty("user.home"), ".dsh");
+        Path dataDir = Path.of(System.getenv().getOrDefault("DSH_DATA_DIR",
+                Path.of(System.getProperty("user.home"), ".dsh").toString()));
 
         log.info("启动 RPC 服务端: model={}, baseUrl={}", model, baseUrl);
         Context context = Context.root();

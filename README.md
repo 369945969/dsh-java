@@ -158,30 +158,48 @@ scripts/dev.sh                # 自动等后端就绪后起前端
 
 ### 两种访问协议
 - **RPC**：stdio newline-delimited JSON-RPC 2.0（运行时 SDK，进程外子进程通信）。
-- **SSE/HTTP**：Web apiproxy 用 SSE（`text/event-stream`、`\n\n` 帧）流式下发；Java 端 `POST /api/agent/stream` 返回 `session→delta*→done` 事件流。
+- **SSE/HTTP + WebSocket**：Web apiproxy 用 SSE（`text/event-stream`、`\n\n` 帧）流式下发；另有 WebSocket `/ws/agent` 支持并发多 session 与会话取消。
 
 ## 端到端验证（testcase）
 
-`testcase/` 是端到端测试（非单元测试）：**真正启动服务进程，通过 RPC 和 SSE 外部访问验证后端全部功能**，
-方便用户接自己的前端按同一契约验证。
+`testcase/` 是端到端测试（非单元测试）：**真正启动服务进程，通过 RPC 和 SSE/WebSocket 外部访问验证后端全部功能**，
+按「常用开发模式」分组，方便用户接自己的前端按同一契约验证。
 
 ```bash
-bash testcase/run-all.sh      # 构建 → RPC E2E → Web/SSE E2E
+bash testcase/run-all.sh      # 构建 → RPC E2E → Web/SSE E2E → WebSocket E2E
 ```
-- **RPC E2E**（基于 dsh SDK 客户端 `HarnessClient`，spawn `start-rpc.sh` 子进程）：
-  验证 `initialize` / `health` / `session.create` / `session.list` / `session/prompt`（真实模型调用）/
-  `session.history` / `session.delete` / `shutdown`。
-- **Web E2E**（curl 模拟前端 HTTP/SSE 交互）：验证 `GET /api/agent/health`、`POST /api/agent/send`、
-  `POST /api/agent/stream`（SSE `session→delta*→done`）。
+
+### 分组覆盖（开发模式）
+
+**① 基础对话模式**（RPC `session/prompt` + Web `/send`）
+- 基础问候、完整返回响应、自定义模型调用（`initialize` 验证 glm-5.2）
+
+**② 会话与记忆模式**（RPC）
+- 记忆保存（`session/history`）、fork agent 保留记忆（`session/fork` 回放父事件）、fork 新 session 无记忆
+- 查询 session 列表 + 单 session 状态查询、会话删除管理（`session/delete`）、上下文压缩（`session/compact`）
+
+**③ 技能与编排模式**（RPC）
+- 技能发现/加载（`skill/list` + `skill/get`，种子多 skill）、subagent 委派（`subagent/task`）、多 agent 并行编排（`team/run`，虚拟线程 fan-out + 聚合）
+
+**④ 实时通信模式**（Web）
+- 流响应：SSE `POST /api/agent/stream`（`session→delta*→done`）+ WebSocket `/ws/agent` 流式
+- WebSocket 并发多 session（同连接多 sid 交错下发）、会话取消（`cancel` 中断运行回合）
+
+### 驱动与脚本
+| 文件 | 传输 | 说明 |
+|------|------|------|
+| `RpcE2e.java` | RPC（stdio JSON-RPC） | 基于 dsh SDK 客户端 `HarnessClient` spawn `start-rpc.sh` 子进程，验证分组 ①②③ |
+| `web-e2e.sh` | HTTP + SSE | curl 模拟前端：`health`/`send`/`stream`（分组 ④·HTTP） |
+| `ws-e2e.py` | WebSocket | Python `websockets`：并发多 session + 流式 + 取消（分组 ④·WS） |
+| `run-all.sh` | 全部 | 一键编排：临时 `DSH_DATA_DIR`（hermetic）+ 种子 skill + 三类 E2E |
 
 单独运行：
 ```bash
-# RPC（需先 export DSH_RPC_CMD=scripts/start-rpc.sh 与 .env 配置）
-mvn -pl testcase exec:java
-# Web/SSE
-bash testcase/web-e2e.sh
+mvn -pl testcase exec:java                                  # RPC 全分组
+bash testcase/web-e2e.sh                                     # SSE/HTTP
+python3 testcase/ws-e2e.py                                   # WebSocket
 ```
-> 端到端测试需联网调用真实模型（如 glm-5.2），会消耗少量 token；未配置 `DEEPSEEK_API_KEY` 时 RPC 驱动自动跳过。
+> 端到端测试需联网调用真实模型（glm-5.2），消耗少量 token；`RpcE2e` 自动种子 2 个技能到 `DSH_DATA_DIR/skills`。
 
 ### 运行（旧命令，等价于脚本）
 ```bash
@@ -195,6 +213,7 @@ mvn -pl dsh-app spring-boot:run
 |------|------|------|
 | POST | `/api/agent/send` | 一次性对话，返回 agent 回复 + 历史 + token 统计 |
 | POST | `/api/agent/stream` | SSE 流式对话：`session`→`delta`*→`done([DONE])` 事件流 |
+| WS | `/ws/agent` | WebSocket：并发多 session、流式、会话取消 |
 | GET | `/api/agent/health` | 健康检查 |
 
 请求体（`send` / `stream`）：

@@ -110,6 +110,45 @@ public final class HarnessClient implements AutoCloseable {
                 .thenApply(n -> n.path("deleted").asBoolean(false));
     }
 
+    /** session/fork —— fork 出保留父会话记忆的子会话。 */
+    public CompletableFuture<ForkResult> forkSession(String parentSessionId) {
+        return transport.request("session/fork",
+                java.util.Map.of("sessionId", parentSessionId))
+                .thenApply(HarnessClient::toFork);
+    }
+
+    /** session/compact —— 对会话历史触发上下文压缩。 */
+    public CompletableFuture<CompactResult> compactSession(String sessionId, int maxTokens) {
+        return transport.request("session/compact",
+                java.util.Map.of("sessionId", sessionId, "maxTokens", maxTokens))
+                .thenApply(HarnessClient::toCompact);
+    }
+
+    /** skill/list —— 列出已发现技能。 */
+    public CompletableFuture<SkillListResult> skillList() {
+        return transport.request("skill/list", java.util.Map.of())
+                .thenApply(HarnessClient::toSkillList);
+    }
+
+    /** skill/get —— 加载并渲染单个技能。 */
+    public CompletableFuture<SkillGetResult> skillGet(String name) {
+        return transport.request("skill/get", java.util.Map.of("name", name))
+                .thenApply(HarnessClient::toSkillGet);
+    }
+
+    /** subagent/task —— 委派子任务给子 agent。 */
+    public CompletableFuture<SubagentTaskResult> subagentTask(String sessionId, String task) {
+        return transport.request("subagent/task",
+                java.util.Map.of("sessionId", sessionId, "task", task))
+                .thenApply(HarnessClient::toSubagentTask);
+    }
+
+    /** team/run —— 多 agent 并行编排。 */
+    public CompletableFuture<TeamRunResult> teamRun(String task) {
+        return transport.request("team/run", java.util.Map.of("task", task))
+                .thenApply(HarnessClient::toTeamRun);
+    }
+
     /** 底层传输（供高级用法直接调用）。 */
     public JsonRpcClient transport() {
         return transport;
@@ -162,6 +201,66 @@ public final class HarnessClient implements AutoCloseable {
         return new HistoryResult(messages, error);
     }
 
+    private static ForkResult toFork(JsonNode n) {
+        String err = n.has("error") ? n.path("error").asText(null) : null;
+        return new ForkResult(
+                n.path("childSessionId").asText(""),
+                n.path("parentSessionId").asText(""),
+                n.path("replayedEvents").asInt(0),
+                err);
+    }
+
+    private static CompactResult toCompact(JsonNode n) {
+        String err = n.has("error") ? n.path("error").asText(null) : null;
+        return new CompactResult(
+                n.path("sessionId").asText(""),
+                n.path("before").asInt(0),
+                n.path("after").asInt(0),
+                n.path("compacted").asBoolean(false),
+                err);
+    }
+
+    private static SkillListResult toSkillList(JsonNode n) {
+        List<SkillSummary> skills = new java.util.ArrayList<>();
+        JsonNode arr = n.path("skills");
+        if (arr.isArray()) {
+            for (JsonNode s : arr) {
+                skills.add(new SkillSummary(
+                        s.path("name").asText(""),
+                        s.path("description").asText(""),
+                        s.path("source").asText(""),
+                        s.path("provider").asText("")));
+            }
+        }
+        String err = n.has("error") ? n.path("error").asText(null) : null;
+        return new SkillListResult(skills, n.path("count").asInt(skills.size()), err);
+    }
+
+    private static SkillGetResult toSkillGet(JsonNode n) {
+        return new SkillGetResult(
+                n.path("found").asBoolean(false),
+                n.path("name").asText(""),
+                n.path("rendered").asText(""),
+                n.has("error") ? n.path("error").asText(null) : null);
+    }
+
+    private static SubagentTaskResult toSubagentTask(JsonNode n) {
+        String err = n.has("error") ? n.path("error").asText(null) : null;
+        return new SubagentTaskResult(
+                n.path("report").asText(""),
+                n.path("success").asBoolean(false),
+                err);
+    }
+
+    private static TeamRunResult toTeamRun(JsonNode n) {
+        String err = n.has("error") ? n.path("error").asText(null) : null;
+        return new TeamRunResult(
+                n.path("summary").asText(""),
+                n.path("memberCount").asInt(0),
+                n.path("allSucceeded").asBoolean(false),
+                err);
+    }
+
     // ---- 类型化结果记录 ----
 
     /** initialize 结果。 */
@@ -178,4 +277,25 @@ public final class HarnessClient implements AutoCloseable {
 
     /** session.history 结果。 */
     public record HistoryResult(List<JsonNode> messages, String error) {}
+
+    /** session/fork 结果。 */
+    public record ForkResult(String childSessionId, String parentSessionId, int replayedEvents, String error) {}
+
+    /** session/compact 结果。 */
+    public record CompactResult(String sessionId, int before, int after, boolean compacted, String error) {}
+
+    /** 技能摘要。 */
+    public record SkillSummary(String name, String description, String source, String provider) {}
+
+    /** skill/list 结果。 */
+    public record SkillListResult(List<SkillSummary> skills, int count, String error) {}
+
+    /** skill/get 结果。 */
+    public record SkillGetResult(boolean found, String name, String rendered, String error) {}
+
+    /** subagent/task 结果。 */
+    public record SubagentTaskResult(String report, boolean success, String error) {}
+
+    /** team/run 结果。 */
+    public record TeamRunResult(String summary, int memberCount, boolean allSucceeded, String error) {}
 }

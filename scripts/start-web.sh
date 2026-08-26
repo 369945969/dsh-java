@@ -12,8 +12,8 @@ CP_FILE="$ROOT/dsh-app/target/rpc-cp.txt"
 
 if [ -f "$ROOT/.env" ]; then set -a; . "$ROOT/.env"; set +a; fi
 
-# 复用 start-rpc.sh 的 classpath 构建（保证 dsh-* 已 install）
-if [ ! -f "$CP_FILE" ] || [ "$ROOT/pom.xml" -nt "$CP_FILE" ]; then
+# 复用 start-rpc.sh 的 classpath 构建（任意模块 pom 变更即重建）
+if [ ! -f "$CP_FILE" ] || [ -n "$(find "$ROOT/pom.xml" "$ROOT"/dsh-*/pom.xml "$ROOT"/testcase/pom.xml -newer "$CP_FILE" 2>/dev/null | head -1)" ]; then
   echo "[start-web] 首次构建 classpath..." >&2
   mvn -q -f "$ROOT/pom.xml" -pl dsh-app -am install -DskipTests -Dmaven.test.skip=true
   mvn -q -f "$ROOT/pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="$CP_FILE"
