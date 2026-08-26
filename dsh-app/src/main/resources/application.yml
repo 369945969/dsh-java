@@ -1,0 +1,19 @@
+server:
+  port: 8765
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: deepseek-harness
+
+# agent 配置（也可由环境变量覆盖）
+dsh:
+  model: ${DSH_MODEL:deepseek-chat}
+  data-dir: ${user.home}/.dsh
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

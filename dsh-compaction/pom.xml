@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.deepseek.dsh</groupId>
+        <artifactId>dsh-parent</artifactId>
+        <version>0.1.1-rc.2-java</version>
+    </parent>
+    <artifactId>dsh-compaction</artifactId>
+    <name>DSH Compaction</name>
+    <description>上下文压缩能力缝 + basic provider + tool-result pruner。</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-session</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-llm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-interaction</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,42 @@
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+
+# 构建产物
+*/target/
+target/
+
+# 前端
+dsh-frontend/node_modules/
+dsh-frontend/dist/
+dsh-frontend/.vite/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+logs/
+
+# 本地环境/凭据
+.env
+*.local
+
+# 临时文件
+*.tmp
+*.bak
