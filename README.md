@@ -14,7 +14,7 @@ DeepSeek Harness 的核心理念是 **"一切皆插件"**：模型适配器、�
 
 ```
 dsh-java/
-├── pom.xml                      # 父 POM（多模块，37 个模块）
+├── pom.xml                      # 父 POM（多模块，41 个模块）
 ├── dsh-core/                    # 插件/Context 基座（Cordis 等价）、Event Bus、Middleware 链、Branded IDs、共用子进程执行器
 ├── dsh-session/                 # 追加式 SessionEvent 日志（事件溯源）、deriveMessages 投影、JSONL 持久化、会话标题/遥测
 ├── dsh-session-sqlite/          # SQLite 会话持久化 + FTS5 全文/语义会话查询
@@ -45,6 +45,10 @@ dsh-java/
 ├── dsh-spill/                    # 超大工具输出外溢存储缝 + 本地文件后端 + 外溢策略中间件
 ├── dsh-skill/                    # 技能目录/加载器缝 + 文件系统提供者 + skill 工具 + skill_content 渲染
 ├── dsh-subprocess/               # 托管进程组缝 + 本地提供者（环境清洗 + PATH 解析，复用 ProcessRunner）
+├── dsh-attachment/               # 内容寻址附件存储（sha256 去重 + 策略 + SPI）
+├── dsh-workspace/                # 工作区实体注册表（路径归一化、会话归集、JSON 持久化）
+├── dsh-feedback/                 # 会话反馈：/feedback 命令（仅日志事件）+ 消息级反馈（正面/负面 + 备注，乐观并发）
+├── dsh-schedule/                 # 会话级持久提醒（after/at/every，事件日志折叠重放，会话本地投递）
 ├── dsh-teams/                    # Agent Teams 协作缝 + 默认提供者（虚拟线程并行 fan-out + 聚合）+ team 工具
 ├── dsh-telemetry/                # 遥测能力缝 (OpenTelemetry) + no-op/日志后端 + 工具中间件
 ├── dsh-acp/                     # Automation-only ACP 服务器（JSON-RPC over stdio）
@@ -82,6 +86,10 @@ dsh-java/
 | dsh-lsp | 语言服务器（LSP stdio） | 适配器 |
 | dsh-acp | ACP 服务器（自动化协议） | 命令分发器 |
 | dsh-sdk | JSON-RPC 协议 + 客户端/服务端 | 远程代理 + 前端控制器 |
+| dsh-attachment | 内容寻址附件存储（sha256 去重） | 值对象 + 策略 + SPI |
+| dsh-workspace | 工作区注册表（路径归一化、会话归集） | 注册表 + 仓储 + 模板方法 |
+| dsh-feedback | /feedback 命令 + 消息级反馈（乐观并发） | 命令 + 仓储 + CAS |
+| dsh-schedule | 持久提醒（after/at/every，事件折叠重放） | 事件溯源 + 决策 + 密封联合 |
 
 ### 能力缝（Capability Seam）
 
@@ -117,11 +125,12 @@ cd dsh-frontend && pnpm install && pnpm build
 ```
 
 ### 单元测试覆盖
-108 个单元测试覆盖 22 个后端模块的核心纯逻辑（无网络、无外部依赖）：
+196 个单元测试覆盖 28 个后端模块的核心纯逻辑（无网络、无外部依赖）：
 核心层（Context 作用域/事件总线、SessionLog 事件溯源、ToolRegistry、ReActAgentLoop）、
 LLM 层（TokenMeter 累计、Retry、DeepSeek 适配器协议）、
 交互层（PermissionPreset 三态判定链、CommandRegistry 注册/注销、审批、ask-user）、
-能力层（上下文 @file 引用解析/截断/缓存、Compaction 摘要/裁剪、Spill 外溢策略、Storage 原子持久化）、
+能力层（上下文 @file 引用解析/截断/缓存、Compaction 摘要/裁剪、Spill 外溢策略、Storage 原子持久化、
+Attachment sha256 去重、Feedback 消息级乐观并发、Schedule 事件日志折叠重放/固定速率发生解析）、
 集成层（SDK JSON-RPC 客户端/服务端帧、Subagent ACP 桥接、Teams fan-out 聚合、Telemetry Span/Metric、Subprocess 环境清洗）等。
 
 ## 配置（模型 Key）
@@ -290,7 +299,7 @@ SSE 示例：`curl -N -X POST http://localhost:8765/api/agent/stream -H 'Content
 ## 与原项目的关系
 
 本重写聚焦**核心 + 最小可用**及**高级能力**范围，覆盖原 TypeScript Harness 的主要能力域。
-已实现（37 个模块，195 个 Java 源文件，115 个单元测试全绿）：
+已实现（41 个模块，221 个 Java 源文件，196 个单元测试全绿）：
 
 **核心层**：插件基座（Context/Plugin + 可逆副作用 + 作用域遮蔽 + Event Bus 四模式 + Middleware 链）、
 agent loop（ReAct + turn/step/round，模板方法 + 状态机，可注入中间件管线）、事件溯源会话日志（"模型可见⟺已记录"）、
@@ -308,7 +317,10 @@ ask-user（结构化提问）、计划模式（日志化状态 + reviewed exit�
 **数据/存储层**：凭据/授权（本地 .env + 环境变量叠加）、用户设置（JSON 命名空间，文件持久化）、
 通用存储中心（内存/文件后端，原子写入）、超大工具输出外溢存储（私有会话作用域文件 + 外溢策略中间件）、
 技能目录/加载器（文件系统提供者 + frontmatter 解析 + skill 工具 + skill_content 渲染）、
-SQLite 持久化 + FTS5 全文检索、上下文压缩（LLM 摘要 + 工具结果裁剪）。
+SQLite 持久化 + FTS5 全文检索、上下文压缩（LLM 摘要 + 工具结果裁剪）、
+内容寻址附件存储（sha256 去重，内容寻址 + 策略 + SPI）、工作区实体注册表（路径归一化、会话归集、JSON 持久化）。
+会话反馈（/feedback 命令记录仅日志事件 + 消息级反馈：正面/负面 + 备注，UUID 版本乐观并发）、
+会话级持久提醒（一次性 after/at + 固定速率 every，事件日志折叠重放 + 会话本地投递 + 注入抗性框架）。
 
 **集成层**：subagent 委派（in-process fork + 谱系关联，可切换 ACP 远程子 agent 桥接 Claude Code/Codex 等外部 agent 进程；
 委派生命周期通过 `SubagentEvent`（SPAWNED/COMPLETED/FAILED）经父 Context 的 EventBus 转发，远程子会话历史按 `session.history` 投影回传消息事件数）、

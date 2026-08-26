@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Spring Boot 应用运行时 logback 配置（Web/CLI 模式）。
+  RPC/ACP 模式仍用 logback-rpc.xml（日志走 stderr，保证 stdout 干净承载 JSON-RPC 帧）。
+-->
+<configuration>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 项目自身代码 INFO -->
+    <logger name="com.deepseek.dsh" level="INFO"/>
+
+    <!-- 抑制框架噪声 -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.apache" level="WARN"/>
+    <logger name="org.hibernate" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  全局测试 logback 配置（供所有子模块 surefire 使用）。
+  通过 -Dlogback.configurationFile=logback-test.xml 指定。
+  控制台输出 INFO 级别，本项目包提升到 DEBUG 便于诊断。
+-->
+<configuration>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.out</target>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 项目自身代码开 DEBUG，便于测试中定位流程 -->
+    <logger name="com.deepseek.dsh" level="DEBUG"/>
+
+    <!-- 抑制第三方库噪声 -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.apache" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+
+</configuration>

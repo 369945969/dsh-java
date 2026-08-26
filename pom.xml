@@ -66,6 +66,10 @@
         <module>dsh-spill</module>
         <module>dsh-skill</module>
         <module>dsh-subprocess</module>
+        <module>dsh-attachment</module>
+        <module>dsh-workspace</module>
+        <module>dsh-feedback</module>
+        <module>dsh-schedule</module>
         <module>dsh-teams</module>
         <module>dsh-telemetry</module>
         <module>dsh-acp</module>
@@ -328,6 +332,18 @@
         </dependencies>
     </dependencyManagement>
 
+    <!-- 全局依赖：所有子模块继承。
+         logback-classic 以 test 作用域提供日志实现，消除 SLF4J NOP 警告并使
+         单元测试中的 log.info/warn/debug 真正输出到控制台。
+         运行时（dsh-app）由 spring-boot-starter 传递引入 logback，无需在此声明 compile。 -->
+    <dependencies>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
     <build>
         <pluginManagement>
             <plugins>
@@ -347,6 +363,13 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.5.0</version>
+                    <configuration>
+                        <systemPropertyVariables>
+                            <logback.configurationFile>
+                                ${maven.multiModuleProjectDirectory}/logback-test.xml
+                            </logback.configurationFile>
+                        </systemPropertyVariables>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.springframework.boot</groupId>
