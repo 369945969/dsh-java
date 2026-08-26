@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
 
 import com.deepseek.dsh.agent.Agent;
 import com.deepseek.dsh.app.bundle.BaseBundle;
@@ -37,14 +36,6 @@ public class DshApplication implements AgentContextHolder {
         SpringApplication.run(DshApplication.class, args);
     }
 
-    @org.springframework.context.annotation.Configuration
-    static class BootConfig {
-        @Bean
-        DshApplication dshApplication() {
-            return new DshApplication();
-        }
-    }
-
     /**
      * 在 Spring 容器初始化后装配 agent。
      * 通过监听 ApplicationReadyEvent 确保插件树在 Web 就绪前挂载完成。
@@ -53,13 +44,14 @@ public class DshApplication implements AgentContextHolder {
             org.springframework.boot.context.event.ApplicationReadyEvent.class)
     public void onReady() throws Exception {
         String apiKey = System.getenv().getOrDefault("DEEPSEEK_API_KEY", "");
+        String baseUrl = System.getenv().getOrDefault("DSH_BASE_URL", "https://api.deepseek.com");
         String model = System.getenv().getOrDefault("DSH_MODEL", "deepseek-chat");
         Path dataDir = Path.of(System.getProperty("user.home"), ".dsh");
 
-        log.info("装配 profile: model={}, dataDir={}", model, dataDir);
+        log.info("装配 profile: model={}, baseUrl={}, dataDir={}", model, baseUrl, dataDir);
         this.context = Context.root();
         this.runner = new PluginRunner();
-        Profile profile = Profile.defaultWeb(apiKey, model, dataDir);
+        Profile profile = Profile.defaultWeb(apiKey, baseUrl, model, dataDir);
         this.agent = profile.assemble(context, runner);
         log.info("agent 装配完成: {}", agent.name());
     }

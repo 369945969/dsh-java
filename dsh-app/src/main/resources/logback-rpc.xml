@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  RPC 服务端专用 logback 配置：所有日志输出到 System.err，
+  保证 stdout 仅承载 newline-delimited JSON-RPC 帧（供 SDK 客户端干净读取）。
+  启动方式：java -Dlogback.configurationFile=logback-rpc.xml ...
+-->
+<configuration>
+    <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.err</target>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{0} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDERR"/>
+    </root>
+</configuration>

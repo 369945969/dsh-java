@@ -61,7 +61,7 @@ public final class AcpRemoteSubagentProvider
             String fullTask = agent.systemPrompt() == null || agent.systemPrompt().isBlank()
                     ? task
                     : "【人格: " + persona + "】\n" + agent.systemPrompt() + "\n\n任务:\n" + task;
-            String reply = session.client().run(session.sessionId(), fullTask).join();
+            String reply = session.client().prompt(session.sessionId(), fullTask).join().reply();
             return new DelegationResult(reply, true);
         } catch (Exception e) {
             log.warn("ACP 远程子 agent 委派失败 ({}): {}", persona, e.toString());

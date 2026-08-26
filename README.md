@@ -109,47 +109,99 @@ dsh-java/
 
 ### 构建
 ```bash
-# 后端编译 + 测试
+# 后端编译 + 单元测试
 mvn test
 
 # 前端
 cd dsh-frontend && pnpm install && pnpm build
 ```
 
-### 运行
+## 配置（模型 Key）
+
+后端用环境变量配置模型，脚本从仓库根 `.env` 自动加载（**`.env` 已 gitignore，绝不提交**）：
 ```bash
-# 设置 DeepSeek API Key
-export DEEPSEEK_API_KEY=sk-xxxx
-# 可选：指定模型
-export DSH_MODEL=deepseek-chat
+cp .env.example .env      # 复制模板
+# 编辑 .env：填入模型 Key/端点/模型名
+```
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `DEEPSEEK_API_KEY` | 是 | 模型 API Key |
+| `DSH_BASE_URL` | 否 | OpenAI 兼容端点；默认 DeepSeek，glm-5.2 用 `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `DSH_MODEL` | 否 | 模型名；默认 `deepseek-chat`，glm-5.2 用 `glm-5.2` |
 
-# 启动后端（含 Web 服务）
-mvn -pl dsh-app spring-boot:run
+## 启动方式
 
+提供三种启动方式（脚本在 `scripts/`），覆盖原 Harness 的 `dsh web` / `dsh-jsonrpc-agent` 模式。
+
+### 1. RPC 模式（stdio JSON-RPC，进程外运行时）
+对应原 Harness 的 `dsh-jsonrpc-agent`。后端作为 stdio newline-delimited JSON-RPC 2.0 服务端，
+**stdout 仅承载 JSON-RPC 帧，日志走 stderr**（`logback-rpc.xml`）。SDK 客户端据此干净读取。
+```bash
+scripts/start-rpc.sh          # 从 .env 读配置；首次自动构建 classpath（install + build-classpath，缓存）
+```
+方法面（对齐 TS SDK 协议 + Java 便利方法）：
+`initialize` / `health` / `session.create` / `session.list` / `session/prompt` / `session.history` / `session.delete` / `shutdown`
+
+### 2. Web 模式（Spring Boot，REST + SSE）
+对应原 Harness 的 `dsh web`。前端（自带 React 或用户自有前端）通过 HTTP/SSE 对接。
+```bash
+scripts/start-web.sh [port]   # 默认 8765
 # 浏览器打开 http://localhost:8765
 ```
 
-### 开发模式（前后端分离）
+### 3. 开发模式（前后端分离）
+后端 Web（8765）+ 前端 Vite dev（5173，代理 `/api` 到后端）并行，任一退出则全部退出。
 ```bash
-# 终端 1：后端
-mvn -pl dsh-app spring-boot:run
-
-# 终端 2：前端 dev server（代理 /api 到后端）
-cd dsh-frontend && pnpm dev
-# 打开 http://localhost:5173
+scripts/dev.sh                # 自动等后端就绪后起前端
+# 后端 http://localhost:8765 | 前端 http://localhost:5173
 ```
 
-## REST API
+### 两种访问协议
+- **RPC**：stdio newline-delimited JSON-RPC 2.0（运行时 SDK，进程外子进程通信）。
+- **SSE/HTTP**：Web apiproxy 用 SSE（`text/event-stream`、`\n\n` 帧）流式下发；Java 端 `POST /api/agent/stream` 返回 `session→delta*→done` 事件流。
+
+## 端到端验证（testcase）
+
+`testcase/` 是端到端测试（非单元测试）：**真正启动服务进程，通过 RPC 和 SSE 外部访问验证后端全部功能**，
+方便用户接自己的前端按同一契约验证。
+
+```bash
+bash testcase/run-all.sh      # 构建 → RPC E2E → Web/SSE E2E
+```
+- **RPC E2E**（基于 dsh SDK 客户端 `HarnessClient`，spawn `start-rpc.sh` 子进程）：
+  验证 `initialize` / `health` / `session.create` / `session.list` / `session/prompt`（真实模型调用）/
+  `session.history` / `session.delete` / `shutdown`。
+- **Web E2E**（curl 模拟前端 HTTP/SSE 交互）：验证 `GET /api/agent/health`、`POST /api/agent/send`、
+  `POST /api/agent/stream`（SSE `session→delta*→done`）。
+
+单独运行：
+```bash
+# RPC（需先 export DSH_RPC_CMD=scripts/start-rpc.sh 与 .env 配置）
+mvn -pl testcase exec:java
+# Web/SSE
+bash testcase/web-e2e.sh
+```
+> 端到端测试需联网调用真实模型（如 glm-5.2），会消耗少量 token；未配置 `DEEPSEEK_API_KEY` 时 RPC 驱动自动跳过。
+
+### 运行（旧命令，等价于脚本）
+```bash
+# 等价于 scripts/start-web.sh
+mvn -pl dsh-app spring-boot:run
+```
+
+## REST / SSE API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/agent/send` | 发送消息，返回 agent 回复 + 历史 + token 统计 |
+| POST | `/api/agent/send` | 一次性对话，返回 agent 回复 + 历史 + token 统计 |
+| POST | `/api/agent/stream` | SSE 流式对话：`session`→`delta`*→`done([DONE])` 事件流 |
 | GET | `/api/agent/health` | 健康检查 |
 
-请求体：
+请求体（`send` / `stream`）：
 ```json
 { "sessionId": null, "message": "你好" }
 ```
+SSE 示例：`curl -N -X POST http://localhost:8765/api/agent/stream -H 'Content-Type: application/json' -d '{"message":"你好"}'`
 
 ## 与原项目的关系
 
@@ -182,4 +234,4 @@ SDK（JSON-RPC 协议 + 客户端 + 服务端）。
 
 **前端**：React + Vite，保留原 `--dsw-*` 设计令牌的深色对话式风格，对接 Java 后端 REST API。
 
-未实现（后续可扩展）：原生 node-addon（Java 侧以虚拟线程 + ProcessRunner 承载，无对应物）、ACP 远程子 agent 的高级协议特性。
+未实现（后续可扩展）：原生 node-addon（Java 侧以虚拟线程 + ProcessRunner 承载，无对应物）、ACP 远程子 agent 的高级协议特性、Web SSE 的 token 级流式（当前按回复行分帧，真正逐 token 流式需 agent loop 重构）。

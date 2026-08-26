@@ -52,11 +52,17 @@ import com.deepseek.dsh.workflow.WorkerThreadWorkflowProvider;
 public final class BaseBundle {
 
     private final String apiKey;
+    private final String baseUrl;
     private final String model;
     private final Path dataDir;
 
     public BaseBundle(String apiKey, String model, Path dataDir) {
+        this(apiKey, "https://api.deepseek.com", model, dataDir);
+    }
+
+    public BaseBundle(String apiKey, String baseUrl, String model, Path dataDir) {
         this.apiKey = apiKey;
+        this.baseUrl = baseUrl;
         this.model = model;
         this.dataDir = dataDir;
     }
@@ -73,9 +79,9 @@ public final class BaseBundle {
         ToolRegistry toolRegistry = new ToolRegistry();
         runner.add(toolRegistry);
 
-        // LLM 模型（DeepSeek + 重试）
+        // LLM 模型（DeepSeek/OpenAI 兼容 + 重试）
         LlmModel llm = new RetryLlmModel(
-                new DeepSeekLlmAdapter(apiKey, this.model));
+                new DeepSeekLlmAdapter(apiKey, baseUrl, this.model));
         runner.add(new LlmModelPlugin(llm));
 
         // Token 计量

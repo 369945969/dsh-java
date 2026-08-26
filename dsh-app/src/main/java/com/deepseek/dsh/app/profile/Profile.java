@@ -40,4 +40,9 @@ public final class Profile {
     public static Profile defaultWeb(String apiKey, String model, Path dataDir) {
         return new Profile("default", new BaseBundle(apiKey, model, dataDir));
     }
+
+    /** 工厂：创建带自定义模型基址（OpenAI 兼容端点，如阿里云 DashScope 的 glm-5.2）的 web profile。 */
+    public static Profile defaultWeb(String apiKey, String baseUrl, String model, Path dataDir) {
+        return new Profile("default", new BaseBundle(apiKey, baseUrl, model, dataDir));
+    }
 }

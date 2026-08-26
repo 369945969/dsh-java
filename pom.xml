@@ -72,6 +72,7 @@
         <module>dsh-sdk</module>
         <module>dsh-web</module>
         <module>dsh-app</module>
+        <module>testcase</module>
     </modules>
 
     <dependencyManagement>
@@ -248,6 +249,12 @@
             </dependency>
             <dependency>
                 <groupId>com.deepseek.dsh</groupId>
+                <artifactId>testcase</artifactId>
+                <version>${project.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.deepseek.dsh</groupId>
                 <artifactId>dsh-acp</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -259,6 +266,11 @@
             <dependency>
                 <groupId>com.deepseek.dsh</groupId>
                 <artifactId>dsh-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.deepseek.dsh</groupId>
+                <artifactId>dsh-app</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
