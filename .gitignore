@@ -36,6 +36,9 @@ logs/
 # 本地环境/凭据
 .env
 *.local
+# 模型配置（页面配置持久化，含 API Key，绝不提交）
+model-config.json
+**/model-config.json
 
 # 临时文件
 *.tmp

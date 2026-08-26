@@ -12,6 +12,7 @@ import com.deepseek.dsh.core.context.AbstractCapabilityPlugin;
 import com.deepseek.dsh.core.context.Context;
 import com.deepseek.dsh.session.Sessions;
 import com.deepseek.dsh.subagent.DelegationResult;
+import com.deepseek.dsh.subagent.SubagentEvent;
 import com.deepseek.dsh.subagent.SubagentService;
 
 /**
@@ -40,16 +41,30 @@ public final class ForkInProcessProvider
         SessionId childSessionId = SessionId.of(UUID.randomUUID().toString());
         // 子作用域键（深度 +1）
         ScopeKey childScope = ScopeKey.random();
+        String childSid = childSessionId.value();
+        String persona = agent.name();
+        String taskPreview = task.length() > 80 ? task.substring(0, 80) + "…" : task;
 
         log.debug("委派子任务到子会话 {}（父 {}）: {}",
-                childSessionId, parentSessionId, task.length() > 80 ? task.substring(0, 80) + "…" : task);
+                childSessionId, parentSessionId, taskPreview);
+
+        // 生命周期通知：委派开始
+        ctx.events().emit(new SubagentEvent(SubagentEvent.Kind.SPAWNED,
+                parentSessionId, childSid, persona, 0, taskPreview));
 
         try {
             String report = agent.run(childSessionId, childScope, ctx, task);
-            return new DelegationResult(report, true);
+            // 会话事件转发：统计子会话已记录的事件数
+            int eventCount = sessions.getOrCreate(childSessionId).snapshot().size();
+            String reportPreview = report.length() > 80 ? report.substring(0, 80) + "…" : report;
+            ctx.events().emit(new SubagentEvent(SubagentEvent.Kind.COMPLETED,
+                    parentSessionId, childSid, persona, eventCount, reportPreview));
+            return new DelegationResult(report, true, childSid, eventCount);
         } catch (Exception e) {
             log.warn("子 agent 执行失败: {}", e.toString());
-            return new DelegationResult("子任务执行失败: " + e.getMessage(), false);
+            ctx.events().emit(new SubagentEvent(SubagentEvent.Kind.FAILED,
+                    parentSessionId, childSid, persona, 0, e.getMessage()));
+            return new DelegationResult("子任务执行失败: " + e.getMessage(), false, childSid, 0);
         }
     }
 }

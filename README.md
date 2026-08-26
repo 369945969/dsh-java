@@ -19,7 +19,7 @@ dsh-java/
 ├── dsh-session/                 # 追加式 SessionEvent 日志（事件溯源）、deriveMessages 投影、JSONL 持久化、会话标题/遥测
 ├── dsh-session-sqlite/          # SQLite 会话持久化 + FTS5 全文/语义会话查询
 ├── dsh-tools/                   # 工具注册表、执行管线、JSON Schema 装配、ToolArgs/ToolSchema 构建器
-├── dsh-llm/                     # LLM 能力缝、DeepSeek 适配器、流式/重试/Token 计量、会话标题提供程序
+├── dsh-llm/                     # LLM 能力缝、DeepSeek 适配器、流式/重试/Token 计量、会话标题提供程序、模型配置中心（多档案 + 页面配置）
 ├── dsh-agent/                   # Agent 接口、ReAct loop、turn/step/round 生命周期（可注入中间件管线）
 ├── dsh-capability-shell/         # shell/bash 能力缝 + 本地提供者 + bash 工具
 ├── dsh-capability-fs/            # 文件系统能力缝 + 本地提供者 + read/write/edit/glob/grep 工具
@@ -50,7 +50,7 @@ dsh-java/
 ├── dsh-acp/                     # Automation-only ACP 服务器（JSON-RPC over stdio）
 ├── dsh-sdk/                     # JSON-RPC 协议 + 客户端 + 服务端（进程外运行时 SDK）
 ├── dsh-web/                     # Spring Boot Web 服务、REST API、SPA 托管
-├── dsh-app/                     # 启动引导、Profile/Bundle 组合、Spring Boot 入口
+├── dsh-app/                     # 启动引导、Profile/Bundle 组合、Spring Boot 入口、RPC/ACP/CLI 入口
 └── dsh-frontend/                # React + Vite 前端（保留原 --dsw-* 风格）
 ```
 
@@ -126,10 +126,13 @@ LLM 层（TokenMeter 累计、Retry、DeepSeek 适配器协议）、
 
 ## 配置（模型 Key）
 
-后端用环境变量配置模型，脚本从仓库根 `.env` 自动加载（**`.env` 已 gitignore，绝不提交**）：
+支持**两种配置方式并存**，页面配置覆盖环境变量初值，两者任一有效即可驱动模型调用：
+
+### 1. 环境变量 / .env（export 方式）
+脚本从仓库根 `.env` 自动加载（**`.env` 已 gitignore，绝不提交**）：
 ```bash
 cp .env.example .env      # 复制模板
-# 编辑 .env：填入模型 Key/端点/模型名
+# 编辑 .env：填入模型 Key/端点/模型名，或 export DEEPSEEK_API_KEY=...
 ```
 | 变量 | 必填 | 说明 |
 |------|------|------|
@@ -137,9 +140,20 @@ cp .env.example .env      # 复制模板
 | `DSH_BASE_URL` | 否 | OpenAI 兼容端点；默认 DeepSeek，glm-5.2 用 `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | `DSH_MODEL` | 否 | 模型名；默认 `deepseek-chat`，glm-5.2 用 `glm-5.2` |
 
+### 2. 页面配置（Web 设置页，对应原 Harness 的 ui-settings-models）
+启动 Web 服务后，点击前端右上角「⚙ 模型设置」打开设置弹窗：
+- **添加自定义模型**：填入显示名 / 模型名 / API Key / 端点（OpenAI 兼容），即可添加多个模型档案（如 glm-5.2、deepseek-chat、qwen-plus）。
+- **切换当前模型**：点「设为当前」即时生效（下一回合即用新配置）。
+- **删除模型档案**：点「删除」移除。
+
+页面配置持久化到 `dataDir/model-config.json`（**已 gitignore，绝不提交 API Key**），重启后自动加载；
+API Key 脱敏展示，绝不回传明文。模型适配器每次请求动态读取当前活跃档案，故切换即时生效。
+
+> 对应 REST API：`GET/POST/PUT/DELETE /api/config/models`（档案 CRUD）+ `PUT /api/config/models/active`（切换活跃）。
+
 ## 启动方式
 
-提供四种启动方式（脚本在 `scripts/`），覆盖原 Harness 的 `dsh web` / `dsh-jsonrpc-agent` 模式。
+提供六种启动方式（脚本在 `scripts/`），覆盖原 Harness 的 `dsh` / `dsh web` / `dsh-jsonrpc-agent` / `dsh acp` 模式。
 
 ### 0. 一键启动前后端（推荐）
 构建前端 → 同步到后端静态资源 → 启动 Web 服务。SPA + REST + SSE + WebSocket 同源（默认 8765），
@@ -171,8 +185,37 @@ scripts/dev.sh                # 自动等后端就绪后起前端
 # 后端 http://localhost:8765 | 前端 http://localhost:5173
 ```
 
+### 4. ACP 模式（Automation-only，stdio JSON-RPC）
+对应原 Harness 的 `dsh acp`。以 newline-delimited JSON-RPC 2.0 over stdio 暴露**自动化专用最小方法集**
+（与 RPC 模式互补：后者面向运行时 SDK 全功能，本模式面向 ACP 自动化消费方）。stdout 仅承载 JSON-RPC 帧，
+日志走 stderr（`logback-rpc.xml`）。
+```bash
+scripts/start-acp.sh
+```
+方法面（自动化最小集）：`session.create` / `session.run` / `session.list` / `shutdown`
+
+### 5. CLI 交互模式（终端 REPL）
+对应原 Harness 的 `dsh` 默认交互终端。从 stdin 逐行读取输入，驱动 agent 对话，回复打印到 stdout。
+会话跨多轮保持记忆；支持斜杠命令：`/exit`（或 `/quit`）退出、`/new` 开启新会话、`/tokens` 查看累计用量。
+```bash
+scripts/start-cli.sh
+```
+
+### 启动脚本总览
+
+| 脚本 | 入口类 | 传输/模式 | 说明 |
+|------|--------|-----------|------|
+| `start.sh` | `DshApplication` | Web（SPA+REST+SSE+WS） | 一键构建前端并启动 Web 服务（推荐） |
+| `start-web.sh` | `DshApplication` | Spring Boot REST+SSE | 纯后端 Web 服务（默认 8765） |
+| `dev.sh` | `DshApplication`+Vite | 前后端分离 dev | 后端 8765 + 前端 5173 并行 |
+| `start-rpc.sh` | `DshRpcServer` | stdio JSON-RPC | 运行时 SDK 全功能（进程外子进程） |
+| `start-acp.sh` | `DshAcpServer` | stdio JSON-RPC | ACP 自动化最小方法集 |
+| `start-cli.sh` | `DshRepl` | 终端 REPL | 交互式对话（斜杠命令） |
+
+> 所有脚本共享首次 classpath 构建缓存（`dsh-app/target/rpc-cp.txt`），从仓库根 `.env` 自动加载模型配置。
+
 ### 两种访问协议
-- **RPC**：stdio newline-delimited JSON-RPC 2.0（运行时 SDK，进程外子进程通信）。
+- **RPC/ACP**：stdio newline-delimited JSON-RPC 2.0（进程外子进程通信；RPC 全功能，ACP 自动化最小集）。
 - **SSE/HTTP + WebSocket**：Web apiproxy 用 SSE（`text/event-stream`、`\n\n` 帧）流式下发；另有 WebSocket `/ws/agent` 支持并发多 session 与会话取消。
 
 ## 端到端验证（testcase）
@@ -232,6 +275,11 @@ mvn -pl dsh-app spring-boot:run
 | POST | `/api/agent/stream` | SSE 逐 token 流式对话：`session`→`delta`*→`done([DONE])` 事件流 |
 | WS | `/ws/agent` | WebSocket：并发多 session、流式、会话取消 |
 | GET | `/api/agent/health` | 健康检查 |
+| GET | `/api/config/models` | 列出全部模型档案（Key 脱敏）+ 当前活跃 ID |
+| POST | `/api/config/models` | 添加自定义模型档案 |
+| PUT | `/api/config/models/{id}` | 更新模型档案 |
+| DELETE | `/api/config/models/{id}` | 删除模型档案 |
+| PUT | `/api/config/models/active` | 切换当前活跃模型（即时生效） |
 
 请求体（`send` / `stream`）：
 ```json
@@ -242,7 +290,7 @@ SSE 示例：`curl -N -X POST http://localhost:8765/api/agent/stream -H 'Content
 ## 与原项目的关系
 
 本重写聚焦**核心 + 最小可用**及**高级能力**范围，覆盖原 TypeScript Harness 的主要能力域。
-已实现（37 个模块，188 个 Java 源文件，108 个单元测试全绿）：
+已实现（37 个模块，195 个 Java 源文件，115 个单元测试全绿）：
 
 **核心层**：插件基座（Context/Plugin + 可逆副作用 + 作用域遮蔽 + Event Bus 四模式 + Middleware 链）、
 agent loop（ReAct + turn/step/round，模板方法 + 状态机，可注入中间件管线）、事件溯源会话日志（"模型可见⟺已记录"）、
@@ -262,7 +310,8 @@ ask-user（结构化提问）、计划模式（日志化状态 + reviewed exit�
 技能目录/加载器（文件系统提供者 + frontmatter 解析 + skill 工具 + skill_content 渲染）、
 SQLite 持久化 + FTS5 全文检索、上下文压缩（LLM 摘要 + 工具结果裁剪）。
 
-**集成层**：subagent 委派（in-process fork + 谱系关联，可切换 ACP 远程子 agent 桥接 Claude Code/Codex 等外部 agent 进程）、
+**集成层**：subagent 委派（in-process fork + 谱系关联，可切换 ACP 远程子 agent 桥接 Claude Code/Codex 等外部 agent 进程；
+委派生命周期通过 `SubagentEvent`（SPAWNED/COMPLETED/FAILED）经父 Context 的 EventBus 转发，远程子会话历史按 `session.history` 投影回传消息事件数）、
 工作流引擎（虚拟线程异步任务 + Ralph 循环）、Agent Teams 多 agent 协作（并行 fan-out + 聚合 + team 工具）、
 遥测能力缝（OpenTelemetry 风格 Span/Metric/Counter + no-op/日志后端 + 工具中间件）、
 MCP 客户端桥接（注册外部工具服务器）、ACP 服务器（自动化协议）、
@@ -270,6 +319,7 @@ SDK（JSON-RPC 协议 + 客户端 + 服务端）。
 
 **前端**：React + Vite，保留原 `--dsw-*` 设计令牌的深色对话式风格，对接 Java 后端 REST API。
 
-未实现（后续可扩展）：原生 node-addon（Java 侧以虚拟线程 + ProcessRunner 承载，无对应物）、ACP 远程子 agent 的会话事件/子 agent 生命周期通知转发（基础 session.create/session/prompt 桥接已实现）。
+未实现（后续可扩展）：原生 node-addon（Java 侧以虚拟线程 + ProcessRunner 承载，无对应物）。
+已实现（本轮补齐）：ACP 远程子 agent 的会话事件/子 agent 生命周期通知转发——委派开始/完成/失败经 `SubagentEvent` 发射到父 EventBus，远程子会话历史按 `session.history` 投影回传消息事件数（`forwardedEventCount`），RPC `subagent/task` 响应现含 `childSessionId` + `forwardedEventCount`。
 
 > Web SSE/WebSocket 已支持逐 token 流式（基于 `LlmModel.stream`，glm-5.2 推理模型会先下发 `content` token；纯对话回合流式，需工具的回合用 `/api/agent/send`）。

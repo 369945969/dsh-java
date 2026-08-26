@@ -15,6 +15,7 @@ import com.deepseek.dsh.core.context.Context;
 import com.deepseek.dsh.core.exception.CapabilityException;
 import com.deepseek.dsh.sdk.client.HarnessClient;
 import com.deepseek.dsh.subagent.DelegationResult;
+import com.deepseek.dsh.subagent.SubagentEvent;
 import com.deepseek.dsh.subagent.SubagentService;
 
 /**
@@ -55,16 +56,39 @@ public final class AcpRemoteSubagentProvider
     public DelegationResult delegate(SessionId parentSessionId, ScopeKey parentScopeKey,
                                     Context ctx, Agent agent, String task) {
         String persona = agent.name();
+        String taskPreview = task.length() > 80 ? task.substring(0, 80) + "…" : task;
         try {
             RemoteSession session = sessions.computeIfAbsent(persona, this::openSession);
+            String childSid = session.sessionId();
+
+            // 生命周期通知：委派开始（转发给父 agent 的 EventBus）
+            ctx.events().emit(new SubagentEvent(SubagentEvent.Kind.SPAWNED,
+                    parentSessionId, childSid, persona, 0, taskPreview));
+
             // 人格前导：把 agent 的系统提示作为前导注入，让远程 agent 承载该人格
             String fullTask = agent.systemPrompt() == null || agent.systemPrompt().isBlank()
                     ? task
                     : "【人格: " + persona + "】\n" + agent.systemPrompt() + "\n\n任务:\n" + task;
             String reply = session.client().prompt(session.sessionId(), fullTask).join().reply();
-            return new DelegationResult(reply, true);
+
+            // 会话事件转发：拉取远程子会话历史投影，统计消息事件数
+            int eventCount = 0;
+            try {
+                var history = session.client().history(session.sessionId()).join();
+                eventCount = history.messages().size();
+            } catch (Exception ignore) {
+                // 历史拉取失败不阻断委派，事件数记 0
+            }
+
+            String reportPreview = reply.length() > 80 ? reply.substring(0, 80) + "…" : reply;
+            ctx.events().emit(new SubagentEvent(SubagentEvent.Kind.COMPLETED,
+                    parentSessionId, childSid, persona, eventCount, reportPreview));
+
+            return new DelegationResult(reply, true, childSid, eventCount);
         } catch (Exception e) {
             log.warn("ACP 远程子 agent 委派失败 ({}): {}", persona, e.toString());
+            ctx.events().emit(new SubagentEvent(SubagentEvent.Kind.FAILED,
+                    parentSessionId, null, persona, 0, e.getMessage()));
             return new DelegationResult("远程子 agent 执行失败: " + e.getMessage(), false);
         }
     }

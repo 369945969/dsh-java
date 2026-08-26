@@ -174,3 +174,233 @@ body {
   flex: 1;
   overflow: hidden;
 }
+
+/* 设置按钮 */
+.app__settings-btn {
+  margin-left: auto;
+  padding: 6px 14px;
+  background: var(--dsw-surface-2);
+  color: var(--dsw-text);
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.app__settings-btn:hover {
+  background: var(--dsw-accent-dim);
+}
+
+/* 模型设置弹窗 */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  width: 560px;
+  max-width: 92vw;
+  max-height: 86vh;
+  overflow-y: auto;
+  background: var(--dsw-surface);
+  border: 1px solid var(--dsw-border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--dsw-border);
+  position: sticky;
+  top: 0;
+  background: var(--dsw-surface);
+  z-index: 1;
+}
+
+.modal__title {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--dsw-accent);
+}
+
+.modal__close {
+  background: none;
+  border: none;
+  color: var(--dsw-text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.modal__close:hover {
+  color: var(--dsw-text);
+}
+
+.modal__body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal__section-title {
+  font-size: 12px;
+  color: var(--dsw-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.modal__empty {
+  font-size: 13px;
+  color: var(--dsw-text-dim);
+  padding: 12px;
+  background: var(--dsw-bg);
+  border-radius: var(--dsw-radius);
+  border: 1px dashed var(--dsw-border);
+}
+
+/* 模型卡片 */
+.model-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--dsw-bg);
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius);
+  gap: 12px;
+}
+
+.model-card--active {
+  border-color: var(--dsw-accent);
+  background: rgba(233, 69, 96, 0.08);
+}
+
+.model-card__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-card__name {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-card__badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--dsw-accent);
+  color: #fff;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.model-card__meta {
+  font-size: 12px;
+  color: var(--dsw-text-dim);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-card__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* 按钮 */
+.btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: var(--dsw-radius);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.btn--small {
+  padding: 5px 10px;
+  font-size: 12px;
+  background: var(--dsw-surface-2);
+  color: var(--dsw-text);
+}
+
+.btn--small:hover {
+  opacity: 0.85;
+}
+
+.btn--danger {
+  background: rgba(233, 69, 96, 0.2);
+  color: var(--dsw-accent);
+}
+
+.btn--primary {
+  background: var(--dsw-accent);
+  color: #fff;
+  align-self: flex-start;
+}
+
+.btn--primary:hover {
+  background: var(--dsw-accent-dim);
+}
+
+/* 添加模型表单 */
+.model-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.model-form__label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--dsw-text-dim);
+}
+
+.model-form__input {
+  padding: 10px 12px;
+  background: var(--dsw-bg);
+  border: 1px solid var(--dsw-border);
+  border-radius: var(--dsw-radius);
+  color: var(--dsw-text);
+  font-size: 14px;
+  outline: none;
+}
+
+.model-form__input:focus {
+  border-color: var(--dsw-accent-dim);
+}
+
+.modal__msg {
+  font-size: 13px;
+  color: var(--dsw-accent);
+  padding: 8px 12px;
+  background: rgba(233, 69, 96, 0.08);
+  border-radius: var(--dsw-radius);
+}
+
+.modal__hint {
+  font-size: 11px;
+  color: var(--dsw-text-dim);
+  line-height: 1.6;
+  padding-top: 8px;
+  border-top: 1px solid var(--dsw-border);
+}
+

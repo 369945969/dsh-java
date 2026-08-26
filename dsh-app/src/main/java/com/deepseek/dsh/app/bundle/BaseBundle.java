@@ -79,9 +79,13 @@ public final class BaseBundle {
         ToolRegistry toolRegistry = new ToolRegistry();
         runner.add(toolRegistry);
 
-        // LLM 模型（DeepSeek/OpenAI 兼容 + 重试）
-        LlmModel llm = new RetryLlmModel(
-                new DeepSeekLlmAdapter(apiKey, baseUrl, this.model));
+        // 模型配置（运行时可变，页面配置覆盖环境变量初值）
+        var modelConfig = new com.deepseek.dsh.llm.config.ModelConfig(apiKey, baseUrl, this.model);
+
+        // LLM 模型（DeepSeek/OpenAI 兼容 + 重试）；适配器每次请求动态读取 modelConfig
+        var adapter = new DeepSeekLlmAdapter(apiKey, baseUrl, this.model);
+        adapter.setConfig(modelConfig);
+        LlmModel llm = new RetryLlmModel(adapter);
         runner.add(new LlmModelPlugin(llm));
 
         // Token 计量
@@ -132,6 +136,12 @@ public final class BaseBundle {
 
         // 启动插件（所有能力缝须在此之前加入，apply 才会注册到上下文）
         runner.start(ctx);
+
+        // 模型配置中心（多自定义模型档案，持久化到 dataDir/model-config.json）
+        var modelStore = new com.deepseek.dsh.llm.config.ModelProfileStore(
+                dataDir.resolve("model-config.json"), modelConfig, apiKey, baseUrl, this.model);
+        ctx.register(com.deepseek.dsh.llm.config.ModelConfig.class, modelConfig);
+        ctx.register(com.deepseek.dsh.llm.config.ModelProfileStore.class, modelStore);
 
         // 注册具体能力提供者 + 工具
         ShellCapability shell = new BashLocalProvider();

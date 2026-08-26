@@ -13,6 +13,7 @@ import com.deepseek.dsh.llm.adapter.LlmChunk;
 import com.deepseek.dsh.llm.adapter.LlmModel;
 import com.deepseek.dsh.llm.adapter.LlmRequest;
 import com.deepseek.dsh.llm.adapter.LlmResponse;
+import com.deepseek.dsh.llm.config.ModelConfig;
 import com.deepseek.dsh.session.log.ChatMessage;
 import com.deepseek.dsh.tools.schema.ToolSchema;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -45,6 +46,8 @@ public final class DeepSeekLlmAdapter implements LlmModel {
     private final String apiKey;
     private final String baseUrl;
     private final String model;
+    /** 运行时可变配置（页面配置）；非 null 时覆盖构造值，每次请求动态读取。 */
+    private volatile ModelConfig config;
     private final OkHttpClient client;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -62,12 +65,35 @@ public final class DeepSeekLlmAdapter implements LlmModel {
                 .build();
     }
 
+    /** 注入运行时可变配置（页面配置覆盖环境变量初值）。 */
+    public void setConfig(ModelConfig config) {
+        this.config = config;
+    }
+
+    /** 当前生效的 API Key：页面配置优先，回退构造值。 */
+    private String effectiveApiKey() {
+        ModelConfig c = config;
+        return c != null && c.isConfigured() ? c.apiKey() : apiKey;
+    }
+
+    /** 当前生效的端点：页面配置优先，回退构造值。 */
+    private String effectiveBaseUrl() {
+        ModelConfig c = config;
+        return c != null && !c.baseUrl().isBlank() ? c.baseUrl() : baseUrl;
+    }
+
+    /** 当前生效的模型名：页面配置优先，回退构造值。 */
+    private String effectiveModel() {
+        ModelConfig c = config;
+        return c != null && !c.model().isBlank() ? c.model() : model;
+    }
+
     @Override
     public LlmResponse chat(LlmRequest request) throws Exception {
         ObjectNode body = buildRequestBody(request, false);
         Request httpReq = new Request.Builder()
-                .url(baseUrl + "/chat/completions")
-                .header("Authorization", "Bearer " + apiKey)
+                .url(effectiveBaseUrl() + "/chat/completions")
+                .header("Authorization", "Bearer " + effectiveApiKey())
                 .header("Content-Type", "application/json")
                 .post(RequestBody.create(mapper.writeValueAsString(body), JSON))
                 .build();
@@ -76,12 +102,12 @@ public final class DeepSeekLlmAdapter implements LlmModel {
             if (!resp.isSuccessful()) {
                 String errBody = resp.body() != null ? resp.body().string() : "";
                 throw new com.deepseek.dsh.core.exception.LlmException(
-                        model, resp.code(),
+                        effectiveModel(), resp.code(),
                         "DeepSeek API 错误 " + resp.code() + ": " + errBody, null);
             }
             if (resp.body() == null) {
                 throw new com.deepseek.dsh.core.exception.LlmException(
-                        model, 0, "响应体为空", null);
+                        effectiveModel(), 0, "响应体为空", null);
             }
             JsonNode json = mapper.readTree(resp.body().string());
             return parseResponse(json);
@@ -92,8 +118,8 @@ public final class DeepSeekLlmAdapter implements LlmModel {
     public Flow.Publisher<LlmChunk> stream(LlmRequest request) throws Exception {
         ObjectNode body = buildRequestBody(request, true);
         Request httpReq = new Request.Builder()
-                .url(baseUrl + "/chat/completions")
-                .header("Authorization", "Bearer " + apiKey)
+                .url(effectiveBaseUrl() + "/chat/completions")
+                .header("Authorization", "Bearer " + effectiveApiKey())
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
                 .post(RequestBody.create(mapper.writeValueAsString(body), JSON))
@@ -138,7 +164,7 @@ public final class DeepSeekLlmAdapter implements LlmModel {
 
     private ObjectNode buildRequestBody(LlmRequest request, boolean stream) {
         ObjectNode body = mapper.createObjectNode();
-        body.put("model", model);
+        body.put("model", effectiveModel());
         body.put("stream", stream);
         if (request.temperature() != null) body.put("temperature", request.temperature());
         if (request.maxTokens() != null) body.put("max_tokens", request.maxTokens());

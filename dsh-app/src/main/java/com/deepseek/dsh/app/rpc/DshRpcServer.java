@@ -244,6 +244,8 @@ public final class DshRpcServer {
             DelegationResult res = sub.delegate(sessionId, ScopeKey.random(), context, agent, task);
             r.put("report", res.report());
             r.put("success", res.success());
+            if (res.childSessionId() != null) r.put("childSessionId", res.childSessionId());
+            r.put("forwardedEventCount", res.forwardedEventCount());
             return r;
         });
 
