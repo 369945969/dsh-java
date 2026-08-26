@@ -131,7 +131,14 @@ cp .env.example .env      # 复制模板
 
 ## 启动方式
 
-提供三种启动方式（脚本在 `scripts/`），覆盖原 Harness 的 `dsh web` / `dsh-jsonrpc-agent` 模式。
+提供四种启动方式（脚本在 `scripts/`），覆盖原 Harness 的 `dsh web` / `dsh-jsonrpc-agent` 模式。
+
+### 0. 一键启动前后端（推荐）
+构建前端 → 同步到后端静态资源 → 启动 Web 服务。SPA + REST + SSE + WebSocket 同源（默认 8765），
+打开浏览器即可用前端对话后端。
+```bash
+scripts/start.sh [port]        # 打开 http://localhost:8765
+```
 
 ### 1. RPC 模式（stdio JSON-RPC，进程外运行时）
 对应原 Harness 的 `dsh-jsonrpc-agent`。后端作为 stdio newline-delimited JSON-RPC 2.0 服务端，
@@ -140,7 +147,7 @@ cp .env.example .env      # 复制模板
 scripts/start-rpc.sh          # 从 .env 读配置；首次自动构建 classpath（install + build-classpath，缓存）
 ```
 方法面（对齐 TS SDK 协议 + Java 便利方法）：
-`initialize` / `health` / `session.create` / `session.list` / `session/prompt` / `session.history` / `session.delete` / `shutdown`
+`initialize` / `health` / `session.create` / `session.list` / `session/prompt` / `session.history` / `session.delete` / `session/fork` / `session/compact` / `skill/list` / `skill/get` / `subagent/task` / `team/run` / `shutdown`
 
 ### 2. Web 模式（Spring Boot，REST + SSE）
 对应原 Harness 的 `dsh web`。前端（自带 React 或用户自有前端）通过 HTTP/SSE 对接。
@@ -184,6 +191,7 @@ bash testcase/run-all.sh      # 构建 → RPC E2E → Web/SSE E2E → WebSocket
 **④ 实时通信模式**（Web）
 - 流响应：SSE `POST /api/agent/stream`（`session→delta*→done`）+ WebSocket `/ws/agent` 流式
 - WebSocket 并发多 session（同连接多 sid 交错下发）、会话取消（`cancel` 中断运行回合）
+- 前端真实交互（chromium 驱动 SPA：渲染→输入→发送→回复渲染全链路）
 
 ### 驱动与脚本
 | 文件 | 传输 | 说明 |
@@ -191,7 +199,8 @@ bash testcase/run-all.sh      # 构建 → RPC E2E → Web/SSE E2E → WebSocket
 | `RpcE2e.java` | RPC（stdio JSON-RPC） | 基于 dsh SDK 客户端 `HarnessClient` spawn `start-rpc.sh` 子进程，验证分组 ①②③ |
 | `web-e2e.sh` | HTTP + SSE | curl 模拟前端：`health`/`send`/`stream`（分组 ④·HTTP） |
 | `ws-e2e.py` | WebSocket | Python `websockets`：并发多 session + 流式 + 取消（分组 ④·WS） |
-| `run-all.sh` | 全部 | 一键编排：临时 `DSH_DATA_DIR`（hermetic）+ 种子 skill + 三类 E2E |
+| `frontend-e2e.py` | 浏览器 | Python `playwright` + 系统 chromium：SPA 渲染→交互→回复渲染（分组 ④·前端，需 playwright+chromium） |
+| `run-all.sh` | 全部 | 一键编排：临时 `DSH_DATA_DIR`（hermetic）+ 种子 skill + 四类 E2E（含前端交互） |
 
 单独运行：
 ```bash

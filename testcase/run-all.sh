@@ -66,9 +66,20 @@ echo "[run-all] 4b/4 WebSocket E2E（并发多 session + 流式 + 取消）..."
 ws_ok=0
 python3 "$ROOT/testcase/ws-e2e.py" || ws_ok=1
 
+# 4c) 前端真实交互 E2E（SPA 渲染→输入→发送→回复渲染，需 playwright + chromium）
+echo
+echo "[run-all] 4c/4 前端交互 E2E（chromium 驱动 SPA）..."
+fe_ok=0
+if python3 -c "import playwright" 2>/dev/null && [ -x /usr/bin/chromium-browser ]; then
+  python3 "$ROOT/testcase/frontend-e2e.py" || fe_ok=1
+else
+  echo "  [SKIP] 未安装 playwright 或 chromium-browser（前端交互 E2E 跳过）"
+  fe_ok=0
+fi
+
 cleanup_web
 echo
 echo "============================================================"
-echo "[run-all] 总结: RPC=$([ $rpc_ok -eq 0 ] && echo PASS || echo FAIL)  Web=$([ $web_ok -eq 0 ] && echo PASS || echo FAIL)  WebSocket=$([ $ws_ok -eq 0 ] && echo PASS || echo FAIL)"
+echo "[run-all] 总结: RPC=$([ $rpc_ok -eq 0 ] && echo PASS || echo FAIL)  Web=$([ $web_ok -eq 0 ] && echo PASS || echo FAIL)  WebSocket=$([ $ws_ok -eq 0 ] && echo PASS || echo FAIL)  Frontend=$([ $fe_ok -eq 0 ] && echo PASS || echo FAIL)"
 echo "============================================================"
-[ $rpc_ok -eq 0 ] && [ $web_ok -eq 0 ] && [ $ws_ok -eq 0 ]
+[ $rpc_ok -eq 0 ] && [ $web_ok -eq 0 ] && [ $ws_ok -eq 0 ] && [ $fe_ok -eq 0 ]
