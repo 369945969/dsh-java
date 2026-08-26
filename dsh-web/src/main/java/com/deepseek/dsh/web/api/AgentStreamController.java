@@ -64,12 +64,20 @@ public class AgentStreamController {
 
                 emitter.send(SseEmitter.event().name("session").data(sessionId.value()));
 
-                String reply = agent.run(sessionId, scopeKey, ctx, request.message());
-
-                // 按行切分，逐帧流式下发 delta
-                String[] lines = reply == null ? new String[0] : reply.split("\n", -1);
-                for (String line : lines) {
-                    emitter.send(SseEmitter.event().name("delta").data(line));
+                // 逐 token 流式下发（基于 LlmModel.stream，纯对话）
+                StringBuilder acc = new StringBuilder();
+                String reply = agent.streamChat(sessionId, scopeKey, ctx, request.message(),
+                        chunk -> {
+                            try {
+                                emitter.send(SseEmitter.event().name("delta").data(chunk));
+                                acc.append(chunk);
+                            } catch (Exception e) {
+                                log.debug("SSE delta 发送失败: {}", e.toString());
+                            }
+                        });
+                // 兜底：若流式未产出内容（如回退到 run），整段下发
+                if (acc.length() == 0 && reply != null && !reply.isEmpty()) {
+                    emitter.send(SseEmitter.event().name("delta").data(reply));
                 }
 
                 emitter.send(SseEmitter.event().name("done").data("[DONE]"));

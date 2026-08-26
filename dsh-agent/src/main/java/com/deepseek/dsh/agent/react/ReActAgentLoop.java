@@ -120,6 +120,58 @@ public class ReActAgentLoop implements Agent {
     }
 
     /**
+     * 流式运行一个 turn —— 基于 {@link com.deepseek.dsh.llm.adapter.LlmModel#stream} 逐 token 下发。
+     *
+     * <p>纯对话流式（不装配工具，故不触发工具调用）—— 需要工具的回合请用 {@link #run}。
+     * 记录用户/助手消息到会话日志，与 {@link #run} 一致。
+     */
+    @Override
+    public String streamChat(SessionId sessionId, ScopeKey scopeKey, Context ctx,
+                             String userMessage, java.util.function.Consumer<String> deltaSink) throws Exception {
+        Sessions sessions = ctx.require(Sessions.class);
+        SessionLog sessionLog = sessions.getOrCreate(sessionId);
+
+        SessionEvent userEvent = sessionLog.append(SessionEvent.Type.USER_MESSAGE,
+                SessionEvent.Payload.text(userMessage));
+        sessions.persist(userEvent);
+
+        // 装配消息（系统提示 + 历史 + 本轮用户消息），不带工具 schema
+        SessionEvent.Projection projection = sessionLog.deriveMessages();
+        List<ChatMessage> messages = new ArrayList<>(projection.messages());
+        if (messages.isEmpty() || messages.get(0).role() != ChatMessage.Role.SYSTEM) {
+            messages.add(0, ChatMessage.system(systemPrompt));
+        }
+        LlmRequest request = LlmRequest.of(messages, java.util.List.of(), modelIdentifier(ctx));
+
+        // 逐 token 流式收集，每个 delta 即时下发
+        StringBuilder acc = new StringBuilder();
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<Throwable> err = new java.util.concurrent.atomic.AtomicReference<>();
+        model.stream(request).subscribe(new java.util.concurrent.Flow.Subscriber<>() {
+            private java.util.concurrent.Flow.Subscription sub;
+            @Override public void onSubscribe(java.util.concurrent.Flow.Subscription s) { this.sub = s; s.request(Long.MAX_VALUE); }
+            @Override public void onNext(com.deepseek.dsh.llm.adapter.LlmChunk c) {
+                if (c.delta() != null && !c.delta().isEmpty()) {
+                    acc.append(c.delta());
+                    deltaSink.accept(c.delta());
+                }
+            }
+            @Override public void onError(Throwable t) { err.set(t); done.countDown(); }
+            @Override public void onComplete() { done.countDown(); }
+        });
+        done.await();
+        if (err.get() != null) {
+            throw err.get() instanceof Exception e ? e : new RuntimeException(err.get());
+        }
+
+        String content = acc.toString();
+        SessionEvent assistantEvent = sessionLog.append(SessionEvent.Type.ASSISTANT_MESSAGE,
+                SessionEvent.Payload.text(content));
+        sessions.persist(assistantEvent);
+        return content;
+    }
+
+    /**
      * 运行单个 step（模板方法）：装配提示 → 模型请求 → 工具执行 → 记录。
      */
     protected StepResult runStep(SessionId sessionId, ScopeKey scopeKey, Context ctx, SessionLog sessionLog) throws Exception {

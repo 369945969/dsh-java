@@ -87,10 +87,15 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             Agent agent = holder.agent();
             SessionId sessionId = SessionId.of(sid);
             send(session, frame("session", sid, null));
-            String reply = agent.run(sessionId, ScopeKey.random(), ctx, message);
-            if (reply == null) reply = "";
-            for (String line : reply.split("\n", -1)) {
-                send(session, frame("delta", sid, line));
+            StringBuilder acc = new StringBuilder();
+            String reply = agent.streamChat(sessionId, ScopeKey.random(), ctx, message,
+                    chunk -> {
+                        acc.append(chunk);
+                        send(session, frame("delta", sid, chunk));
+                    });
+            // 兜底：流式未产出时整段下发
+            if (acc.length() == 0 && reply != null && !reply.isEmpty()) {
+                send(session, frame("delta", sid, reply));
             }
             send(session, frame("done", sid, null));
         } catch (Exception e) {

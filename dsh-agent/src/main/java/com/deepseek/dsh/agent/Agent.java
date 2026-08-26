@@ -40,4 +40,21 @@ public interface Agent {
      * @return 最终助手回复
      */
     String run(SessionId sessionId, ScopeKey scopeKey, Context ctx, String userMessage) throws Exception;
+
+    /**
+     * 流式运行一个 turn：逐 token 把助手回复增量下发给 {@code deltaSink}，返回完整回复。
+     *
+     * <p>默认回退实现：调用 {@link #run} 后整段下发（非真正流式）。
+     * ReAct 实现覆盖为基于 {@code LlmModel.stream} 的逐 token 流式（纯对话，不调用工具——
+     * 需要工具的回合用 {@link #run}）。
+     *
+     * @param deltaSink 每个增量 token 的回调
+     * @return 完整助手回复
+     */
+    default String streamChat(SessionId sessionId, ScopeKey scopeKey, Context ctx,
+                              String userMessage, java.util.function.Consumer<String> deltaSink) throws Exception {
+        String reply = run(sessionId, scopeKey, ctx, userMessage);
+        if (reply != null && !reply.isEmpty()) deltaSink.accept(reply);
+        return reply;
+    }
 }

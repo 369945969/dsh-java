@@ -189,7 +189,7 @@ bash testcase/run-all.sh      # 构建 → RPC E2E → Web/SSE E2E → WebSocket
 - 技能发现/加载（`skill/list` + `skill/get`，种子多 skill）、subagent 委派（`subagent/task`）、多 agent 并行编排（`team/run`，虚拟线程 fan-out + 聚合）
 
 **④ 实时通信模式**（Web）
-- 流响应：SSE `POST /api/agent/stream`（`session→delta*→done`）+ WebSocket `/ws/agent` 流式
+- 流响应：SSE `POST /api/agent/stream`（`session→delta*→done`，逐 token 流式）+ WebSocket `/ws/agent` 流式
 - WebSocket 并发多 session（同连接多 sid 交错下发）、会话取消（`cancel` 中断运行回合）
 - 前端真实交互（chromium 驱动 SPA：渲染→输入→发送→回复渲染全链路）
 
@@ -221,7 +221,7 @@ mvn -pl dsh-app spring-boot:run
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/api/agent/send` | 一次性对话，返回 agent 回复 + 历史 + token 统计 |
-| POST | `/api/agent/stream` | SSE 流式对话：`session`→`delta`*→`done([DONE])` 事件流 |
+| POST | `/api/agent/stream` | SSE 逐 token 流式对话：`session`→`delta`*→`done([DONE])` 事件流 |
 | WS | `/ws/agent` | WebSocket：并发多 session、流式、会话取消 |
 | GET | `/api/agent/health` | 健康检查 |
 
@@ -262,4 +262,6 @@ SDK（JSON-RPC 协议 + 客户端 + 服务端）。
 
 **前端**：React + Vite，保留原 `--dsw-*` 设计令牌的深色对话式风格，对接 Java 后端 REST API。
 
-未实现（后续可扩展）：原生 node-addon（Java 侧以虚拟线程 + ProcessRunner 承载，无对应物）、ACP 远程子 agent 的高级协议特性、Web SSE 的 token 级流式（当前按回复行分帧，真正逐 token 流式需 agent loop 重构）。
+未实现（后续可扩展）：原生 node-addon（Java 侧以虚拟线程 + ProcessRunner 承载，无对应物）、ACP 远程子 agent 的会话事件/子 agent 生命周期通知转发（基础 session.create/session/prompt 桥接已实现）。
+
+> Web SSE/WebSocket 已支持逐 token 流式（基于 `LlmModel.stream`，glm-5.2 推理模型会先下发 `content` token；纯对话回合流式，需工具的回合用 `/api/agent/send`）。
