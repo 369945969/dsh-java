@@ -151,6 +151,12 @@ public class ApiproxyController {
         return Map.of("items", items);
     }
 
+    private Map<String, Object> assistantMessageData(String id, String content) {
+        return Map.of("message", Map.of(
+                "id", id, "content", List.of(textPart(content)),
+                "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())));
+    }
+
     private Map<String, Object> sessionModels() {
         String model = currentModelName();
         Map<String, Object> sel = new LinkedHashMap<>();
