@@ -68,6 +68,9 @@ public class ApiproxyController {
     /** 正在运行的 agent turn 线程（按 sessionId 索引），用于 session.cancel 中断。 */
     private final ConcurrentMap<String, Thread> runningTurns = new ConcurrentHashMap<>();
 
+    /** session.cancel 标记的取消会话（不依赖 interrupt 是否生效，直接设标记）。 */
+    private final java.util.Set<String> cancelledSessions = ConcurrentHashMap.newKeySet();
+
     /** 系统 agent 预设名单（id/显示名/说明）。用户预设存于 ~/.dsh/presets/*.yml。 */
     private static final String[][] SYSTEM_PRESETS = {
             {"standard", "标准", "默认 agent，配备全部工具"},
@@ -295,6 +298,7 @@ public class ApiproxyController {
         String sid = strField(payload, "sessionId");
         Thread t = runningTurns.remove(sid);
         if (t != null) t.interrupt();
+        cancelledSessions.add(sid);
         return Map.of("accepted", true);
     }
 
@@ -450,12 +454,11 @@ public class ApiproxyController {
                 }
             });
         } catch (Exception e) {
-            cancelled = e instanceof InterruptedException || e instanceof java.io.InterruptedIOException
-                    || Thread.currentThread().isInterrupted();
-            log.warn("agent turn {}: {}", cancelled ? "cancelled" : "failed", e.toString());
+            log.warn("agent turn {}: {}", Thread.currentThread().isInterrupted() ? "cancelled" : "failed", e.toString());
         } finally {
             runningTurns.remove(sessionId);
         }
+        cancelled = cancelledSessions.remove(sessionId);
         if (step[0] >= 0) sendSessionEvent(sessionId, "step/end", Map.of("turn", turn, "step", step[0]));
         sendSessionEvent(sessionId, "turn/end", Map.of("turn", turn,
                 "reason", Map.of("kind", cancelled ? "aborted" : "complete")));
