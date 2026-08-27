@@ -66,7 +66,7 @@ public class ApiproxyController {
                 case "host.describe" -> response(rpcId, ok(hostDescribe()));
                 case "session.create" -> response(rpcId, ok(sessionCreate(payload)));
                 case "session.list" -> response(rpcId, ok(sessionList()));
-                case "session.history" -> response(rpcId, ok(Map.of("events", List.of(), "hasMore", false)));
+                case "session.history" -> response(rpcId, ok(sessionHistory(payload)));
                 case "session.prompt" -> response(rpcId, ok(sessionPrompt(payload)));
                 case "session.cancel" -> response(rpcId, ok(Map.of("accepted", true)));
                 case "session.rename" -> response(rpcId, ok(Map.of("title", "session", "seq", 0)));
@@ -147,11 +147,16 @@ public class ApiproxyController {
     }
 
     private Map<String, Object> sessionModels() {
-        // 最小：当前模型选择 + 空 catalog
+        String model = currentModelName();
         Map<String, Object> sel = new LinkedHashMap<>();
         sel.put("provider", "openai-compatible");
-        sel.put("model", currentModelName());
-        return Map.of("current", sel, "routable", true, "groups", List.of(), "failures", List.of());
+        sel.put("model", model);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", model); m.put("name", model);
+        Map<String, Object> group = new LinkedHashMap<>();
+        group.put("id", "openai-compatible"); group.put("name", "OpenAI Compatible");
+        group.put("models", List.of(m));
+        return Map.of("current", sel, "routable", true, "groups", List.of(group), "failures", List.of());
     }
 
     // ---- session.prompt → agent → frames ----
@@ -206,6 +211,56 @@ public class ApiproxyController {
                 Map.of("sessionId", sessionId, "running", false)));
     }
 
+    /** session.history：把 dsh-java 投影消息映射为 harness 事件信封（user/message + turn/assistant-message），供 UI 重放历史。 */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> sessionHistory(Object payload) {
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        String sessionId = String.valueOf(p.getOrDefault("sessionId", ""));
+        List<Map<String, Object>> events = new ArrayList<>();
+        long t = System.currentTimeMillis();
+        long[] seq = {0};
+        int[] turn = {0};
+        try {
+            Context ctx = holder.context();
+            Sessions sessions = ctx.require(Sessions.class);
+                SessionLog slog = sessions.get(SessionId.of(sessionId)).orElse(null);
+                if (slog != null) {
+                    for (var msg : slog.deriveMessages().messages()) {
+                    String role = msg.role() == null ? "" : msg.role().name();
+                    String content = msg.content() == null ? "" : msg.content();
+                    if ("USER".equals(role)) {
+                        events.add(envelope("user/message", seq[0]++, t++, Map.of(
+                                "id", "u-" + seq[0], "content", List.of(textPart(content)), "source", Map.of("kind", "user"))));
+                    } else if ("ASSISTANT".equals(role)) {
+                        int tn = turn[0]++;
+                        events.add(envelope("turn/start", seq[0]++, t++, Map.of("turn", tn)));
+                        events.add(envelope("step/start", seq[0]++, t++, Map.of("turn", tn, "step", 0)));
+                        events.add(envelope("assistant/message", seq[0]++, t++, Map.of(
+                                "message", Map.of("id", "a-" + seq[0], "content", List.of(textPart(content))),
+                                "turn", tn, "step", 0)));
+                        events.add(envelope("step/end", seq[0]++, t++, Map.of("turn", tn, "step", 0)));
+                        events.add(envelope("turn/end", seq[0]++, t++, Map.of("turn", tn, "reason", Map.of("kind", "complete"))));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("session.history 失败: {}", e.toString());
+        }
+        return Map.of("events", events, "hasMore", false);
+    }
+
+    private static Map<String, Object> textPart(String text) {
+        Map<String, Object> b = new LinkedHashMap<>();
+        b.put("type", "text"); b.put("text", text);
+        return b;
+    }
+
+    private static Map<String, Object> envelope(String type, long seq, long time, Map<String, Object> data) {
+        Map<String, Object> e = new LinkedHashMap<>();
+        e.put("type", type); e.put("seq", seq); e.put("time", time); e.put("data", data);
+        return e;
+    }
+
     private String extractPromptText(Map<String, Object> p) {
         Object content = p.get("content");
         if (content instanceof List<?> parts) {
@@ -234,7 +289,9 @@ public class ApiproxyController {
             case "workspace.rename", "workspace.delete", "workspace.insertBefore", "workspace.insertSessionBefore", "workspace.archiveSession" -> Map.of();
             case "settings.describe" -> settingsDescribe();
             case "settings.openDocument", "settings.update", "settings.replace", "settings.mutate" -> Map.of();
-            case "llm.providers" -> Map.of("providers", List.of());
+            case "llm.providers" -> Map.of("providers", List.of(Map.of(
+                    "provider", "openai-compatible", "displayName", "OpenAI Compatible",
+                    "settingsNs", "llm", "settingsPath", List.of("llm"), "active", true)));
             case "llm.models", "llm.discoverModels" -> Map.of("models", List.of(), "failures", List.of());
             case "agentPreset.list" -> Map.of("presets", List.of());
             case "agentPreset.select" -> Map.of();
