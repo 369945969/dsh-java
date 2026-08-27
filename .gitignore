@@ -10,9 +10,6 @@ target/
 target/
 
 # 前端
-dsh-frontend/node_modules/
-dsh-frontend/dist/
-dsh-frontend/.vite/
 
 # IDE
 .idea/

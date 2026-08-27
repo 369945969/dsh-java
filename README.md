@@ -53,9 +53,9 @@ dsh-java/
 ├── dsh-telemetry/                # 遥测能力缝 (OpenTelemetry) + no-op/日志后端 + 工具中间件
 ├── dsh-acp/                     # Automation-only ACP 服务器（JSON-RPC over stdio）
 ├── dsh-sdk/                     # JSON-RPC 协议 + 客户端 + 服务端（进程外运行时 SDK）
-├── dsh-web/                     # Spring Boot Web 服务、REST API、SPA 托管
-├── dsh-app/                     # 启动引导、Profile/Bundle 组合、Spring Boot 入口、RPC/ACP/CLI 入口
-└── dsh-frontend/                # React + Vite 前端（移植原 Harness --dsw-* 设计令牌 + 组件，对接 Java REST/SSE）
+├── dsh-web/                     # Spring Boot Web 服务、apiproxy JSON-RPC 网关、SPA 托管
+├── dsh-app/                     # 启动引导、Profile/Bundle 组合、Spring Boot 入口、RPC/ACP/CLI 入口、前端静态资源
+└── frontend/                    # 原版 deepseek-harness Cordis 前端（原封复制，原版构建链；dist+启动快照已托管于 dsh-app/static）
 ```
 
 ## 核心概念与设计模式
@@ -120,11 +120,13 @@ dsh-java/
 # 后端编译 + 单元测试
 mvn test
 
-# 前端
-cd dsh-frontend && pnpm install && pnpm build
-#   前端产物需复制到 dsh-app 静态资源目录，由后端统一托管：
-cp -r dsh-frontend/dist/* dsh-app/src/main/resources/static/
+# 前端（原版 Cordis 前端，仅当 frontend/ 源码变更时需重建；产物+启动快照已托管于 dsh-app/src/main/resources/static）
+cd frontend && pnpm install && pnpm run build:lib && pnpm run build:web
+#   启动快照（index.html + __DSH_BOOT__ + 42 个插件包）由 dsh web 生成并复制到 dsh-app/static：
+#   cd frontend && DEEPSEEK_API_KEY=... pnpm dsh web   # 启动后抓取 / + /plugins/*/client.js 覆盖 dsh-app/static
 ```
+
+> 运行时无需重建前端：`dsh-app/src/main/resources/static` 已含构建好的原版 shell + 启动快照，后端直接托管。
 
 ### 单元测试覆盖
 196 个单元测试覆盖 28 个后端模块的核心纯逻辑（无网络、无外部依赖）：
