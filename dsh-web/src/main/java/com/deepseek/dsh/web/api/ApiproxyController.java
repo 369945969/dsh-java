@@ -367,7 +367,7 @@ public class ApiproxyController {
                     "provider", "openai-compatible", "displayName", "OpenAI Compatible",
                     "settingsNs", "llm", "settingsPath", List.of("llm"), "active", true)));
             case "llm.models", "llm.discoverModels" -> Map.of("models", List.of(), "failures", List.of());
-            case "agentPreset.list" -> Map.of("presets", List.of());
+            case "agentPreset.list" -> Map.of("presets", List.of(), "authorable", false, "hasDocument", false);
             case "agentPreset.select" -> Map.of();
             case "skill.list" -> Map.of("skills", List.of());
             case "credentials.describe" -> Map.of("credentials", Map.of());
