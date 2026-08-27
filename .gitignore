@@ -43,3 +43,12 @@ model-config.json
 # 临时文件
 *.tmp
 *.bak
+
+# Verbatim deepseek-harness frontend source（仅源码；忽略重构建产物与重目录）
+frontend/**/node_modules/
+frontend/**/lib/
+frontend/**/dist/
+frontend/**/.dsh-build/
+frontend/**/.vite/
+frontend/**/target/
+frontend/.dsh-build/

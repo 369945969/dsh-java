@@ -1,0 +1,311 @@
+package com.deepseek.dsh.web.api;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.deepseek.dsh.agent.Agent;
+import com.deepseek.dsh.core.brand.ScopeKey;
+import com.deepseek.dsh.core.brand.SessionId;
+import com.deepseek.dsh.core.context.Context;
+import com.deepseek.dsh.session.Sessions;
+import com.deepseek.dsh.session.log.SessionLog;
+import com.deepseek.dsh.web.server.AgentContextHolder;
+import com.deepseek.dsh.web.server.ApiproxyDownlinkRegistry;
+
+/**
+ * apiproxy JSON-RPC 网关（对接原版 Cordis 前端）—— {@code POST /api/{method}}。
+ *
+ * <p>实现原 Harness apiproxy 的最小可用子集：
+ * <ul>
+ *   <li>{@code host.describe}：连接握手必需。</li>
+ *   <li>{@code session.create}：建会话，推 {@code host/session-added} + {@code session/subscribed}。</li>
+ *   <li>{@code session.list}：列出 dsh-java 活跃会话为 SessionSummary。</li>
+ *   <li>{@code session.prompt}：运行 agent，把 SSE 文本增量映射为 {@code assistant/chunk} 等 mux 帧推送，返回 {@code {accepted:true}}（回合异步）。</li>
+ *   <li>其余启动期只读方法：返回 schema 合法的空值。</li>
+ * </ul>
+ *
+ * <p>事件类型/数据形状对齐原 runtime 的 ConversationNode 匹配器：
+ * {@code turn/start}→{turn}、{@code step/start}→{turn,step}、{@code user/message}→{id,content,source}、
+ * {@code assistant/chunk}→{chunk:{type:'text-delta',index,text},turn,step}、{@code assistant/message}→{message:{id,content},turn,step}、
+ * {@code step/end}、{@code turn/end}。
+ */
+@RestController
+@RequestMapping("/api")
+public class ApiproxyController {
+
+    private static final Logger log = LoggerFactory.getLogger(ApiproxyController.class);
+
+    private final AgentContextHolder holder;
+    private final ApiproxyDownlinkRegistry downlink;
+    private final AtomicLong seq = new AtomicLong(0);
+
+    public ApiproxyController(AgentContextHolder holder, ApiproxyDownlinkRegistry downlink) {
+        this.holder = holder;
+        this.downlink = downlink;
+    }
+
+    @PostMapping("/{method:^(?!events\\.).[A-Za-z0-9.]+$}")
+    public Map<String, Object> dispatch(@PathVariable String method, @RequestBody Map<String, Object> request) {
+        String rpcId = echoRpcId(request);
+        Object payload = request.get("payload");
+        log.debug("apiproxy {} payload={}", method, payload);
+        try {
+            return switch (method) {
+                case "host.describe" -> response(rpcId, ok(hostDescribe()));
+                case "session.create" -> response(rpcId, ok(sessionCreate(payload)));
+                case "session.list" -> response(rpcId, ok(sessionList()));
+                case "session.history" -> response(rpcId, ok(Map.of("events", List.of(), "hasMore", false)));
+                case "session.prompt" -> response(rpcId, ok(sessionPrompt(payload)));
+                case "session.cancel" -> response(rpcId, ok(Map.of("accepted", true)));
+                case "session.rename" -> response(rpcId, ok(Map.of("title", "session", "seq", 0)));
+                case "session.models" -> response(rpcId, ok(sessionModels()));
+                default -> response(rpcId, ok(valueOf(method)));
+            };
+        } catch (RuntimeException e) {
+            log.warn("apiproxy {} 失败: {}", method, e.toString());
+            return response(rpcId, err("internal", e.getMessage()));
+        }
+    }
+
+    // ---- host.describe ----
+
+    private Map<String, Object> hostDescribe() {
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("version", "0.1.1-rc.2");
+        v.put("cwd", System.getProperty("user.dir"));
+        v.put("attachedSessions", 0);
+        v.put("home", System.getProperty("user.home") + "/.dsh");
+        v.put("canOpenPath", false);
+        tryModelProfile(v);
+        return v;
+    }
+
+    private void tryModelProfile(Map<String, Object> v) {
+        try {
+            var ctx = holder.context();
+            ctx.get(com.deepseek.dsh.llm.config.ModelProfileStore.class).ifPresent(store -> {
+                if (store.activeId() != null) {
+                    store.profiles().stream().filter(p -> p.id().equals(store.activeId())).findFirst()
+                            .ifPresent(p -> { v.put("provider", "openai-compatible"); v.put("model", p.model()); });
+                }
+            });
+        } catch (Exception ignored) { /* 桥接未就绪时省略 */ }
+    }
+
+    // ---- session.create / list ----
+
+    private Map<String, Object> sessionCreate(Object payload) {
+        Context ctx = holder.context();
+        Sessions sessions = ctx.require(Sessions.class);
+        SessionLog log = sessions.create();
+        SessionId sid = log.sessionId();
+        String cwd = System.getProperty("user.dir");
+        // 推 host/session-added + session/subscribed，使前端进入该会话
+        downlink.sendHostFrame(uuid(), hostFrame("host/session-added",
+                Map.of("sessionId", sid.value(), "blank", true, "cwd", cwd)));
+        downlink.sendMuxFrame(uuid(), muxFrame("session/subscribed",
+                Map.of("sessionId", sid.value(), "lastSeq", log.lastSeq())));
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("sessionId", sid.value());
+        return v;
+    }
+
+    private Map<String, Object> sessionList() {
+        Context ctx = holder.context();
+        Sessions sessions = ctx.require(Sessions.class);
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (SessionId id : sessions.list()) {
+            var opt = sessions.get(id);
+            if (opt.isEmpty()) continue;
+            SessionLog sl = opt.get();
+            Map<String, Object> s = new LinkedHashMap<>();
+            s.put("sessionId", id.value());
+            s.put("updatedAt", System.currentTimeMillis());
+            s.put("running", false);
+            s.put("blank", sl.size() == 0);
+            s.put("cwd", System.getProperty("user.dir"));
+            items.add(s);
+        }
+        return Map.of("items", items);
+    }
+
+    private Map<String, Object> sessionModels() {
+        // 最小：当前模型选择 + 空 catalog
+        Map<String, Object> sel = new LinkedHashMap<>();
+        sel.put("provider", "openai-compatible");
+        sel.put("model", currentModelName());
+        return Map.of("current", sel, "routable", false, "groups", List.of(), "failures", List.of());
+    }
+
+    // ---- session.prompt → agent → frames ----
+
+    private Map<String, Object> sessionPrompt(Object payload) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        String sessionId = String.valueOf(p.getOrDefault("sessionId", UUID.randomUUID().toString()));
+        String text = extractPromptText(p);
+        String turnId = "t-" + UUID.randomUUID().toString().substring(0, 8);
+        String stepId = "s-" + UUID.randomUUID().toString().substring(0, 8);
+        String userMsgId = "u-" + UUID.randomUUID().toString().substring(0, 8);
+        String assistantMsgId = "a-" + UUID.randomUUID().toString().substring(0, 8);
+
+        // 1) turn/start + step/start + user/message
+        sendSessionEvent(sessionId, "turn/start", Map.of("turn", turnId));
+        sendSessionEvent(sessionId, "step/start", Map.of("turn", turnId, "step", stepId));
+        sendSessionEvent(sessionId, "user/message", Map.of(
+                "id", userMsgId,
+                "content", List.of(Map.of("type", "text", "text", text)),
+                "source", Map.of("kind", "user")));
+        downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
+                Map.of("sessionId", sessionId, "running", true)));
+
+        // 2) 异步运行 agent，流式 assistant/chunk
+        Thread.startVirtualThread(() -> runTurn(sessionId, text, turnId, stepId, assistantMsgId));
+        return Map.of("accepted", true);
+    }
+
+    private void runTurn(String sessionId, String text, String turnId, String stepId, String assistantMsgId) {
+        StringBuilder acc = new StringBuilder();
+        try {
+            Context ctx = holder.context();
+            Agent agent = holder.agent();
+            agent.streamChat(SessionId.of(sessionId), ScopeKey.random(), ctx, text, chunk -> {
+                acc.append(chunk);
+                sendSessionEvent(sessionId, "assistant/chunk", Map.of(
+                        "chunk", Map.of("type", "text-delta", "index", 0, "text", chunk),
+                        "turn", turnId, "step", stepId));
+            });
+        } catch (Exception e) {
+            log.warn("agent 回合失败: {}", e.toString());
+        }
+        // 3) assistant/message + step/end + turn/end + 状态归位
+        sendSessionEvent(sessionId, "assistant/message", Map.of(
+                "message", Map.of("id", assistantMsgId,
+                        "content", List.of(Map.of("type", "text", "text", acc.toString()))),
+                "turn", turnId, "step", stepId));
+        sendSessionEvent(sessionId, "step/end", Map.of("turn", turnId, "step", stepId));
+        sendSessionEvent(sessionId, "turn/end", Map.of("turn", turnId, "reason", Map.of("kind", "complete")));
+        downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
+                Map.of("sessionId", sessionId, "running", false)));
+    }
+
+    private String extractPromptText(Map<String, Object> p) {
+        Object content = p.get("content");
+        if (content instanceof List<?> parts) {
+            StringBuilder sb = new StringBuilder();
+            for (Object part : parts) {
+                if (part instanceof Map<?, ?> m && "text".equals(m.get("type")) && m.get("text") instanceof String t) {
+                    sb.append(t);
+                }
+            }
+            return sb.toString();
+        }
+        return "";
+    }
+
+    // ---- 启动期只读空值 ----
+
+    private Map<String, Object> valueOf(String method) {
+        return switch (method) {
+            case "session.search" -> Map.of("items", List.of(), "hasMore", false);
+            case "session.fork" -> Map.of("sessionId", UUID.randomUUID().toString());
+            case "session.attachment" -> Map.of();
+            case "session.updateQueue" -> Map.of("accepted", true);
+            case "session.selectModel" -> Map.of("selected", Map.of("provider", "openai-compatible", "model", currentModelName()));
+            case "workspace.list" -> Map.of("items", List.of(), "archivedSessionIds", List.of());
+            case "workspace.create" -> Map.of("workspace", Map.of("workspaceId", UUID.randomUUID().toString(), "title", "workspace", "sessionIds", List.of()), "created", true);
+            case "workspace.rename", "workspace.delete", "workspace.insertBefore", "workspace.insertSessionBefore", "workspace.archiveSession" -> Map.of();
+            case "settings.describe" -> settingsDescribe();
+            case "settings.openDocument", "settings.update", "settings.replace", "settings.mutate" -> Map.of();
+            case "llm.providers" -> Map.of("providers", List.of());
+            case "llm.models", "llm.discoverModels" -> Map.of("models", List.of(), "failures", List.of());
+            case "agentPreset.list" -> Map.of("presets", List.of());
+            case "agentPreset.select" -> Map.of();
+            case "skill.list" -> Map.of("skills", List.of());
+            case "credentials.describe" -> Map.of("credentials", Map.of());
+            case "credentials.set", "credentials.unset" -> Map.of();
+            case "host.pickDirectory" -> Map.of("path", (Object) null);
+            case "host.listDirectory" -> Map.of("path", "/", "home", System.getProperty("user.home"), "crumbs", List.of(), "entries", List.of(), "truncated", false);
+            case "host.createDirectory" -> Map.of("path", System.getProperty("user.dir"));
+            case "host.openPath" -> Map.of("opened", true);
+            case "subagent.list", "subagent.history" -> Map.of("items", List.of());
+            case "subagent.prompt", "subagent.interrupt" -> Map.of();
+            case "goal.create", "goal.edit", "goal.pause", "goal.resume", "goal.complete", "goal.clear" -> Map.of();
+            default -> Map.of();
+        };
+    }
+
+    private Map<String, Object> settingsDescribe() {
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("writable", true);
+        v.put("hasDocument", false);
+        v.put("namespaces", List.of());
+        v.put("secrets", List.of());
+        return v;
+    }
+
+    private String currentModelName() {
+        try {
+            return holder.context().get(com.deepseek.dsh.llm.config.ModelProfileStore.class)
+                    .map(s -> s.profiles().stream().filter(p -> p.id().equals(s.activeId())).findFirst()
+                            .map(p -> p.model()).orElse("glm-5.2"))
+                    .orElse("glm-5.2");
+        } catch (Exception e) { return "glm-5.2"; }
+    }
+
+    // ---- frame helpers ----
+
+    /** 推一个 session/event mux 帧（event envelope = {type, seq, time, data}）。 */
+    private void sendSessionEvent(String sessionId, String eventType, Map<String, Object> data) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("type", eventType);
+        event.put("seq", seq.getAndIncrement());
+        event.put("time", System.currentTimeMillis());
+        event.put("data", data);
+        downlink.sendMuxFrame(uuid(), muxFrame("session/event",
+                Map.of("sessionId", sessionId, "event", event)));
+    }
+
+    private static Map<String, Object> muxFrame(String type, Map<String, Object> fields) {
+        Map<String, Object> f = new LinkedHashMap<>(fields);
+        f.put("type", type);
+        return f;
+    }
+
+    private static Map<String, Object> hostFrame(String type, Map<String, Object> fields) {
+        Map<String, Object> f = new LinkedHashMap<>(fields);
+        f.put("type", type);
+        return f;
+    }
+
+    // ---- envelope helpers ----
+
+    private static String uuid() { return UUID.randomUUID().toString(); }
+
+    private static String echoRpcId(Map<String, Object> request) {
+        Object id = request.get("rpcId");
+        return id != null ? id.toString() : UUID.randomUUID().toString();
+    }
+
+    private static Map<String, Object> ok(Object value) { return Map.of("ok", true, "value", value); }
+
+    private static Map<String, Object> err(String code, String message) {
+        return Map.of("ok", false, "error", Map.of("code", code, "message", message == null ? "" : message, "details", Map.of()));
+    }
+
+    private static Map<String, Object> response(String rpcId, Map<String, Object> result) {
+        return Map.of("type", "server-response", "rpcId", rpcId, "result", result);
+    }
+}
