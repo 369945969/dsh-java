@@ -57,8 +57,7 @@ public class ApiproxyController {
     }
 
     @PostMapping("/{method:^(?!events\\.).[A-Za-z0-9.]+$}")
-    public Map<String, Object> dispatch(@PathVariable String method, @RequestBody Map<String, Object> request) {
-        String rpcId = echoRpcId(request);
+    public Map<String, Object> dispatch(@PathVariable String method, @RequestBody Map<String, Object> request) {        String rpcId = echoRpcId(request);
         Object payload = request.get("payload");
         log.debug("apiproxy {} payload={}", method, payload);
         try {
@@ -78,6 +77,12 @@ public class ApiproxyController {
             log.warn("apiproxy {} 失败: {}", method, e.toString());
             return response(rpcId, err("internal", e.getMessage()));
         }
+    }
+
+    /** dynamicCordisRunner/* （Cordis 工具清单/inspect）：两段路径，返回空 ok 以清 404（面板空，非致命）。 */
+    @PostMapping("/dynamicCordisRunner/{method}")
+    public Map<String, Object> cordisRunner(@PathVariable String method, @RequestBody Map<String, Object> request) {
+        return response(echoRpcId(request), ok(Map.of()));
     }
 
     // ---- host.describe ----
@@ -202,8 +207,10 @@ public class ApiproxyController {
         }
         // 3) assistant/message + step/end + turn/end + 状态归位
         sendSessionEvent(sessionId, "assistant/message", Map.of(
-                "message", Map.of("id", assistantMsgId,
-                        "content", List.of(Map.of("type", "text", "text", acc.toString()))),
+                "message", Map.of(
+                        "id", assistantMsgId,
+                        "content", List.of(textPart(acc.toString())),
+                        "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
                 "turn", turn, "step", step));
         sendSessionEvent(sessionId, "step/end", Map.of("turn", turn, "step", step));
         sendSessionEvent(sessionId, "turn/end", Map.of("turn", turn, "reason", Map.of("kind", "complete")));
@@ -236,7 +243,10 @@ public class ApiproxyController {
                         events.add(envelope("turn/start", seq[0]++, t++, Map.of("turn", tn)));
                         events.add(envelope("step/start", seq[0]++, t++, Map.of("turn", tn, "step", 0)));
                         events.add(envelope("assistant/message", seq[0]++, t++, Map.of(
-                                "message", Map.of("id", "a-" + seq[0], "content", List.of(textPart(content))),
+                                "message", Map.of(
+                                        "id", "a-" + seq[0],
+                                        "content", List.of(textPart(content)),
+                                        "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
                                 "turn", tn, "step", 0)));
                         events.add(envelope("step/end", seq[0]++, t++, Map.of("turn", tn, "step", 0)));
                         events.add(envelope("turn/end", seq[0]++, t++, Map.of("turn", tn, "reason", Map.of("kind", "complete"))));
