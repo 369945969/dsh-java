@@ -68,6 +68,9 @@ public class ApiproxyController {
     /** 用户手动重命名的会话标题（覆盖自动生成的）。 */
     private final ConcurrentMap<String, String> customTitles = new ConcurrentHashMap<>();
 
+    /** 当前默认 agent 预设（select 后更新，使 agentPreset.list 的 isDefault 反映用户选择）。 */
+    private volatile String defaultPreset = "standard";
+
     /** 正在运行的 agent turn 线程（按 sessionId 索引），用于 session.cancel 中断。 */
     private final ConcurrentMap<String, Thread> runningTurns = new ConcurrentHashMap<>();
 
@@ -666,7 +669,7 @@ public class ApiproxyController {
         return Map.of(
                 "writable", true,
                 "hasDocument", true,
-                "namespaces", List.of(llmPiAiNamespace(), uiOnboardingNamespace()));
+                "namespaces", List.of(llmPiAiNamespace(), uiOnboardingNamespace(), agentPresetsNamespace()));
     }
 
     private Map<String, Object> openSettingsDocument() {
@@ -902,6 +905,13 @@ public class ApiproxyController {
         Map<String, Object> value = new LinkedHashMap<>();
         if (s != null) s.getAll("ui-onboarding").forEach((k, v) -> value.put(k, v));
         return namespaceView("ui-onboarding", value);
+    }
+
+    private Map<String, Object> agentPresetsNamespace() {
+        SettingsService s = settingsService();
+        Map<String, Object> value = new LinkedHashMap<>();
+        if (s != null) s.getAll("agent-presets").forEach((k, v) -> value.put(k, v));
+        return namespaceView("agent-presets", value);
     }
 
     private Map<String, Object> profileView(String route, ModelProfile p) {
@@ -1163,10 +1173,14 @@ public class ApiproxyController {
     // ---- agent presets ----
 
     private Map<String, Object> agentPresetList() {
+        SettingsService ss = settingsService();
+        String currentDefault = (ss != null)
+                ? ss.get("agent-presets", "default").orElse(defaultPreset)
+                : defaultPreset;
         List<Map<String, Object>> presets = new ArrayList<>();
         for (String[] s : SYSTEM_PRESETS) {
             presets.add(Map.of(
-                    "id", s[0], "trust", "system", "isDefault", "standard".equals(s[0]),
+                    "id", s[0], "trust", "system", "isDefault", currentDefault.equals(s[0]),
                     "name", s[1], "description", s[2]));
         }
         java.io.File dir = presetsDir();
@@ -1189,10 +1203,11 @@ public class ApiproxyController {
     /** 单 agent 架构：select 全局切换 agent 的系统提示（原版按会话重组需 per-session agent 重构；这里至少让选择的预设即时影响下一回合）。 */
     private Map<String, Object> agentPresetSelect(Object payload) {
         String id = strField(payload, "agentPreset");
+        defaultPreset = id;
         try {
             holder.agent().setSystemPrompt(presetSystemPrompt(id));
         } catch (Exception e) {
-            log.warn("Failed to switch preset system prompt: {}", e.toString());
+            log.warn("switch preset system prompt failed: {}", e.toString());
         }
         return Map.of("agentPreset", id);
     }
