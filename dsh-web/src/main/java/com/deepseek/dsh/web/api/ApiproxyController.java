@@ -118,7 +118,8 @@ public class ApiproxyController {
                 Map.of("sessionId", sid.value(), "blank", true, "cwd", cwd)));
         Map<String, Object> ws = defaultWorkspace();
         ws.put("sessionIds", List.of(sid.value()));
-        downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed", ws));
+        // 注意：host/workspace-changed 的 workspace 须嵌套在 "workspace" 键下（对齐 hostFrameSchema）
+        downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed", Map.of("workspace", ws)));
         downlink.sendMuxFrame(uuid(), muxFrame("session/subscribed",
                 Map.of("sessionId", sid.value(), "lastSeq", log.lastSeq())));
         Map<String, Object> v = new LinkedHashMap<>();
@@ -150,7 +151,7 @@ public class ApiproxyController {
         Map<String, Object> sel = new LinkedHashMap<>();
         sel.put("provider", "openai-compatible");
         sel.put("model", currentModelName());
-        return Map.of("current", sel, "routable", false, "groups", List.of(), "failures", List.of());
+        return Map.of("current", sel, "routable", true, "groups", List.of(), "failures", List.of());
     }
 
     // ---- session.prompt → agent → frames ----
@@ -160,14 +161,14 @@ public class ApiproxyController {
         Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
         String sessionId = String.valueOf(p.getOrDefault("sessionId", UUID.randomUUID().toString()));
         String text = extractPromptText(p);
-        String turnId = "t-" + UUID.randomUUID().toString().substring(0, 8);
-        String stepId = "s-" + UUID.randomUUID().toString().substring(0, 8);
+        // turn/step 必须是数值索引（runtime 的 ConversationLocationData.turn 校验 isSafeInteger）
+        int turn = 0, step = 0;
         String userMsgId = "u-" + UUID.randomUUID().toString().substring(0, 8);
         String assistantMsgId = "a-" + UUID.randomUUID().toString().substring(0, 8);
 
         // 1) turn/start + step/start + user/message
-        sendSessionEvent(sessionId, "turn/start", Map.of("turn", turnId));
-        sendSessionEvent(sessionId, "step/start", Map.of("turn", turnId, "step", stepId));
+        sendSessionEvent(sessionId, "turn/start", Map.of("turn", turn));
+        sendSessionEvent(sessionId, "step/start", Map.of("turn", turn, "step", step));
         sendSessionEvent(sessionId, "user/message", Map.of(
                 "id", userMsgId,
                 "content", List.of(Map.of("type", "text", "text", text)),
@@ -176,11 +177,11 @@ public class ApiproxyController {
                 Map.of("sessionId", sessionId, "running", true)));
 
         // 2) 异步运行 agent，流式 assistant/chunk
-        Thread.startVirtualThread(() -> runTurn(sessionId, text, turnId, stepId, assistantMsgId));
+        Thread.startVirtualThread(() -> runTurn(sessionId, text, turn, step, assistantMsgId));
         return Map.of("accepted", true);
     }
 
-    private void runTurn(String sessionId, String text, String turnId, String stepId, String assistantMsgId) {
+    private void runTurn(String sessionId, String text, int turn, int step, String assistantMsgId) {
         StringBuilder acc = new StringBuilder();
         try {
             Context ctx = holder.context();
@@ -189,7 +190,7 @@ public class ApiproxyController {
                 acc.append(chunk);
                 sendSessionEvent(sessionId, "assistant/chunk", Map.of(
                         "chunk", Map.of("type", "text-delta", "index", 0, "text", chunk),
-                        "turn", turnId, "step", stepId));
+                        "turn", turn, "step", step));
             });
         } catch (Exception e) {
             log.warn("agent 回合失败: {}", e.toString());
@@ -198,9 +199,9 @@ public class ApiproxyController {
         sendSessionEvent(sessionId, "assistant/message", Map.of(
                 "message", Map.of("id", assistantMsgId,
                         "content", List.of(Map.of("type", "text", "text", acc.toString()))),
-                "turn", turnId, "step", stepId));
-        sendSessionEvent(sessionId, "step/end", Map.of("turn", turnId, "step", stepId));
-        sendSessionEvent(sessionId, "turn/end", Map.of("turn", turnId, "reason", Map.of("kind", "complete")));
+                "turn", turn, "step", step));
+        sendSessionEvent(sessionId, "step/end", Map.of("turn", turn, "step", step));
+        sendSessionEvent(sessionId, "turn/end", Map.of("turn", turn, "reason", Map.of("kind", "complete")));
         downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
                 Map.of("sessionId", sessionId, "running", false)));
     }
