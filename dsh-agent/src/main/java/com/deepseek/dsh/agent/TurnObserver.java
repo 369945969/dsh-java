@@ -14,8 +14,8 @@ package com.deepseek.dsh.agent;
  */
 public interface TurnObserver {
 
-    /** 某一步模型回复内容（中间步可能含工具调用，最终步为最终回复）。 */
-    default void onAssistantMessage(String content) {}
+    /** 某一步模型回复：最终回复内容 + 推理内容（reasoning 模型的 reasoning_content，普通模型为空）。 */
+    default void onAssistantMessage(String content, String reasoning) {}
 
     /** 一次工具调用（已过权限）：callId、工具名、参数 JSON。 */
     default void onToolCall(String callId, String name, String argumentsJson) {}

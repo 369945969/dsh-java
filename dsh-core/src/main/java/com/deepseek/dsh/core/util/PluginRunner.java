@@ -32,7 +32,7 @@ public final class PluginRunner {
     /** 将所有插件挂载到给定上下文。 */
     public void start(Context ctx) {
         for (Plugin p : plugins) {
-            log.debug("挂载插件: {}", p.getClass().getSimpleName());
+            log.debug("Mounting plugin: {}", p.getClass().getSimpleName());
             Disposable d = p.apply(ctx);
             disposables.add(d);
         }
@@ -44,7 +44,7 @@ public final class PluginRunner {
             try {
                 disposables.get(i).dispose();
             } catch (RuntimeException e) {
-                log.warn("卸载插件时出错", e);
+                log.warn("Error unloading plugin", e);
             }
         }
         disposables.clear();

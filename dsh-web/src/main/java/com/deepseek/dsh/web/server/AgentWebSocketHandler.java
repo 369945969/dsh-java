@@ -102,7 +102,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             if (Thread.currentThread().isInterrupted() || isInterrupted(e)) {
                 send(session, frame("cancelled", sid, null));
             } else {
-                log.warn("WebSocket 回合失败 (sid={}): {}", sid, e.toString());
+                log.warn("WebSocket turn failed (sid={}): {}", sid, e.toString());
                 send(session, frame("error", sid, e.getMessage()));
             }
         } finally {
@@ -127,7 +127,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             try {
                 session.sendMessage(new TextMessage(frame.toString()));
             } catch (Exception e) {
-                log.debug("WebSocket 发送失败: {}", e.toString());
+                log.debug("WebSocket send failed: {}", e.toString());
             }
         }
     }

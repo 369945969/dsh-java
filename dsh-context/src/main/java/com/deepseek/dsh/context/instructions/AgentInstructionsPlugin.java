@@ -51,9 +51,9 @@ public final class AgentInstructionsPlugin implements Plugin, Service {
                 try {
                     String content = Files.readString(file);
                     sb.append("--- ").append(name).append(" ---\n").append(content).append("\n\n");
-                    log.debug("已加载指令文件: {}", name);
+                    log.debug("Loaded instruction file: {}", name);
                 } catch (Exception e) {
-                    log.warn("读取 {} 失败: {}", name, e.toString());
+                    log.warn("Failed to read {}: {}", name, e.toString());
                 }
             }
         }

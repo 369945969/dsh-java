@@ -46,7 +46,7 @@ public final class FileSettingsProvider
                 }
             });
         } catch (Exception e) {
-            log.warn("加载设置文件失败: {}", e.toString());
+            log.warn("Failed to load settings file: {}", e.toString());
         }
     }
 
@@ -80,7 +80,7 @@ public final class FileSettingsProvider
             });
             mapper.writerWithDefaultPrettyPrinter().writeValue(settingsFile.toFile(), root);
         } catch (Exception e) {
-            log.warn("保存设置文件失败: {}", e.toString());
+            log.warn("Failed to save settings file: {}", e.toString());
         }
     }
 }

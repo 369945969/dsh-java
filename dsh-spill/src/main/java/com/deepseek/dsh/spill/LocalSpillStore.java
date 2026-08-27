@@ -58,7 +58,7 @@ public final class LocalSpillStore
             try {
                 return Files.createTempDirectory("dsh-spill-");
             } catch (Exception ex) {
-                throw new CapabilityException("spill", "无法创建私有根目录", ex);
+                throw new CapabilityException("spill", "Cannot create private root directory", ex);
             }
         }
     }
@@ -70,7 +70,7 @@ public final class LocalSpillStore
         } catch (UnsupportedOperationException e) {
             // 非 POSIX 文件系统（如 Windows）跳过权限
         } catch (Exception e) {
-            log.warn("设置外溢根目录权限失败: {}", e.toString());
+            log.warn("Failed to set spill root directory permissions: {}", e.toString());
         }
     }
 

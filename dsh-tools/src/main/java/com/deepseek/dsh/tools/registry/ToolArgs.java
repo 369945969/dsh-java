@@ -27,7 +27,7 @@ public final class ToolArgs {
     public String requiredString(String key) {
         Object v = args.get(key);
         if (v == null) {
-            throw new ToolException(toolName, "缺少必填参数: " + key);
+            throw new ToolException(toolName, "Missing required parameter: " + key);
         }
         return v.toString();
     }
@@ -42,10 +42,10 @@ public final class ToolArgs {
     public int requiredInt(String key) {
         Object v = args.get(key);
         if (v == null) {
-            throw new ToolException(toolName, "缺少必填参数: " + key);
+            throw new ToolException(toolName, "Missing required parameter: " + key);
         }
         if (v instanceof Number n) return n.intValue();
-        throw new ToolException(toolName, "参数 " + key + " 应为整数，实际: " + v.getClass().getSimpleName());
+        throw new ToolException(toolName, "Parameter " + key + " expected integer, actual: " + v.getClass().getSimpleName());
     }
 
     /** 提取可选 int 参数，缺失返回默认值。 */
@@ -53,7 +53,7 @@ public final class ToolArgs {
         Object v = args.get(key);
         if (v == null) return defaultValue;
         if (v instanceof Number n) return n.intValue();
-        throw new ToolException(toolName, "参数 " + key + " 应为整数，实际: " + v.getClass().getSimpleName());
+        throw new ToolException(toolName, "Parameter " + key + " expected integer, actual: " + v.getClass().getSimpleName());
     }
 
     /** 参数是否存在。 */

@@ -38,7 +38,7 @@ class JsonRpcClientTest {
     @Test
     void 错误帧转JsonRpcException() throws Exception {
         var dispatcher = new JsonRpcDispatcher();
-        dispatcher.register("boom", (params, ctx) -> { throw new RuntimeException("炸了"); });
+        dispatcher.register("boom", (params, ctx) -> { throw new RuntimeException("Boom"); });
         try (var client = startPeer(dispatcher)) {
             var f = client.request("boom", Map.of());
             var ex = assertThrows(java.util.concurrent.CompletionException.class, f::join);

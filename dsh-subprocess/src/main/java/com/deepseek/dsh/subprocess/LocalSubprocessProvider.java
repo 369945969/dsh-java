@@ -40,13 +40,13 @@ public final class LocalSubprocessProvider
     public CompletableFuture<String> resolveExecutable(String command, Map<String, String> env) {
         return CompletableFuture.supplyAsync(() -> {
             if (command == null || command.isBlank()) {
-                throw new CapabilityException("subprocess", "命令为空", null);
+                throw new CapabilityException("subprocess", "Command is empty", null);
             }
             // 含分隔符的相对路径：拒绝（解析基未定义）
             if (command.contains("/") || command.contains("\\")) {
                 Path p = Path.of(command);
                 if (!Files.isExecutable(p)) {
-                    throw new CapabilityException("subprocess", "不可执行: " + command, null);
+                    throw new CapabilityException("subprocess", "Not executable: " + command, null);
                 }
                 return p.toAbsolutePath().toString();
             }
@@ -55,7 +55,7 @@ public final class LocalSubprocessProvider
             if (env != null) lookupEnv.putAll(env);
             String path = lookupEnv.getOrDefault("PATH", System.getenv("PATH"));
             if (path == null) {
-                throw new CapabilityException("subprocess", "PATH 未设置，无法解析: " + command, null);
+                throw new CapabilityException("subprocess", "PATH not set, cannot resolve: " + command, null);
             }
             for (String dir : path.split(java.io.File.pathSeparator)) {
                 if (dir.isBlank()) continue;
@@ -64,7 +64,7 @@ public final class LocalSubprocessProvider
                     return candidate.toAbsolutePath().toString();
                 }
             }
-            throw new CapabilityException("subprocess", "未在 PATH 中找到可执行: " + command, null);
+            throw new CapabilityException("subprocess", "Executable not found in PATH: " + command, null);
         });
     }
 

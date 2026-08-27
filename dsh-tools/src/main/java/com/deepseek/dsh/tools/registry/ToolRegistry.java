@@ -36,7 +36,7 @@ public final class ToolRegistry implements Plugin, Tools, Service {
         String name = tool.schema().name();
         Tool prev = global.putIfAbsent(name, tool);
         if (prev != null) {
-            throw new IllegalStateException("工具已注册: " + name);
+            throw new IllegalStateException("Tool already registered: " + name);
         }
         Disposable d = () -> {
             if (global.remove(name) != null) {

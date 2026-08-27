@@ -64,9 +64,9 @@ public final class BasicCompactionProvider
 
         List<ChatMessage> result = new ArrayList<>();
         if (systemMsg != null) result.add(systemMsg);
-        result.add(ChatMessage.system("[对话摘要] " + summary));
+        result.add(ChatMessage.system("[Conversation summary] " + summary));
         result.addAll(toKeep);
-        log.debug("压缩: {} 条 → {} 条", messages.size(), result.size());
+        log.debug("Compacted: {} entries → {} entries", messages.size(), result.size());
         return result;
     }
 

@@ -63,8 +63,8 @@ public class AgentController {
             return new SendMessageResponse(sessionId.value(), reply,
                     projection.messages(), totalTokens);
         } catch (Exception e) {
-            log.error("处理消息失败", e);
-            throw new RuntimeException("agent 处理失败: " + e.getMessage(), e);
+            log.error("Message processing failed", e);
+            throw new RuntimeException("agent processing failed: " + e.getMessage(), e);
         }
     }
 

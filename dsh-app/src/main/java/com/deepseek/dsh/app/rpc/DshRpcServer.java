@@ -134,7 +134,7 @@ public final class DshRpcServer {
                 SessionLog log = sessions.getOrCreate(sessionId);
                 r.putPOJO("messages", log.deriveMessages().messages());
             } else {
-                r.put("error", "会话不存在: " + sid);
+                r.put("error", "Session not found: " + sid);
             }
             return r;
         });
@@ -145,7 +145,7 @@ public final class DshRpcServer {
             SessionId parentId = sessions.get(parentSid);
             ObjectNode r = ctx.mapper().createObjectNode();
             if (parentId == null) {
-                r.put("error", "父会话不存在: " + parentSid);
+                r.put("error", "Parent session not found: " + parentSid);
                 return r;
             }
             Sessions svc = context.require(Sessions.class);
@@ -170,7 +170,7 @@ public final class DshRpcServer {
             SessionId sessionId = sessions.get(sid);
             ObjectNode r = ctx.mapper().createObjectNode();
             if (sessionId == null) {
-                r.put("error", "会话不存在: " + sid);
+                r.put("error", "Session not found: " + sid);
                 return r;
             }
             Sessions svc = context.require(Sessions.class);
@@ -180,7 +180,7 @@ public final class DshRpcServer {
             r.put("sessionId", sid);
             r.put("before", msgs.size());
             if (comp == null) {
-                r.put("error", "compaction 服务未注册");
+                r.put("error", "compaction service not registered");
                 return r;
             }
             List<ChatMessage> compacted = comp.compact(msgs, maxTokens);
@@ -194,7 +194,7 @@ public final class DshRpcServer {
             SkillService skills = context.get(SkillService.class).orElse(null);
             ObjectNode r = ctx.mapper().createObjectNode();
             if (skills == null) {
-                r.put("error", "skill 服务未注册");
+                r.put("error", "skill service not registered");
                 return r;
             }
             var arr = r.putArray("skills");
@@ -215,7 +215,7 @@ public final class DshRpcServer {
             SkillService skills = context.get(SkillService.class).orElse(null);
             ObjectNode r = ctx.mapper().createObjectNode();
             if (skills == null) {
-                r.put("error", "skill 服务未注册");
+                r.put("error", "skill service not registered");
                 return r;
             }
             java.util.Optional<SkillDefinition> def = skills.get(name, null);
@@ -238,7 +238,7 @@ public final class DshRpcServer {
             SubagentService sub = context.get(SubagentService.class).orElse(null);
             ObjectNode r = ctx.mapper().createObjectNode();
             if (sub == null) {
-                r.put("error", "subagent 服务未注册");
+                r.put("error", "subagent service not registered");
                 return r;
             }
             DelegationResult res = sub.delegate(sessionId, ScopeKey.random(), context, agent, task);
@@ -255,8 +255,8 @@ public final class DshRpcServer {
             ObjectNode r = ctx.mapper().createObjectNode();
             DefaultTeamsProvider teams = new DefaultTeamsProvider();
             teams.setContext(context);
-            teams.registerMember("审查员", agent);
-            teams.registerMember("测试员", agent);
+            teams.registerMember("reviewer", agent);
+            teams.registerMember("tester", agent);
             var res = teams.runTeamTask(task);
             r.put("summary", res.summary());
             r.put("memberCount", res.reports().size());
@@ -290,7 +290,7 @@ public final class DshRpcServer {
         Path dataDir = Path.of(System.getenv().getOrDefault("DSH_DATA_DIR",
                 Path.of(System.getProperty("user.home"), ".dsh").toString()));
 
-        log.info("启动 RPC 服务端: model={}, baseUrl={}", model, baseUrl);
+        log.info("Starting RPC server: model={}, baseUrl={}", model, baseUrl);
         Context context = Context.root();
         PluginRunner runner = new PluginRunner();
         Agent agent = new BaseBundle(apiKey, baseUrl, model, dataDir).assemble(context, runner);
@@ -298,12 +298,12 @@ public final class DshRpcServer {
         DshRpcServer server = new DshRpcServer(context, agent);
         // 收到 shutdown 后优雅退出
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            log.info("卸载插件树...");
+            log.info("Unloading plugin tree...");
             runner.stop();
             context.dispose();
         }));
         server.runLoop();
-        log.info("RPC 循环结束，退出");
+        log.info("RPC loop ended, exiting");
         runner.stop();
         context.dispose();
     }

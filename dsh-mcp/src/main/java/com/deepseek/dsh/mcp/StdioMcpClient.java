@@ -62,7 +62,7 @@ public final class StdioMcpClient implements McpClient {
                 }
             }
         } catch (Exception e) {
-            log.warn("MCP 连接失败 ({}): {}", serverCommand, e.toString());
+            log.warn("MCP connection failed ({}): {}", serverCommand, e.toString());
         }
         discovered.put(serverId, tools);
         return tools;
@@ -71,7 +71,7 @@ public final class StdioMcpClient implements McpClient {
     @Override
     public String callTool(String serverId, String toolName, Map<String, Object> arguments) throws Exception {
         Process process = processes.get(serverId);
-        if (process == null) throw new IllegalStateException("MCP 服务器未连接: " + serverId);
+        if (process == null) throw new IllegalStateException("MCP server not connected: " + serverId);
         var req = Map.of("jsonrpc", "2.0", "id", System.currentTimeMillis(),
                 "method", "tools/call",
                 "params", Map.of("name", toolName, "arguments", arguments));

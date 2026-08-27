@@ -43,7 +43,7 @@ public final class DshRepl {
 
     /** 运行 read-eval-print 循环直到 /exit 或 EOF。 */
     public void runLoop() {
-        System.out.println("DeepSeek Harness (dsh) 交互终端 — 输入 /exit 退出，/new 新会话，/tokens 查看用量");
+        System.out.println("DeepSeek Harness (dsh) interactive terminal — type /exit to quit, /new for new session, /tokens to view usage");
         Scanner in = new Scanner(System.in);
         while (true) {
             System.out.print("> ");
@@ -53,18 +53,18 @@ public final class DshRepl {
 
             String trimmed = line.trim();
             if (trimmed.equals("/exit") || trimmed.equals("/quit")) {
-                System.out.println("再见");
+                System.out.println("Goodbye");
                 break;
             }
             if (trimmed.equals("/new")) {
                 sessionId = SessionId.of(UUID.randomUUID().toString());
-                System.out.println("已开启新会话: " + sessionId.value());
+                System.out.println("New session started: " + sessionId.value());
                 continue;
             }
             if (trimmed.equals("/tokens")) {
                 long total = context.get(TokenMeterService.class)
                         .map(TokenMeterService::totalTokens).orElse(0L);
-                System.out.println("累计 token 用量: " + total);
+                System.out.println("Cumulative token usage: " + total);
                 continue;
             }
 
@@ -72,8 +72,8 @@ public final class DshRepl {
                 String reply = agent.run(sessionId, ScopeKey.random(), context, trimmed);
                 System.out.println(reply);
             } catch (Exception e) {
-                log.warn("对话回合失败: {}", e.toString());
-                System.out.println("（执行失败: " + e.getMessage() + "）");
+                log.warn("Conversation turn failed: {}", e.toString());
+                System.out.println("(Execution failed: " + e.getMessage() + ")");
             }
         }
     }
@@ -86,13 +86,13 @@ public final class DshRepl {
         Path dataDir = Path.of(System.getenv().getOrDefault("DSH_DATA_DIR",
                 Path.of(System.getProperty("user.home"), ".dsh").toString()));
 
-        log.info("启动 CLI 交互模式: model={}, baseUrl={}", model, baseUrl);
+        log.info("Starting CLI interactive mode: model={}, baseUrl={}", model, baseUrl);
         Context context = Context.root();
         PluginRunner runner = new PluginRunner();
         Agent agent = new BaseBundle(apiKey, baseUrl, model, dataDir).assemble(context, runner);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            log.info("卸载插件树...");
+            log.info("Unloading plugin tree...");
             runner.stop();
             context.dispose();
         }));

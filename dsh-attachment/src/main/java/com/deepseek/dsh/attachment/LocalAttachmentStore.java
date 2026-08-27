@@ -55,7 +55,7 @@ public final class LocalAttachmentStore
                     Files.move(tmp, object, StandardCopyOption.REPLACE_EXISTING);
                 }
             } catch (Exception e) {
-                throw new AttachmentException("附件写入失败: " + id.value(), e);
+                throw new AttachmentException("Attachment write failed: " + id.value(), e);
             }
         }
         return new AttachmentRef(id, mediaType, data.length, name);
@@ -66,12 +66,12 @@ public final class LocalAttachmentStore
         String hash = stripScheme(ref.attachmentId().value());
         Path object = objectPath(hash);
         if (!Files.isReadable(object)) {
-            throw new AttachmentException("附件不存在: " + ref.attachmentId().value());
+            throw new AttachmentException("Attachment not found: " + ref.attachmentId().value());
         }
         try {
             return Files.readAllBytes(object);
         } catch (Exception e) {
-            throw new AttachmentException("附件读取失败: " + ref.attachmentId().value(), e);
+            throw new AttachmentException("Attachment read failed: " + ref.attachmentId().value(), e);
         }
     }
 
@@ -95,7 +95,7 @@ public final class LocalAttachmentStore
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(data);
             return HexFormat.of().formatHex(digest);
         } catch (Exception e) {
-            throw new AttachmentException("计算 sha256 失败", e);
+            throw new AttachmentException("sha256 computation failed", e);
         }
     }
 }

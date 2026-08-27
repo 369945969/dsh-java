@@ -47,7 +47,7 @@ public final class RetryLlmModel implements LlmModel {
                 last = e;
                 if (!e.isRecoverable() || attempt == maxRetries) throw e;
                 long delay = baseDelayMillis * (1L << attempt);
-                log.warn("LLM 调用失败 (http={}), 第 {} 次重试（{}ms）: {}",
+                log.warn("LLM call failed (http={}), retry #{} ({}ms): {}",
                         e.httpStatus(), attempt + 1, delay, e.getMessage());
                 Thread.sleep(delay);
             }
@@ -66,7 +66,7 @@ public final class RetryLlmModel implements LlmModel {
                 last = e;
                 if (!e.isRecoverable() || attempt == maxRetries) throw e;
                 long delay = baseDelayMillis * (1L << attempt);
-                log.warn("LLM 流式连接失败 (http={}), 第 {} 次重试（{}ms）: {}",
+                log.warn("LLM stream connection failed (http={}), retry #{} ({}ms): {}",
                         e.httpStatus(), attempt + 1, delay, e.getMessage());
                 Thread.sleep(delay);
             }

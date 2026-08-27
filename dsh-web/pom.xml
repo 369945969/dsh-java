@@ -29,6 +29,10 @@
             <artifactId>dsh-llm</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-settings</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>

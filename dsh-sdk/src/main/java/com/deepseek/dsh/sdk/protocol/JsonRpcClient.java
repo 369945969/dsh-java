@@ -76,7 +76,7 @@ public final class JsonRpcClient implements AutoCloseable {
         try {
             writeLine(mapper.writeValueAsString(msg));
         } catch (Exception e) {
-            log.debug("notify 写入失败: {}", e.toString());
+            log.debug("notify write failed: {}", e.toString());
         }
     }
 
@@ -99,7 +99,7 @@ public final class JsonRpcClient implements AutoCloseable {
             }
         } catch (Exception e) {
             if (!closed) {
-                log.debug("JSON-RPC 读循环结束: {}", e.toString());
+                log.debug("JSON-RPC read loop ended: {}", e.toString());
                 failPending(e);
             }
         }

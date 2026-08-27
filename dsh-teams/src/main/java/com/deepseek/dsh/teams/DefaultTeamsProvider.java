@@ -64,7 +64,7 @@ public class DefaultTeamsProvider
     @Override
     public void registerMember(String name, Agent agent) {
         if (members.putIfAbsent(name, agent) != null) {
-            throw new IllegalStateException("团队成员已存在: " + name);
+            throw new IllegalStateException("Team member already exists: " + name);
         }
     }
 
@@ -76,7 +76,7 @@ public class DefaultTeamsProvider
     @Override
     public TeamResult runTeamTask(String task) {
         if (members.isEmpty()) {
-            return new TeamResult(List.of(), "（无团队成员）", true);
+            return new TeamResult(List.of(), "(No team members)", true);
         }
 
         // 并行 fan-out：每个成员一个虚拟线程
@@ -89,7 +89,7 @@ public class DefaultTeamsProvider
             try {
                 reports.add(f.get());
             } catch (Exception e) {
-                log.warn("团队成员回收失败: {}", e.toString());
+                log.warn("Team member recycle failed: {}", e.toString());
             }
         }
         return aggregate(task, reports);
@@ -102,7 +102,7 @@ public class DefaultTeamsProvider
             String report = agent.run(sid, ScopeKey.random(), ctx, task);
             return new MemberReport(name, report, true, Optional.empty());
         } catch (Exception e) {
-            log.warn("团队成员 {} 执行失败: {}", name, e.toString());
+            log.warn("Team member {} execution failed: {}", name, e.toString());
             return new MemberReport(name, "", false, Optional.of(e.getMessage()));
         }
     }

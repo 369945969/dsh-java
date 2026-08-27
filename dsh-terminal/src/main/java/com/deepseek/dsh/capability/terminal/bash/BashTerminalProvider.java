@@ -40,17 +40,17 @@ public final class BashTerminalProvider implements TerminalCapability {
             if (cwd != null) pb.directory(new java.io.File(cwd));
             Process process = pb.start();
             sessions.put(id, new Session(process));
-            log.debug("创建终端会话: {}", id);
+            log.debug("Creating terminal session: {}", id);
             return id;
         } catch (Exception e) {
-            throw new RuntimeException("无法创建终端会话: " + e.getMessage(), e);
+            throw new RuntimeException("Cannot create terminal session: " + e.getMessage(), e);
         }
     }
 
     @Override
     public TerminalOutput send(String sessionId, String input, int timeoutSeconds) {
         Session s = sessions.get(sessionId);
-        if (s == null) return new TerminalOutput("（终端不存在: " + sessionId + "）", true);
+        if (s == null) return new TerminalOutput("(Terminal not found: " + sessionId + ")", true);
         return s.send(input, timeoutSeconds);
     }
 
@@ -101,7 +101,7 @@ public final class BashTerminalProvider implements TerminalCapability {
                     }
                 }
             } catch (Exception e) {
-                log.debug("终端读取结束: {}", e.toString());
+                log.debug("Terminal read ended: {}", e.toString());
             }
         }
 

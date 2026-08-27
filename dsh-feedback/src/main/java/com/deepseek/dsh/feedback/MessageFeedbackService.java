@@ -257,7 +257,7 @@ public final class MessageFeedbackService implements Service {
             java.util.Map<String, MessageFeedbackRow> loaded = MAPPER.readValue(configFile.toFile(), ROW_MAP);
             loaded.forEach((raw, row) -> rows.put(SessionId.of(raw), row));
         } catch (Exception e) {
-            log.warn("加载消息反馈失败: {}", e.toString());
+            log.warn("Failed to load message feedback: {}", e.toString());
         }
     }
 
@@ -271,7 +271,7 @@ public final class MessageFeedbackService implements Service {
             MAPPER.writerWithDefaultPrettyPrinter().writeValue(tmp.toFile(), rows);
             Files.move(tmp, configFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
-            log.warn("持久化消息反馈失败: {}", e.toString());
+            log.warn("Failed to persist message feedback: {}", e.toString());
         }
     }
 }

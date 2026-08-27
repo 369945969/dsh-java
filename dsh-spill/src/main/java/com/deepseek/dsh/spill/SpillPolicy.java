@@ -75,7 +75,7 @@ public final class SpillPolicy implements ToolMiddleware {
         try {
             ref = spillStore.saveText(save).join();
         } catch (Exception e) {
-            log.warn("spill-policy: {} 保存外溢失败，保留内联内容: {}", toolName, e.toString());
+            log.warn("spill-policy: {} save spill failed, keeping inline content: {}", toolName, e.toString());
             return null;
         }
 
@@ -83,7 +83,7 @@ public final class SpillPolicy implements ToolMiddleware {
         // 预留用「最坏情况」通知：省略量按总字节数计（位数最多），
         // 故真实通知（省略更少、位数不更多）必不超过预留，最终替换保证 <= 上限。
         String worstNotice = "(" + describeOmitted(totalBytes, 0)
-                + " 完整结果已存于: " + ref.locator() + ". " + ref.retrievalHint() + ")";
+                + " full result saved to: " + ref.locator() + ". " + ref.retrievalHint() + ")";
         long reserve = worstNotice.getBytes(StandardCharsets.UTF_8).length + 2; // +2 为 \n\n 连接
         long budget = Math.max(0, maxInlineBytes - reserve);
         String preview = preview(text, budget);
@@ -92,11 +92,11 @@ public final class SpillPolicy implements ToolMiddleware {
         long previewBytes = preview.isEmpty() ? 0
                 : preview.getBytes(StandardCharsets.UTF_8).length;
         String notice = "(" + describeOmitted(totalBytes, previewBytes)
-                + " 完整结果已存于: " + ref.locator() + ". " + ref.retrievalHint() + ")";
+                + " full result saved to: " + ref.locator() + ". " + ref.retrievalHint() + ")";
         String replaced = preview.isEmpty() ? notice : preview + "\n\n" + notice;
         // 安全网：通知自身超上限时无有界替换，保留内联（外溢文件是无害孤儿）
         if (replaced.getBytes(StandardCharsets.UTF_8).length > maxInlineBytes) {
-            log.warn("spill-policy: {} 的外溢通知超过上限，保留内联内容", toolName);
+            log.warn("spill-policy: {} spill notification exceeded limit, keeping inline content", toolName);
             return null;
         }
         return replaced;

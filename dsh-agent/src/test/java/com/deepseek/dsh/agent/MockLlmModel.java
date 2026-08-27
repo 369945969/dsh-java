@@ -34,13 +34,13 @@ public final class MockLlmModel implements LlmModel {
     @Override
     public LlmResponse chat(LlmRequest request) {
         if (queue.isEmpty()) {
-            return new LlmResponse("（无更多响应）", List.of(), null, "stop");
+            return new LlmResponse("(No more responses)", List.of(), null, "stop");
         }
         return queue.poll();
     }
 
     @Override
     public Flow.Publisher<LlmChunk> stream(LlmRequest request) {
-        throw new UnsupportedOperationException("测试不支持流式");
+        throw new UnsupportedOperationException("Streaming not supported in test");
     }
 }

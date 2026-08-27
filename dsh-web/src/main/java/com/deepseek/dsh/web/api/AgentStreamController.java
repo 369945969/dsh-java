@@ -72,7 +72,7 @@ public class AgentStreamController {
                                 emitter.send(SseEmitter.event().name("delta").data(chunk));
                                 acc.append(chunk);
                             } catch (Exception e) {
-                                log.debug("SSE delta 发送失败: {}", e.toString());
+                                log.debug("SSE delta send failed: {}", e.toString());
                             }
                         });
                 // 兜底：若流式未产出内容（如回退到 run），整段下发
@@ -83,7 +83,7 @@ public class AgentStreamController {
                 emitter.send(SseEmitter.event().name("done").data("[DONE]"));
                 emitter.complete();
             } catch (Exception e) {
-                log.error("SSE 流式处理失败", e);
+                log.error("SSE stream processing failed", e);
                 try {
                     emitter.send(SseEmitter.event().name("error").data(e.getMessage()));
                 } catch (Exception ignored) {

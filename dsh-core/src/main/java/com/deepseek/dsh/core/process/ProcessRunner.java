@@ -105,9 +105,9 @@ public final class ProcessRunner {
                 sb.append(line);
             }
         } catch (Exception e) {
-            log.warn("[{}] 读取进程输出流失败: {}", capability, e.toString());
+            log.warn("[{}] Failed to read process output stream: {}", capability, e.toString());
             if (!sb.isEmpty()) sb.append('\n');
-            sb.append("[读取输出流错误: ").append(e.getMessage()).append(']');
+            sb.append("[Error reading output stream: ").append(e.getMessage()).append(']');
         }
     }
 }

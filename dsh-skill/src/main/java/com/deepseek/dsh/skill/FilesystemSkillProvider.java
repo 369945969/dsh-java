@@ -114,7 +114,7 @@ public final class FilesystemSkillProvider implements SkillProvider {
                 ParsedSkill parsed = parseSkillFile(skillFile.toString());
                 if (parsed != null) skills.add(parsed);
             } catch (Exception e) {
-                log.warn("技能条目 {} 解析失败: {}", entry, e.toString());
+                log.warn("Failed to parse skill entry {}: {}", entry, e.toString());
             }
         }
         return skills;

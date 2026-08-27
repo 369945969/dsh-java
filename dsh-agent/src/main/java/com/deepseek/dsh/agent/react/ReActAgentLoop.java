@@ -57,7 +57,7 @@ public class ReActAgentLoop implements Agent {
     private static final Logger log = LoggerFactory.getLogger(ReActAgentLoop.class);
 
     private final String name;
-    private final String systemPrompt;
+    private volatile String systemPrompt;
     private final LlmModel model;
     private final Tools tools;
     private final ToolPipeline pipeline;
@@ -107,6 +107,11 @@ public class ReActAgentLoop implements Agent {
         return systemPrompt;
     }
 
+    @Override
+    public void setSystemPrompt(String systemPrompt) {
+        this.systemPrompt = systemPrompt;
+    }
+
     /**
      * 运行一个 turn（模板方法）。接收用户消息，驱动 ReAct 循环直到模型停止或达上限。
      */
@@ -134,8 +139,8 @@ public class ReActAgentLoop implements Agent {
                 return step.response().content();
             }
         }
-        log.warn("达到最大 step 数 {}，终止 turn", maxSteps);
-        return "（已达最大步数限制）";
+        log.warn("Reached max steps {}, terminating turn", maxSteps);
+        return "(Max steps limit reached)";
     }
 
     /**
@@ -213,7 +218,7 @@ public class ReActAgentLoop implements Agent {
                 SessionEvent.Payload.text(response.content()));
         ctx.require(Sessions.class).persist(assistantEvent);
         TurnObserver o = observer.get();
-        if (o != null) o.onAssistantMessage(response.content());
+        if (o != null) o.onAssistantMessage(response.content(), response.reasoning());
 
         // 5. 执行工具调用（如果有）
         if (response.toolCalls() != null && !response.toolCalls().isEmpty()) {

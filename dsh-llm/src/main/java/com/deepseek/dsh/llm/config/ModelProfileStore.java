@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -12,6 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -100,7 +102,7 @@ public final class ModelProfileStore implements Service {
     public synchronized boolean update(String id, String displayName, String apiKey, String baseUrl, String model) {
         for (int i = 0; i < profiles.size(); i++) {
             if (profiles.get(i).id().equals(id)) {
-                profiles.set(i, new ModelProfile(id, displayName, apiKey, baseUrl, model));
+                profiles.set(i, new ModelProfile(id, displayName, apiKey, baseUrl, model, profiles.get(i).models()));
                 persist();
                 syncRuntime();
                 return true;
@@ -132,6 +134,34 @@ public final class ModelProfileStore implements Service {
         return true;
     }
 
+    /**
+     * 按 id 增改：id 为空或不存在则生成新 id 新增；否则替换。
+     * 供 apiproxy 的 settings.mutate 把整段 profile（含 models 清单）写回时使用。
+     */
+    public synchronized ModelProfile upsert(ModelProfile p) {
+        String id = p.id();
+        if (id == null || id.isBlank() || profiles.stream().noneMatch(x -> x.id().equals(id))) {
+            ModelProfile created = new ModelProfile(UUID.randomUUID().toString(),
+                    p.displayName(), p.apiKey(), p.baseUrl(), p.model(), p.models(), p.route());
+            profiles.add(created);
+            if (activeId == null) activeId = created.id();
+            persist();
+            syncRuntime();
+            return created;
+        }
+        for (int i = 0; i < profiles.size(); i++) {
+            if (profiles.get(i).id().equals(id)) {
+                ModelProfile replaced = new ModelProfile(id, p.displayName(), p.apiKey(),
+                        p.baseUrl(), p.model(), p.models(), p.route());
+                profiles.set(i, replaced);
+                persist();
+                syncRuntime();
+                return replaced;
+            }
+        }
+        return p;
+    }
+
     /** 把活跃档案同步到运行时 ModelConfig（DeepSeekLlmAdapter 即时读取）。 */
     private void syncRuntime() {
         ModelProfile a = active().orElse(null);
@@ -158,12 +188,14 @@ public final class ModelProfileStore implements Service {
                             n.path("displayName").asText(),
                             n.path("apiKey").asText(""),
                             n.path("baseUrl").asText(""),
-                            n.path("model").asText("")));
+                            n.path("model").asText(""),
+                            readModels(n.path("models")),
+                            n.path("route").asText("")));
                 }
             }
-            log.info("加载 {} 个模型档案", profiles.size());
+            log.info("Loaded {} model profile(s)", profiles.size());
         } catch (Exception e) {
-            log.warn("加载模型档案失败: {}", e.toString());
+            log.warn("Failed to load model profiles: {}", e.toString());
         }
     }
 
@@ -180,11 +212,25 @@ public final class ModelProfileStore implements Service {
                 o.put("apiKey", p.apiKey());
                 o.put("baseUrl", p.baseUrl());
                 o.put("model", p.model());
+                if (!p.models().isEmpty()) o.set("models", MAPPER.valueToTree(p.models()));
+                if (!p.route().isBlank()) o.put("route", p.route());
             }
             Files.writeString(configFile, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(root));
         } catch (IOException e) {
-            log.warn("持久化模型档案失败: {}", e.toString());
+            log.warn("Failed to persist model profiles: {}", e.toString());
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> readModels(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node == null || !node.isArray() || node.isEmpty()) return List.of();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (var m : node) {
+            try {
+                out.add((Map<String, Object>) MAPPER.convertValue(m, new TypeReference<Map<String, Object>>() {}));
+            } catch (Exception ignored) { /* 跳过畸形项 */ }
+        }
+        return out;
     }
 
     private static boolean isPresent(String s) {

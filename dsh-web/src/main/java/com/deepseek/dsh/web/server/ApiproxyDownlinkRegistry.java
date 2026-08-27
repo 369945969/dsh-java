@@ -45,7 +45,7 @@ public class ApiproxyDownlinkRegistry {
     }
 
     private void send(Set<WebSocketSession> sessions, String rpcId, Object payload) {
-        if (sessions.isEmpty()) { log.debug("下行流无连接，丢弃帧 rpcId={}", rpcId); return; }
+        if (sessions.isEmpty()) { log.debug("No downlink connection, discarding frame rpcId={}", rpcId); return; }
         var full = new java.util.LinkedHashMap<String, Object>();
         full.put("type", "server-request");
         full.put("rpcId", rpcId);
@@ -55,11 +55,11 @@ public class ApiproxyDownlinkRegistry {
             String json = MAPPER.writeValueAsString(full);
             TextMessage msg = new TextMessage(json);
             for (WebSocketSession s : new LinkedHashSet<>(sessions)) {
-                if (s.isOpen()) { try { s.sendMessage(msg); } catch (Exception e) { log.debug("mux 帧发送失败: {}", e.toString()); } }
+                if (s.isOpen()) { try { s.sendMessage(msg); } catch (Exception e) { log.debug("mux frame send failed: {}", e.toString()); } }
                 else sessions.remove(s);
             }
         } catch (Exception e) {
-            log.warn("帧序列化失败: {}", e.toString());
+            log.warn("Frame serialization failed: {}", e.toString());
         }
     }
 }

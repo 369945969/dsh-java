@@ -68,7 +68,7 @@ public class ConfigController {
     @PostMapping
     public Map<String, Object> add(@RequestBody ModelProfileRequest req) {
         ModelProfile p = store().add(req.displayName(), req.apiKey(), req.baseUrl(), req.model());
-        log.info("添加模型档案: {} ({})", p.displayName(), p.model());
+        log.info("Adding model profile: {} ({})", p.displayName(), p.model());
         return Map.of("id", p.id(), "displayName", p.displayName(), "activeId", store().activeId());
     }
 

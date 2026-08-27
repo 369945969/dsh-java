@@ -35,15 +35,15 @@ public final class RpcE2e {
         String model = System.getenv("DSH_MODEL");
         String dataDir = System.getenv("DSH_DATA_DIR");
 
-        if (rpcCmd == null || rpcCmd.isBlank()) { System.err.println("[rpc-e2e] 未设置 DSH_RPC_CMD，跳过"); return; }
+        if (rpcCmd == null || rpcCmd.isBlank()) { System.err.println("[rpc-e2e] DSH_RPC_CMD not set, skipping"); return; }
         if (apiKey == null || apiKey.isBlank() || model == null || model.isBlank()) {
-            System.err.println("[rpc-e2e] 未设置 DEEPSEEK_API_KEY/DSH_MODEL，跳过"); return;
+            System.err.println("[rpc-e2e] DEEPSEEK_API_KEY/DSH_MODEL not set, skipping"); return;
         }
 
         // 种子 skill 文件供技能用例（FilesystemSkillProvider 每次 list() 扫描盘）
         if (dataDir != null) seedSkills(Path.of(dataDir));
 
-        System.out.println("[rpc-e2e] 启动 RPC 服务端子进程: " + rpcCmd);
+        System.out.println("[rpc-e2e] Starting RPC server subprocess: " + rpcCmd);
         try (HarnessClient client = new HarnessClient(rpcCmd)) {
             group("基础对话模式");
             check("自定义模型调用 (initialize)", () -> {
@@ -55,7 +55,7 @@ public final class RpcE2e {
                 var r = timeout(client.prompt(client.createSession().join(), "你好"));
                 assertEquals("ok", r.status(), "状态应为 ok");
                 assertTrue(r.reply() != null && !r.reply().isBlank(), "问候回复不应为空");
-                System.out.println("    回复: " + truncate(r.reply(), 100));
+                System.out.println("    Reply: " + truncate(r.reply(), 100));
             });
             check("完整返回响应 (reply+tokens)", () -> {
                 var r = timeout(client.prompt(client.createSession().join(), "用一句话介绍 Java"));
@@ -125,7 +125,7 @@ public final class RpcE2e {
                 assertNull(r.error(), "委派不应有错误");
                 assertTrue(r.success(), "委派应成功");
                 assertTrue(r.report() != null && !r.report().isBlank(), "委派报告不应为空");
-                System.out.println("    报告: " + truncate(r.report(), 100));
+                System.out.println("    Report: " + truncate(r.report(), 100));
             });
             check("多 agent 并行编排 (team/run)", () -> {
                 var r = client.teamRun("用一句话说明单元测试的价值").join();
@@ -138,10 +138,10 @@ public final class RpcE2e {
             check("shutdown", () -> { client.shutdown().join(); });
 
             System.out.println();
-            System.out.println("[rpc-e2e] 结果: " + passed.get() + " 通过, " + failed.get() + " 失败");
+            System.out.println("[rpc-e2e] Result: " + passed.get() + " passed, " + failed.get() + " failed");
             if (failed.get() > 0) System.exit(1);
         } catch (Exception e) {
-            System.err.println("[rpc-e2e] 异常: " + e);
+            System.err.println("[rpc-e2e] Exception: " + e);
             e.printStackTrace();
             System.exit(1);
         }
@@ -170,9 +170,9 @@ public final class RpcE2e {
                     # 提交信息
                     按 Conventional Commits 规范生成提交信息。
                     """);
-            System.out.println("[rpc-e2e] 已种子 2 个技能到 " + dir);
+            System.out.println("[rpc-e2e] Seeded 2 skill(s) to " + dir);
         } catch (Exception e) {
-            System.err.println("[rpc-e2e] 种子技能失败（技能用例可能失败）: " + e);
+            System.err.println("[rpc-e2e] Seed skill failed (skill test may fail): " + e);
         }
     }
 
@@ -184,9 +184,9 @@ public final class RpcE2e {
         catch (Throwable t) { System.out.println("  [FAIL] " + name + " — " + t.getMessage()); failed.incrementAndGet(); }
     }
     private static void assertTrue(boolean cond, String msg) { if (!cond) throw new AssertionError(msg); }
-    private static void assertNull(Object o, String msg) { if (o != null) throw new AssertionError(msg + "（实际 " + o + "）"); }
+    private static void assertNull(Object o, String msg) { if (o != null) throw new AssertionError(msg + " (actual " + o + ")"); }
     private static void assertEquals(Object exp, Object act, String msg) {
-        if (!java.util.Objects.equals(exp, act)) throw new AssertionError(msg + "（期望 " + exp + "，实际 " + act + "）");
+        if (!java.util.Objects.equals(exp, act)) throw new AssertionError(msg + " (expected " + exp + ", actual " + act + ")");
     }
     private static <T> T timeout(CompletableFuture<T> f) {
         try { return f.orTimeout(120, java.util.concurrent.TimeUnit.SECONDS).join(); }

@@ -50,19 +50,19 @@ public final class DshAcpServer {
         Path dataDir = Path.of(System.getenv().getOrDefault("DSH_DATA_DIR",
                 Path.of(System.getProperty("user.home"), ".dsh").toString()));
 
-        log.info("启动 ACP 服务端: model={}, baseUrl={}", model, baseUrl);
+        log.info("Starting ACP server: model={}, baseUrl={}", model, baseUrl);
         Context context = Context.root();
         PluginRunner runner = new PluginRunner();
         Agent agent = new BaseBundle(apiKey, baseUrl, model, dataDir).assemble(context, runner);
 
         DshAcpServer acp = new DshAcpServer(context, agent);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            log.info("卸载插件树...");
+            log.info("Unloading plugin tree...");
             runner.stop();
             context.dispose();
         }));
         acp.runLoop();
-        log.info("ACP 循环结束，退出");
+        log.info("ACP loop ended, exiting");
         runner.stop();
         context.dispose();
     }

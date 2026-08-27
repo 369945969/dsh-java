@@ -62,7 +62,7 @@ public final class ToolPipeline {
         try {
             return chain.dispatch(request);
         } catch (ToolException e) {
-            log.warn("[tool] {} 调用失败 (recoverable={}): {}",
+            log.warn("[tool] {} invocation failed (recoverable={}): {}",
                     e.toolName(), e.isRecoverable(), e.getMessage());
             return ToolExecutionResult.error(e.toolCallId(), e.getMessage());
         }
@@ -79,7 +79,7 @@ public final class ToolPipeline {
         var toolOpt = tools.get(request.toolName());
         if (toolOpt.isEmpty()) {
             throw new ToolException(request.toolName(), request.toolCallId(),
-                    "未知工具: " + request.toolName(), null, false);
+                    "Unknown tool: " + request.toolName(), null, false);
         }
         Tool tool = toolOpt.get();
         try {
@@ -88,7 +88,7 @@ public final class ToolPipeline {
         } catch (ToolException e) {
             throw e; // 工具自身已抛领域异常，原样传播
         } catch (Exception e) {
-            log.warn("工具 {} 执行失败: {}", request.toolName(), e.toString());
+            log.warn("Tool {} execution failed: {}", request.toolName(), e.toString());
             throw new ToolException(request.toolName(), request.toolCallId(),
                     "工具执行失败: " + e.getMessage(), e, false);
         }

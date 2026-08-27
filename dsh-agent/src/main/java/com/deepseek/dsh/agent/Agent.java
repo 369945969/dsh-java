@@ -29,6 +29,9 @@ public interface Agent {
     /** 系统提示。 */
     String systemPrompt();
 
+    /** 运行时切换系统提示（agent 预设 select 用；单 agent 架构下为全局切换，非按会话）。默认空实现。 */
+    default void setSystemPrompt(String systemPrompt) {}
+
     /**
      * 运行一个 turn：接收用户消息，驱动 ReAct 循环（推理→行动→观察→...），
      * 返回最终回复。

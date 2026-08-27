@@ -45,7 +45,7 @@ public final class ForkInProcessProvider
         String persona = agent.name();
         String taskPreview = task.length() > 80 ? task.substring(0, 80) + "…" : task;
 
-        log.debug("委派子任务到子会话 {}（父 {}）: {}",
+        log.debug("Delegating subtask to sub-session {} (parent {}): {}",
                 childSessionId, parentSessionId, taskPreview);
 
         // 生命周期通知：委派开始
@@ -61,10 +61,10 @@ public final class ForkInProcessProvider
                     parentSessionId, childSid, persona, eventCount, reportPreview));
             return new DelegationResult(report, true, childSid, eventCount);
         } catch (Exception e) {
-            log.warn("子 agent 执行失败: {}", e.toString());
+            log.warn("Sub-agent execution failed: {}", e.toString());
             ctx.events().emit(new SubagentEvent(SubagentEvent.Kind.FAILED,
                     parentSessionId, childSid, persona, 0, e.getMessage()));
-            return new DelegationResult("子任务执行失败: " + e.getMessage(), false, childSid, 0);
+            return new DelegationResult("Subtask execution failed: " + e.getMessage(), false, childSid, 0);
         }
     }
 }

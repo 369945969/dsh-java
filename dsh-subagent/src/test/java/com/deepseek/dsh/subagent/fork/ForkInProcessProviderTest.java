@@ -35,8 +35,8 @@ class ForkInProcessProviderTest {
             Sessions sessions = ctx.require(Sessions.class);
             SessionLog log = sessions.getOrCreate(sessionId);
             log.append(SessionEvent.Type.USER_MESSAGE, SessionEvent.Payload.text(userMessage));
-            log.append(SessionEvent.Type.ASSISTANT_MESSAGE, SessionEvent.Payload.text("子任务完成"));
-            return "子任务完成";
+            log.append(SessionEvent.Type.ASSISTANT_MESSAGE, SessionEvent.Payload.text("Subtask completed"));
+            return "Subtask completed";
         }
     }
 
@@ -92,7 +92,7 @@ class ForkInProcessProviderTest {
             @Override public String systemPrompt() { return ""; }
             @Override
             public String run(SessionId sessionId, ScopeKey scopeKey, Context ctx, String userMessage) {
-                throw new RuntimeException("炸了");
+                throw new RuntimeException("Boom");
             }
         };
 
@@ -107,6 +107,6 @@ class ForkInProcessProviderTest {
         assertEquals(SubagentEvent.Kind.FAILED, events.get(1).kind());
         SubagentEvent failed = events.get(1);
         assertEquals("boom", failed.persona());
-        assertTrue(failed.detail().contains("炸了"));
+        assertTrue(failed.detail().contains("Boom"));
     }
 }

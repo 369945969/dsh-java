@@ -79,8 +79,8 @@ public final class JsonRpcDispatcher {
             JsonNode result = handler.handle(params, ctx(mapper, id, idSeq));
             writeResult(out, id, result);
         } catch (Exception e) {
-            log.warn("[JSON-RPC] 方法 {} 处理失败: {}", method, e.toString());
-            writeError(out, id, -32603, "内部错误: " + e.getMessage());
+            log.warn("[JSON-RPC] Method {} handling failed: {}", method, e.toString());
+            writeError(out, id, -32603, "Internal error: " + e.getMessage());
         }
     }
 

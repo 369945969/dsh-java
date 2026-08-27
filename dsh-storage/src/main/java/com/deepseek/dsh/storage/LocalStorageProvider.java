@@ -56,7 +56,7 @@ public final class LocalStorageProvider
     @Override
     public void registerBackend(String name, StorageBackend backend) {
         if (backends.putIfAbsent(name, backend) != null) {
-            throw new IllegalStateException("存储后端已存在: " + name);
+            throw new IllegalStateException("Storage backend already exists: " + name);
         }
     }
 
@@ -104,7 +104,7 @@ public final class LocalStorageProvider
                 Map<String, String> raw = mapper.readValue(file.toFile(), Map.class);
                 store.putAll(raw);
             } catch (Exception e) {
-                log.warn("加载存储文件失败: {}", e.toString());
+                log.warn("Failed to load storage file: {}", e.toString());
             }
         }
 
@@ -119,7 +119,7 @@ public final class LocalStorageProvider
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING,
                         java.nio.file.StandardCopyOption.ATOMIC_MOVE);
             } catch (Exception e) {
-                log.warn("保存存储文件失败: {}", e.toString());
+                log.warn("Failed to save storage file: {}", e.toString());
             }
         }
 

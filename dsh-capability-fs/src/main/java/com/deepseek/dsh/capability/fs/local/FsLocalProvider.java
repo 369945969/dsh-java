@@ -47,7 +47,7 @@ public final class FsLocalProvider implements FsCapability {
     public String edit(Path path, String oldString, String newString) throws Exception {
         String content = Files.readString(path, StandardCharsets.UTF_8);
         if (!content.contains(oldString)) {
-            throw new IOException("未找到要替换的字符串: " + oldString);
+            throw new IOException("String to replace not found: " + oldString);
         }
         String updated = content.replace(oldString, newString);
         Files.writeString(path, updated, StandardCharsets.UTF_8);

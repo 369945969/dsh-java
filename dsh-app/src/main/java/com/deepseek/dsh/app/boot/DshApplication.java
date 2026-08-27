@@ -49,17 +49,17 @@ public class DshApplication implements AgentContextHolder {
         Path dataDir = Path.of(System.getenv().getOrDefault("DSH_DATA_DIR",
                 Path.of(System.getProperty("user.home"), ".dsh").toString()));
 
-        log.info("装配 profile: model={}, baseUrl={}, dataDir={}", model, baseUrl, dataDir);
+        log.info("Assembling profile: model={}, baseUrl={}, dataDir={}", model, baseUrl, dataDir);
         this.context = Context.root();
         this.runner = new PluginRunner();
         Profile profile = Profile.defaultWeb(apiKey, baseUrl, model, dataDir);
         this.agent = profile.assemble(context, runner);
-        log.info("agent 装配完成: {}", agent.name());
+        log.info("Agent assembled: {}", agent.name());
     }
 
     @PreDestroy
     public void onShutdown() {
-        log.info("卸载插件树...");
+        log.info("Unloading plugin tree...");
         if (runner != null) runner.stop();
         if (context != null) context.dispose();
     }

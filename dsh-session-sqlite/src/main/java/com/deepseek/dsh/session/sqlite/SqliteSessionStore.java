@@ -59,9 +59,9 @@ public final class SqliteSessionStore implements SessionStore, AutoCloseable {
                         session_id, text, content_type, tokenize='unicode61'
                     )
                     """);
-            log.debug("SQLite 会话表已初始化");
+            log.debug("SQLite session table initialized");
         } catch (java.sql.SQLException e) {
-            throw new java.io.IOException("初始化 SQLite 表失败: " + e.getMessage(), e);
+            throw new java.io.IOException("Failed to initialize SQLite table: " + e.getMessage(), e);
         }
     }
 

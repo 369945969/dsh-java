@@ -66,7 +66,7 @@ public final class SessionManager implements Plugin, Sessions, Service {
                     fresh.append(e.type(), e.payload(), e.lineage());
                 }
             } catch (IOException ex) {
-                log.warn("重放会话 {} 历史失败: {}", id, ex.toString());
+                log.warn("Failed to replay session {} history: {}", id, ex.toString());
             }
             return fresh;
         });
@@ -77,7 +77,7 @@ public final class SessionManager implements Plugin, Sessions, Service {
         try {
             store.append(event);
         } catch (IOException e) {
-            log.warn("持久化事件失败 seq={}: {}", event.seq(), e.toString());
+            log.warn("Failed to persist event seq={}: {}", event.seq(), e.toString());
         }
     }
 

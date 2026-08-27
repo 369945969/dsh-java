@@ -126,7 +126,7 @@ public final class LocalWorkspaceRegistry
 
     private Workspace require(WorkspaceId id) {
         Workspace ws = workspaces.get(id);
-        if (ws == null) throw new IllegalArgumentException("工作区不存在: " + id.value());
+        if (ws == null) throw new IllegalArgumentException("Workspace not found: " + id.value());
         return ws;
     }
 
@@ -159,7 +159,7 @@ public final class LocalWorkspaceRegistry
                 }
             }
         } catch (Exception e) {
-            log.warn("加载工作区失败: {}", e.toString());
+            log.warn("Failed to load workspace: {}", e.toString());
         }
     }
 
@@ -180,7 +180,7 @@ public final class LocalWorkspaceRegistry
             }
             Files.writeString(configFile, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(root));
         } catch (IOException e) {
-            log.warn("持久化工作区失败: {}", e.toString());
+            log.warn("Failed to persist workspace: {}", e.toString());
         }
     }
 }

@@ -26,12 +26,12 @@ class SessionLogTest {
     @Test
     void 投影用户与助手消息() {
         var log = new SessionLog(SessionId.of("s1"));
-        log.append(SessionEvent.Type.USER_MESSAGE, SessionEvent.Payload.text("你好"));
-        log.append(SessionEvent.Type.ASSISTANT_MESSAGE, SessionEvent.Payload.text("你好！"));
+        log.append(SessionEvent.Type.USER_MESSAGE, SessionEvent.Payload.text("Hello"));
+        log.append(SessionEvent.Type.ASSISTANT_MESSAGE, SessionEvent.Payload.text("Hello!"));
         var proj = log.deriveMessages();
         assertEquals(2, proj.messages().size());
         assertEquals(ChatMessage.Role.USER, proj.messages().get(0).role());
-        assertEquals("你好", proj.messages().get(0).content());
+        assertEquals("Hello", proj.messages().get(0).content());
         assertEquals(ChatMessage.Role.ASSISTANT, proj.messages().get(1).role());
     }
 
@@ -49,8 +49,8 @@ class SessionLogTest {
     @Test
     void 工具调用与结果配对投影() {
         var log = new SessionLog(SessionId.of("s1"));
-        log.append(SessionEvent.Type.USER_MESSAGE, SessionEvent.Payload.text("列出文件"));
-        log.append(SessionEvent.Type.ASSISTANT_MESSAGE, SessionEvent.Payload.text("调用工具"));
+        log.append(SessionEvent.Type.USER_MESSAGE, SessionEvent.Payload.text("List files"));
+        log.append(SessionEvent.Type.ASSISTANT_MESSAGE, SessionEvent.Payload.text("Invoke tool"));
         log.append(SessionEvent.Type.TOOL_CALL,
                 SessionEvent.Payload.toolCall("bash", "call-1", java.util.Map.of("cmd", "ls")));
         log.append(SessionEvent.Type.TOOL_RESULT,

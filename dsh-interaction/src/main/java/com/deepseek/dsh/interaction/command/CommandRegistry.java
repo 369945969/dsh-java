@@ -29,7 +29,7 @@ public final class CommandRegistry implements Plugin, Commands, Service {
     /** 注册一条命令（可逆）。 */
     public Disposable register(String name, CommandHandler handler) {
         CommandHandler prev = handlers.putIfAbsent(name, handler);
-        if (prev != null) throw new IllegalStateException("命令已注册: " + name);
+        if (prev != null) throw new IllegalStateException("Command already registered: " + name);
         return () -> handlers.remove(name);
     }
 

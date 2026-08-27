@@ -68,7 +68,7 @@ public final class AcpRemoteSubagentProvider
             // 人格前导：把 agent 的系统提示作为前导注入，让远程 agent 承载该人格
             String fullTask = agent.systemPrompt() == null || agent.systemPrompt().isBlank()
                     ? task
-                    : "【人格: " + persona + "】\n" + agent.systemPrompt() + "\n\n任务:\n" + task;
+                    : "[Persona: " + persona + "]\n" + agent.systemPrompt() + "\n\nTask:\n" + task;
             String reply = session.client().prompt(session.sessionId(), fullTask).join().reply();
 
             // 会话事件转发：拉取远程子会话历史投影，统计消息事件数
@@ -86,10 +86,10 @@ public final class AcpRemoteSubagentProvider
 
             return new DelegationResult(reply, true, childSid, eventCount);
         } catch (Exception e) {
-            log.warn("ACP 远程子 agent 委派失败 ({}): {}", persona, e.toString());
+            log.warn("ACP remote sub-agent delegation failed ({}): {}", persona, e.toString());
             ctx.events().emit(new SubagentEvent(SubagentEvent.Kind.FAILED,
                     parentSessionId, null, persona, 0, e.getMessage()));
-            return new DelegationResult("远程子 agent 执行失败: " + e.getMessage(), false);
+            return new DelegationResult("Remote sub-agent execution failed: " + e.getMessage(), false);
         }
     }
 
@@ -98,11 +98,11 @@ public final class AcpRemoteSubagentProvider
         try {
             HarnessClient client = new HarnessClient(runtimeCommand);
             String sessionId = client.createSession().join();
-            log.debug("打开远程子 agent 会话 (persona={}, sid={})", persona, sessionId);
+            log.debug("Opening remote sub-agent session (persona={}, sid={})", persona, sessionId);
             return new RemoteSession(client, sessionId);
         } catch (Exception e) {
             throw new CapabilityException("subagent",
-                    "无法启动远程 agent 运行时: " + runtimeCommand, e);
+                    "Cannot start remote agent runtime: " + runtimeCommand, e);
         }
     }
 
@@ -113,7 +113,7 @@ public final class AcpRemoteSubagentProvider
             try {
                 s.client().close();
             } catch (Exception e) {
-                log.debug("关闭远程子 agent 进程失败: {}", e.toString());
+                log.debug("Failed to close remote sub-agent process: {}", e.toString());
             }
         });
         sessions.clear();

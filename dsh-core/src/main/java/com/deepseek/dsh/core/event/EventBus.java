@@ -58,7 +58,7 @@ public class EventBus {
                 // emit 用直通 next，丢弃返回值
                 ((Listener<E>) l).on(event, value -> value);
             } catch (RuntimeException e) {
-                log.warn("emit 监听器抛异常 {}: {}", event.getClass().getSimpleName(), e.toString());
+                log.warn("emit listener threw exception {}: {}", event.getClass().getSimpleName(), e.toString());
             }
         }
     }
@@ -101,7 +101,7 @@ public class EventBus {
                 // serial 用直通 next，监听器可就地修改事件
                 ((Listener<E>) l).on(event, value -> value);
             } catch (RuntimeException e) {
-                log.warn("serial 监听器抛异常: {}", e.toString());
+                log.warn("serial listener threw exception: {}", e.toString());
             }
             // serial 监听器就地修改事件；调用方重新提取
             acc = extract.apply(event);

@@ -142,7 +142,7 @@ public final class DeepSeekLlmAdapter implements LlmModel {
                                 pub.submit(LlmChunk.delta(content));
                             }
                         } catch (Exception e) {
-                            log.warn("解析流式分块失败: {}", e.toString());
+                            log.warn("Failed to parse streaming chunk: {}", e.toString());
                         }
                     }
 
@@ -210,6 +210,8 @@ public final class DeepSeekLlmAdapter implements LlmModel {
     private LlmResponse parseResponse(JsonNode json) {
         JsonNode choice = json.path("choices").path(0).path("message");
         String content = choice.path("content").asText("");
+        // reasoning 模型（如 glm-5.2 / deepseek-reasoner）在 message.reasoning_content 返回思考内容。
+        String reasoning = choice.path("reasoning_content").asText("");
         String finish = json.path("choices").path(0).path("finish_reason").asText("stop");
 
         List<ChatMessage.ToolCall> toolCalls = new ArrayList<>();
@@ -230,6 +232,6 @@ public final class DeepSeekLlmAdapter implements LlmModel {
                 usage.path("completion_tokens").asInt(0),
                 usage.path("total_tokens").asInt(0));
 
-        return new LlmResponse(content, toolCalls, u, finish);
+        return new LlmResponse(content, reasoning, toolCalls, u, finish);
     }
 }

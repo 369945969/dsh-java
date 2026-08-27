@@ -42,10 +42,10 @@ public final class SkillRegistry
     @Override
     public void register(SkillRegistration skill) {
         if (!SkillService.isSkillName(skill.name())) {
-            throw new IllegalArgumentException("非法技能名: " + skill.name());
+            throw new IllegalArgumentException("Invalid skill name: " + skill.name());
         }
         if (skill.description() == null || skill.description().isEmpty()) {
-            throw new IllegalArgumentException("技能 " + skill.name() + " 需要描述");
+            throw new IllegalArgumentException("Skill " + skill.name() + " requires description");
         }
         SkillInvocationPolicy inv = skill.invocation().orElse(SkillInvocationPolicy.defaultPolicy());
         SkillDefinition def = new SkillDefinition(

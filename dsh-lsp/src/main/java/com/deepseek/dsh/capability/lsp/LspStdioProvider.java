@@ -51,10 +51,10 @@ public final class LspStdioProvider implements LspCapability {
                     "capabilities", Map.of()));
             readResponse(readers.get(serverId)); // 丢弃 initialize 响应
             sendLsp(process, "initialized", Map.of(), true); // notification
-            log.debug("LSP 服务器已启动: {} (id={})", command, serverId);
+            log.debug("LSP server started: {} (id={})", command, serverId);
             return serverId;
         } catch (Exception e) {
-            throw new RuntimeException("无法启动 LSP 服务器: " + e.getMessage(), e);
+            throw new RuntimeException("Cannot start LSP server: " + e.getMessage(), e);
         }
     }
 
@@ -82,7 +82,7 @@ public final class LspStdioProvider implements LspCapability {
             }
             return locations;
         } catch (Exception e) {
-            log.warn("LSP 查询定义失败: {}", e.toString());
+            log.warn("LSP query definition failed: {}", e.toString());
             return List.of();
         }
     }

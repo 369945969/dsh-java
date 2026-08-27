@@ -46,12 +46,12 @@ public final class FileReferenceService
             try {
                 String content = Files.readString(path);
                 if (content.length() > 10000) {
-                    content = content.substring(0, 10000) + "\n…[已截断]";
+                    content = content.substring(0, 10000) + "\n…[truncated]";
                 }
                 return "--- @" + refName + " ---\n" + content;
             } catch (Exception e) {
-                log.warn("读取引用文件 {} 失败: {}", path, e.toString());
-                return "（读取失败: " + refName + "）";
+                    log.warn("Failed to read reference file {}: {}", path, e.toString());
+                return "(Read failed: " + refName + ")";
             }
         });
     }
