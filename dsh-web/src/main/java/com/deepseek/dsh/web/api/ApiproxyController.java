@@ -71,6 +71,7 @@ public class ApiproxyController {
                 case "session.cancel" -> response(rpcId, ok(Map.of("accepted", true)));
                 case "session.rename" -> response(rpcId, ok(Map.of("title", "session", "seq", 0)));
                 case "session.models" -> response(rpcId, ok(sessionModels()));
+                case "settings.mutate", "settings.update", "settings.replace" -> response(rpcId, ok(settingsWrite(payload)));
                 default -> response(rpcId, ok(valueOf(method)));
             };
         } catch (RuntimeException e) {
@@ -112,9 +113,12 @@ public class ApiproxyController {
         SessionLog log = sessions.create();
         SessionId sid = log.sessionId();
         String cwd = System.getProperty("user.dir");
-        // 推 host/session-added + session/subscribed，使前端进入该会话
+        // 推 host/session-added + host/workspace-changed（工作区含新会话）+ session/subscribed，使前端进入该会话
         downlink.sendHostFrame(uuid(), hostFrame("host/session-added",
                 Map.of("sessionId", sid.value(), "blank", true, "cwd", cwd)));
+        Map<String, Object> ws = defaultWorkspace();
+        ws.put("sessionIds", List.of(sid.value()));
+        downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed", ws));
         downlink.sendMuxFrame(uuid(), muxFrame("session/subscribed",
                 Map.of("sessionId", sid.value(), "lastSeq", log.lastSeq())));
         Map<String, Object> v = new LinkedHashMap<>();
@@ -224,7 +228,7 @@ public class ApiproxyController {
             case "session.attachment" -> Map.of();
             case "session.updateQueue" -> Map.of("accepted", true);
             case "session.selectModel" -> Map.of("selected", Map.of("provider", "openai-compatible", "model", currentModelName()));
-            case "workspace.list" -> Map.of("items", List.of(), "archivedSessionIds", List.of());
+            case "workspace.list" -> Map.of("items", List.of(defaultWorkspace()), "archivedSessionIds", List.of());
             case "workspace.create" -> Map.of("workspace", Map.of("workspaceId", UUID.randomUUID().toString(), "title", "workspace", "sessionIds", List.of()), "created", true);
             case "workspace.rename", "workspace.delete", "workspace.insertBefore", "workspace.insertSessionBefore", "workspace.archiveSession" -> Map.of();
             case "settings.describe" -> settingsDescribe();
@@ -246,14 +250,91 @@ public class ApiproxyController {
             default -> Map.of();
         };
     }
-
     private Map<String, Object> settingsDescribe() {
         Map<String, Object> v = new LinkedHashMap<>();
-        v.put("writable", true);
+        v.put("writable", false);
         v.put("hasDocument", false);
         v.put("namespaces", List.of());
         v.put("secrets", List.of());
         return v;
+    }
+
+    /** settings.mutate/update/replace：应用 patch/ops/section 构造 NamespaceValue 并回显，使 welcome 确认持久化、通知关闭。 */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> settingsWrite(Object payload) {
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        String ns = String.valueOf(p.getOrDefault("ns", "ui-onboarding"));
+        Map<String, Object> value = new LinkedHashMap<>();
+        // settings.update: {patch:{field:value}}
+        Object patch = p.get("patch");
+        if (patch instanceof Map<?, ?> pm) for (Object k : pm.keySet()) value.put(String.valueOf(k), pm.get(k));
+        // settings.replace: {section:{...}}
+        Object section = p.get("section");
+        if (section instanceof Map<?, ?> sm) for (Object k : sm.keySet()) value.put(String.valueOf(k), sm.get(k));
+        // settings.mutate: {ops:[{op:'set'|'unset',path:[...],value}]}
+        Object ops = p.get("ops");
+        if (ops instanceof List<?> list) {
+            for (Object o : list) {
+                if (!(o instanceof Map<?, ?> op)) continue;
+                String opName = String.valueOf(op.get("op"));
+                Object pathObj = op.get("path");
+                if (!(pathObj instanceof List<?> path) || path.isEmpty()) continue;
+                String[] keys = path.stream().map(String::valueOf).toArray(String[]::new);
+                if ("set".equals(opName)) {
+                    setNested(value, keys, op.get("value"));
+                } else if ("unset".equals(opName)) {
+                    unsetNested(value, keys);
+                }
+            }
+        }
+        return namespaceView(ns, value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void setNested(Map<String, Object> root, String[] keys, Object val) {
+        Map<String, Object> cur = root;
+        for (int i = 0; i < keys.length - 1; i++) {
+            Object next = cur.get(keys[i]);
+            if (!(next instanceof Map)) { next = new LinkedHashMap<>(); cur.put(keys[i], next); }
+            cur = (Map<String, Object>) next;
+        }
+        cur.put(keys[keys.length - 1], val);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void unsetNested(Map<String, Object> root, String[] keys) {
+        Map<String, Object> cur = root;
+        for (int i = 0; i < keys.length - 1; i++) {
+            Object next = cur.get(keys[i]);
+            if (!(next instanceof Map)) return;
+            cur = (Map<String, Object>) next;
+        }
+        cur.remove(keys[keys.length - 1]);
+    }
+
+    private Map<String, Object> namespaceView(String ns, Map<String, Object> value) {
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("ns", ns);
+        v.put("schema", Map.of());
+        v.put("value", value);
+        v.put("applies", "live");
+        v.put("secrets", List.of());
+        v.put("revision", 1);
+        return v;
+    }
+
+    /** 默认工作区（当前目录），使 hero 的「Choose workspace」可被选中、激活 composer。 */
+    private Map<String, Object> defaultWorkspace() {
+        String cwd = System.getProperty("user.dir");
+        String now = java.time.Instant.now().toString();
+        Map<String, Object> w = new LinkedHashMap<>();
+        w.put("workspaceId", "ws-default");
+        w.put("path", cwd);
+        w.put("title", new java.io.File(cwd).getName());
+        w.put("sessionIds", List.of());
+        w.put("createdAt", now);
+        w.put("updatedAt", now);
+        return w;
     }
 
     private String currentModelName() {
