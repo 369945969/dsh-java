@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.http.ResponseEntity;
 
 import com.deepseek.dsh.agent.Agent;
 import com.deepseek.dsh.llm.config.ModelProfile;
@@ -127,6 +130,30 @@ public class ApiproxyController {
         } catch (RuntimeException e) {
             log.warn("apiproxy {} failed: {}", method, e.toString());
             return response(rpcId, err("internal", e.getMessage()));
+        }
+    }
+
+    /** Session log export: GET /api/session.export?sessionId=… → ZIP download (session .jsonl). */
+    @GetMapping("/session.export")
+    public ResponseEntity<byte[]> sessionExport(@RequestParam String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) return ResponseEntity.badRequest().build();
+        java.nio.file.Path jsonl = java.nio.file.Path.of(
+                System.getProperty("user.home"), ".dsh", "sessions", sessionId + ".jsonl");
+        if (!java.nio.file.Files.isReadable(jsonl)) return ResponseEntity.notFound().build();
+        try {
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            try (var zos = new java.util.zip.ZipOutputStream(baos)) {
+                zos.putNextEntry(new java.util.zip.ZipEntry(sessionId + ".jsonl"));
+                java.nio.file.Files.copy(jsonl, zos);
+                zos.closeEntry();
+            }
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"" + sessionId + ".zip\"")
+                    .header("Content-Type", "application/zip")
+                    .body(baos.toByteArray());
+        } catch (Exception e) {
+            log.warn("session export failed: {}", e.toString());
+            return ResponseEntity.internalServerError().build();
         }
     }
 
