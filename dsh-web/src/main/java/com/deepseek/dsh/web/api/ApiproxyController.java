@@ -23,6 +23,7 @@ import com.deepseek.dsh.session.Sessions;
 import com.deepseek.dsh.session.log.SessionLog;
 import com.deepseek.dsh.web.server.AgentContextHolder;
 import com.deepseek.dsh.web.server.ApiproxyDownlinkRegistry;
+import com.deepseek.dsh.web.server.WorkspaceRegistry;
 
 /**
  * apiproxy JSON-RPC 网关（对接原版 Cordis 前端）—— {@code POST /api/{method}}。
@@ -49,11 +50,13 @@ public class ApiproxyController {
 
     private final AgentContextHolder holder;
     private final ApiproxyDownlinkRegistry downlink;
+    private final WorkspaceRegistry workspaces;
     private final AtomicLong seq = new AtomicLong(0);
 
-    public ApiproxyController(AgentContextHolder holder, ApiproxyDownlinkRegistry downlink) {
+    public ApiproxyController(AgentContextHolder holder, ApiproxyDownlinkRegistry downlink, WorkspaceRegistry workspaces) {
         this.holder = holder;
         this.downlink = downlink;
+        this.workspaces = workspaces;
     }
 
     @PostMapping("/{method:^(?!events\\.).[A-Za-z0-9.]+$}")
@@ -71,6 +74,9 @@ public class ApiproxyController {
                 case "session.rename" -> response(rpcId, ok(Map.of("title", "session", "seq", 0)));
                 case "session.models" -> response(rpcId, ok(sessionModels()));
                 case "settings.mutate", "settings.update", "settings.replace" -> response(rpcId, ok(settingsWrite(payload)));
+                case "workspace.create" -> response(rpcId, ok(workspaceCreate(payload)));
+                case "workspace.list" -> response(rpcId, ok(Map.of("items", workspaces.list(), "archivedSessionIds", List.of())));
+                case "host.listDirectory" -> response(rpcId, ok(listDirectory(payload)));
                 default -> response(rpcId, ok(valueOf(method)));
             };
         } catch (RuntimeException e) {
@@ -113,23 +119,41 @@ public class ApiproxyController {
     // ---- session.create / list ----
 
     private Map<String, Object> sessionCreate(Object payload) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
         Context ctx = holder.context();
         Sessions sessions = ctx.require(Sessions.class);
-        SessionLog log = sessions.create();
-        SessionId sid = log.sessionId();
-        String cwd = System.getProperty("user.dir");
-        // 推 host/session-added + host/workspace-changed（工作区含新会话）+ session/subscribed，使前端进入该会话
+        SessionLog slog = sessions.create();
+        SessionId sid = slog.sessionId();
+        String cwd = p.get("cwd") != null ? String.valueOf(p.get("cwd")) : System.getProperty("user.dir");
+        String workspaceId = p.get("workspaceId") != null ? String.valueOf(p.get("workspaceId")) : null;
+        // 推 host/session-added + 关联工作区 + session/subscribed，使前端进入该会话
         downlink.sendHostFrame(uuid(), hostFrame("host/session-added",
                 Map.of("sessionId", sid.value(), "blank", true, "cwd", cwd)));
-        Map<String, Object> ws = defaultWorkspace();
-        ws.put("sessionIds", List.of(sid.value()));
-        // 注意：host/workspace-changed 的 workspace 须嵌套在 "workspace" 键下（对齐 hostFrameSchema）
-        downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed", Map.of("workspace", ws)));
+        if (workspaceId != null) {
+            Map<String, Object> wv = workspaces.attachSession(workspaceId, sid.value());
+            if (wv != null) downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed", Map.of("workspace", wv)));
+        }
         downlink.sendMuxFrame(uuid(), muxFrame("session/subscribed",
-                Map.of("sessionId", sid.value(), "lastSeq", log.lastSeq())));
+                Map.of("sessionId", sid.value(), "lastSeq", slog.lastSeq())));
         Map<String, Object> v = new LinkedHashMap<>();
         v.put("sessionId", sid.value());
         return v;
+    }
+
+    /** workspace.create({path})：采纳真实目录，建工作区，推 host/workspace-changed。 */
+    private Map<String, Object> workspaceCreate(Object payload) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        String path = p.get("path") != null ? String.valueOf(p.get("path")) : System.getProperty("user.dir");
+        java.io.File dir = new java.io.File(path);
+        if (!dir.isDirectory()) {
+            throw new RuntimeException("workspace-invalid-path: " + path + " 不是目录");
+        }
+        Map<String, Object> result = workspaces.ensure(path);
+        downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed",
+                Map.of("workspace", result.get("workspace"))));
+        return result;
     }
 
     private Map<String, Object> sessionList() {
@@ -349,7 +373,6 @@ public class ApiproxyController {
             case "credentials.describe" -> Map.of("credentials", Map.of());
             case "credentials.set", "credentials.unset" -> Map.of();
             case "host.pickDirectory" -> Map.of("path", (Object) null);
-            case "host.listDirectory" -> Map.of("path", "/", "home", System.getProperty("user.home"), "crumbs", List.of(), "entries", List.of(), "truncated", false);
             case "host.createDirectory" -> Map.of("path", System.getProperty("user.dir"));
             case "host.openPath" -> Map.of("opened", true);
             case "subagent.list", "subagent.history" -> Map.of("items", List.of());
@@ -358,6 +381,37 @@ public class ApiproxyController {
             default -> Map.of();
         };
     }
+    /** host.listDirectory：真实目录列表（供前端 browse 选择器导航 → 选目录建工作区）。 */
+    private Map<String, Object> listDirectory(Object payload) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        String home = System.getProperty("user.home");
+        String path = p.get("path") != null ? String.valueOf(p.get("path")) : home;
+        java.io.File dir = new java.io.File(path);
+        List<Map<String, Object>> entries = new ArrayList<>();
+        boolean truncated = false;
+        if (dir.isDirectory()) {
+            java.io.File[] children = dir.listFiles();
+            if (children != null) {
+                for (java.io.File c : children) {
+                    Map<String, Object> e = new LinkedHashMap<>();
+                    e.put("name", c.getName());
+                    e.put("path", c.getAbsolutePath());
+                    e.put("hidden", c.getName().startsWith("."));
+                    entries.add(e);
+                    if (entries.size() >= 500) { truncated = true; break; }
+                }
+            }
+        }
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("path", dir.getAbsolutePath());
+        v.put("home", home);
+        v.put("crumbs", List.of());
+        v.put("entries", entries);
+        v.put("truncated", truncated);
+        return v;
+    }
+
     private Map<String, Object> settingsDescribe() {
         Map<String, Object> v = new LinkedHashMap<>();
         v.put("writable", false);
