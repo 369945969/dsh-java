@@ -55,7 +55,7 @@ dsh-java/
 ├── dsh-sdk/                     # JSON-RPC 协议 + 客户端 + 服务端（进程外运行时 SDK）
 ├── dsh-web/                     # Spring Boot Web 服务、REST API、SPA 托管
 ├── dsh-app/                     # 启动引导、Profile/Bundle 组合、Spring Boot 入口、RPC/ACP/CLI 入口
-└── dsh-frontend/                # React + Vite 前端（保留原 --dsw-* 风格）
+└── dsh-frontend/                # React + Vite 前端（移植原 Harness --dsw-* 设计令牌 + 组件，对接 Java REST/SSE）
 ```
 
 ## 核心概念与设计模式
@@ -122,6 +122,8 @@ mvn test
 
 # 前端
 cd dsh-frontend && pnpm install && pnpm build
+#   前端产物需复制到 dsh-app 静态资源目录，由后端统一托管：
+cp -r dsh-frontend/dist/* dsh-app/src/main/resources/static/
 ```
 
 ### 单元测试覆盖
