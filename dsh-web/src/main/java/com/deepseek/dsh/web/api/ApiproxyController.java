@@ -232,25 +232,42 @@ public class ApiproxyController {
             Sessions sessions = ctx.require(Sessions.class);
                 SessionLog slog = sessions.get(SessionId.of(sessionId)).orElse(null);
                 if (slog != null) {
-                    for (var msg : slog.deriveMessages().messages()) {
+                var msgs = slog.deriveMessages().messages();
+                for (int i = 0; i < msgs.size(); i++) {
+                    var msg = msgs.get(i);
                     String role = msg.role() == null ? "" : msg.role().name();
                     String content = msg.content() == null ? "" : msg.content();
-                    if ("USER".equals(role)) {
-                        events.add(envelope("user/message", seq[0]++, t++, Map.of(
-                                "id", "u-" + seq[0], "content", List.of(textPart(content)), "source", Map.of("kind", "user"))));
-                    } else if ("ASSISTANT".equals(role)) {
-                        int tn = turn[0]++;
-                        events.add(envelope("turn/start", seq[0]++, t++, Map.of("turn", tn)));
-                        events.add(envelope("step/start", seq[0]++, t++, Map.of("turn", tn, "step", 0)));
-                        events.add(envelope("assistant/message", seq[0]++, t++, Map.of(
+                    boolean isUser = "USER".equals(role);
+                    boolean isAssistant = "ASSISTANT".equals(role);
+                    if (!isUser && !isAssistant) continue;
+                    int tn = turn[0]++;
+                    // 每个回合：turn/start → step/start → user/message → assistant/message → step/end → turn/end（与实时流同构）
+                    events.add(historyEntry(envelope("turn/start", seq[0]++, t++, Map.of("turn", tn))));
+                    events.add(historyEntry(envelope("step/start", seq[0]++, t++, Map.of("turn", tn, "step", 0))));
+                    if (isUser) {
+                        events.add(historyEntry(envelope("user/message", seq[0]++, t++, Map.of(
+                                "id", "u-" + seq[0], "content", List.of(textPart(content)), "source", Map.of("kind", "user")))));
+                        if (i + 1 < msgs.size() && msgs.get(i + 1).role() != null
+                                && "ASSISTANT".equals(msgs.get(i + 1).role().name())) {
+                            i++;
+                            String ac = msgs.get(i).content() == null ? "" : msgs.get(i).content();
+                            events.add(historyEntry(envelope("assistant/message", seq[0]++, t++, Map.of(
+                                    "message", Map.of(
+                                            "id", "a-" + seq[0],
+                                            "content", List.of(textPart(ac)),
+                                            "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
+                                    "turn", tn, "step", 0))));
+                        }
+                    } else {
+                        events.add(historyEntry(envelope("assistant/message", seq[0]++, t++, Map.of(
                                 "message", Map.of(
                                         "id", "a-" + seq[0],
                                         "content", List.of(textPart(content)),
                                         "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
-                                "turn", tn, "step", 0)));
-                        events.add(envelope("step/end", seq[0]++, t++, Map.of("turn", tn, "step", 0)));
-                        events.add(envelope("turn/end", seq[0]++, t++, Map.of("turn", tn, "reason", Map.of("kind", "complete"))));
+                                "turn", tn, "step", 0))));
                     }
+                    events.add(historyEntry(envelope("step/end", seq[0]++, t++, Map.of("turn", tn, "step", 0))));
+                    events.add(historyEntry(envelope("turn/end", seq[0]++, t++, Map.of("turn", tn, "reason", Map.of("kind", "complete")))));
                 }
             }
         } catch (Exception e) {
@@ -263,6 +280,10 @@ public class ApiproxyController {
         Map<String, Object> b = new LinkedHashMap<>();
         b.put("type", "text"); b.put("text", text);
         return b;
+    }
+
+    private static Map<String, Object> historyEntry(Map<String, Object> event) {
+        return Map.of("event", event);
     }
 
     private static Map<String, Object> envelope(String type, long seq, long time, Map<String, Object> data) {
@@ -391,15 +412,21 @@ public class ApiproxyController {
         return v;
     }
 
-    /** 默认工作区（当前目录），使 hero 的「Choose workspace」可被选中、激活 composer。 */
+    /** 默认工作区（当前目录），sessionIds 取自 dsh-java 真实活跃会话，使侧边栏列出可点击的历史会话。 */
     private Map<String, Object> defaultWorkspace() {
         String cwd = System.getProperty("user.dir");
         String now = java.time.Instant.now().toString();
+        List<String> sids = new ArrayList<>();
+        try {
+            Context ctx = holder.context();
+            Sessions sessions = ctx.require(Sessions.class);
+            for (SessionId id : sessions.list()) sids.add(id.value());
+        } catch (Exception ignored) { /* 桥接未就绪时空 */ }
         Map<String, Object> w = new LinkedHashMap<>();
         w.put("workspaceId", "ws-default");
         w.put("path", cwd);
         w.put("title", new java.io.File(cwd).getName());
-        w.put("sessionIds", List.of());
+        w.put("sessionIds", sids);
         w.put("createdAt", now);
         w.put("updatedAt", now);
         return w;
