@@ -192,32 +192,45 @@ public class ApiproxyController {
         downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
                 Map.of("sessionId", sessionId, "running", true)));
 
-        // 2) 异步运行 agent，流式 assistant/chunk
-        Thread.startVirtualThread(() -> runTurn(sessionId, text, turn, step, assistantMsgId));
+        // 2) 异步运行 agent（ReAct 循环，含工具），观察者把 assistant/tool 事件映射为 mux 帧
+        Thread.startVirtualThread(() -> runTurn(sessionId, text, turn, step));
         return Map.of("accepted", true);
     }
 
-    private void runTurn(String sessionId, String text, int turn, int step, String assistantMsgId) {
-        StringBuilder acc = new StringBuilder();
+    private void runTurn(String sessionId, String text, int turn, int step) {
+        String model = currentModelName();
         try {
             Context ctx = holder.context();
             Agent agent = holder.agent();
-            agent.streamChat(SessionId.of(sessionId), ScopeKey.random(), ctx, text, chunk -> {
-                acc.append(chunk);
-                sendSessionEvent(sessionId, "assistant/chunk", Map.of(
-                        "chunk", Map.of("type", "text-delta", "index", 0, "text", chunk),
-                        "turn", turn, "step", step));
+            agent.runObserved(SessionId.of(sessionId), ScopeKey.random(), ctx, text, new com.deepseek.dsh.agent.TurnObserver() {
+                @Override public void onAssistantMessage(String content) {
+                    if (content == null || content.isEmpty()) return;
+                    sendSessionEvent(sessionId, "assistant/chunk", Map.of(
+                            "chunk", Map.of("type", "text-delta", "index", 0, "text", content),
+                            "turn", turn, "step", step));
+                    sendSessionEvent(sessionId, "assistant/message", Map.of(
+                            "message", Map.of(
+                                    "id", "a-" + uuid().substring(0, 8),
+                                    "content", List.of(textPart(content)),
+                                    "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", model)),
+                            "turn", turn, "step", step));
+                }
+                @Override public void onToolCall(String callId, String name, String argumentsJson) {
+                    sendSessionEvent(sessionId, "tool/call", Map.of(
+                            "callId", callId, "name", name, "arguments", argumentsJson,
+                            "turn", turn, "step", step));
+                }
+                @Override public void onToolResult(String callId, String resultText) {
+                    sendSessionEvent(sessionId, "tool/result", Map.of(
+                            "message", Map.of(
+                                    "content", List.of(textPart(resultText)),
+                                    "source", Map.of("callId", callId)),
+                            "turn", turn, "step", step));
+                }
             });
         } catch (Exception e) {
             log.warn("agent 回合失败: {}", e.toString());
         }
-        // 3) assistant/message + step/end + turn/end + 状态归位
-        sendSessionEvent(sessionId, "assistant/message", Map.of(
-                "message", Map.of(
-                        "id", assistantMsgId,
-                        "content", List.of(textPart(acc.toString())),
-                        "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
-                "turn", turn, "step", step));
         sendSessionEvent(sessionId, "step/end", Map.of("turn", turn, "step", step));
         sendSessionEvent(sessionId, "turn/end", Map.of("turn", turn, "reason", Map.of("kind", "complete")));
         downlink.sendHostFrame(uuid(), hostFrame("host/session-status",

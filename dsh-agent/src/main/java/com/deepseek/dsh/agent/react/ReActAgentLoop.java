@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.deepseek.dsh.agent.Agent;
+import com.deepseek.dsh.agent.TurnObserver;
 import com.deepseek.dsh.agent.loop.LoopHierarchy;
 import com.deepseek.dsh.agent.state.ContinueDecision;
 import com.deepseek.dsh.agent.state.StepResult;
@@ -61,6 +62,9 @@ public class ReActAgentLoop implements Agent {
     private final Tools tools;
     private final ToolPipeline pipeline;
 
+    /** 当前 turn 的观察者（线程局部，并发安全）；由 {@link #runObserved} 设置。 */
+    private final ThreadLocal<TurnObserver> observer = new ThreadLocal<>();
+
     public ReActAgentLoop(String name, String systemPrompt, LlmModel model, Tools tools) {
         this(name, systemPrompt, model, tools, new ToolPipeline(tools));
     }
@@ -81,6 +85,21 @@ public class ReActAgentLoop implements Agent {
     @Override
     public String name() {
         return name;
+    }
+
+    /**
+     * 带 {@link TurnObserver} 运行一个 turn：设置线程局部观察者后委托 {@link #run}，
+     * 循环内触发 onAssistantMessage/onToolCall/onToolResult。结束后清除观察者。
+     */
+    @Override
+    public String runObserved(SessionId sessionId, ScopeKey scopeKey, Context ctx,
+                               String userMessage, TurnObserver obs) throws Exception {
+        observer.set(obs);
+        try {
+            return run(sessionId, scopeKey, ctx, userMessage);
+        } finally {
+            observer.remove();
+        }
     }
 
     @Override
@@ -193,6 +212,8 @@ public class ReActAgentLoop implements Agent {
         SessionEvent assistantEvent = sessionLog.append(SessionEvent.Type.ASSISTANT_MESSAGE,
                 SessionEvent.Payload.text(response.content()));
         ctx.require(Sessions.class).persist(assistantEvent);
+        TurnObserver o = observer.get();
+        if (o != null) o.onAssistantMessage(response.content());
 
         // 5. 执行工具调用（如果有）
         if (response.toolCalls() != null && !response.toolCalls().isEmpty()) {
@@ -246,6 +267,8 @@ public class ReActAgentLoop implements Agent {
 
         // 经管线执行
         ToolContext toolCtx = new ToolContext(sessionId, scopeKey, ctx);
+        TurnObserver o = observer.get();
+        if (o != null) o.onToolCall(tc.id(), tc.name(), tc.argumentsJson());
         ToolExecutionResult result = pipeline.execute(
                 new ToolExecutionRequest(tc.name(), tc.id(), args, toolCtx));
 
@@ -253,6 +276,7 @@ public class ReActAgentLoop implements Agent {
         SessionEvent resultEvent = sessionLog.append(SessionEvent.Type.TOOL_RESULT,
                 SessionEvent.Payload.toolResult(tc.id(), result.text()));
         sessions.persist(resultEvent);
+        if (o != null) o.onToolResult(tc.id(), result.text());
     }
 
     /**

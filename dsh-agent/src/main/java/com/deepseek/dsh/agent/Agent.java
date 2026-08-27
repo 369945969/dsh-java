@@ -57,4 +57,16 @@ public interface Agent {
         if (reply != null && !reply.isEmpty()) deltaSink.accept(reply);
         return reply;
     }
+
+    /**
+     * 带 {@link TurnObserver} 运行一个 turn：在 ReAct 循环中触发 onAssistantMessage/onToolCall/onToolResult。
+     * 默认实现忽略观察者、委托 {@link #run}（纯对话实现可保持默认；ReAct 实现覆写以注入观察者）。
+     *
+     * @param obs turn 观察者
+     * @return 最终助手回复
+     */
+    default String runObserved(SessionId sessionId, ScopeKey scopeKey, Context ctx,
+                               String userMessage, TurnObserver obs) throws Exception {
+        return run(sessionId, scopeKey, ctx, userMessage);
+    }
 }
