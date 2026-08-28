@@ -561,20 +561,25 @@ public class ApiproxyController {
                                 && "ASSISTANT".equals(msgs.get(i + 1).role().name())) {
                             i++;
                             String ac = msgs.get(i).content() == null ? "" : msgs.get(i).content();
+                            // 工具调用步的助手消息内容为空（仅 tool_calls）——跳过，避免 UI 渲染占位“-”（与实时流 onAssistantMessage 的空内容跳过一致）
+                            if (!ac.isBlank()) {
+                                events.add(historyEntry(envelope("assistant/message", seq[0]++, t++, Map.of(
+                                        "message", Map.of(
+                                                "id", "a-" + seq[0],
+                                                "content", List.of(textPart(ac)),
+                                                "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
+                                        "turn", tn, "step", 0))));
+                            }
+                        }
+                    } else {
+                        if (!content.isBlank()) {
                             events.add(historyEntry(envelope("assistant/message", seq[0]++, t++, Map.of(
                                     "message", Map.of(
                                             "id", "a-" + seq[0],
-                                            "content", List.of(textPart(ac)),
+                                            "content", List.of(textPart(content)),
                                             "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
                                     "turn", tn, "step", 0))));
                         }
-                    } else {
-                        events.add(historyEntry(envelope("assistant/message", seq[0]++, t++, Map.of(
-                                "message", Map.of(
-                                        "id", "a-" + seq[0],
-                                        "content", List.of(textPart(content)),
-                                        "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
-                                "turn", tn, "step", 0))));
                     }
                     events.add(historyEntry(envelope("step/end", seq[0]++, t++, Map.of("turn", tn, "step", 0))));
                     events.add(historyEntry(envelope("turn/end", seq[0]++, t++, Map.of("turn", tn, "reason", Map.of("kind", "complete")))));

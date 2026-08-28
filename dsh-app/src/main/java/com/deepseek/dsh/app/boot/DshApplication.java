@@ -31,6 +31,8 @@ public class DshApplication implements AgentContextHolder {
     private Context context;
     private PluginRunner runner;
     private Agent agent;
+    /** 装配完成闩：ApplicationReadyEvent 在 Web 已收连接后才触发，装配与首批请求存在竞态——装配完成前到达的请求阻塞等待，而非 NPE/「未注册服务」。 */
+    private final java.util.concurrent.CountDownLatch readyLatch = new java.util.concurrent.CountDownLatch(1);
 
     public static void main(String[] args) {
         SpringApplication.run(DshApplication.class, args);
@@ -49,12 +51,17 @@ public class DshApplication implements AgentContextHolder {
         Path dataDir = Path.of(System.getenv().getOrDefault("DSH_DATA_DIR",
                 Path.of(System.getProperty("user.home"), ".dsh").toString()));
 
-        log.info("Assembling profile: model={}, baseUrl={}, dataDir={}", model, baseUrl, dataDir);
-        this.context = Context.root();
-        this.runner = new PluginRunner();
-        Profile profile = Profile.defaultWeb(apiKey, baseUrl, model, dataDir);
-        this.agent = profile.assemble(context, runner);
-        log.info("Agent assembled: {}", agent.name());
+        try {
+            log.info("Assembling profile: model={}, baseUrl={}, dataDir={}", model, baseUrl, dataDir);
+            this.context = Context.root();
+            this.runner = new PluginRunner();
+            Profile profile = Profile.defaultWeb(apiKey, baseUrl, model, dataDir);
+            this.agent = profile.assemble(context, runner);
+            log.info("Agent assembled: {}", agent.name());
+        } finally {
+            // 无论装配成功与否都放行等待中的请求；装配失败时 context/agent 仍为 null，由调用方处理
+            readyLatch.countDown();
+        }
     }
 
     @PreDestroy
@@ -66,11 +73,21 @@ public class DshApplication implements AgentContextHolder {
 
     @Override
     public Context context() {
+        awaitReady();
         return context;
     }
 
     @Override
     public Agent agent() {
+        awaitReady();
         return agent;
+    }
+
+    private void awaitReady() {
+        try {
+            readyLatch.await(30, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }
