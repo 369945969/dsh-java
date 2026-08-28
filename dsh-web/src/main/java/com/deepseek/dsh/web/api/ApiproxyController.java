@@ -76,6 +76,8 @@ public class ApiproxyController {
 
     /** session.cancel 标记的取消会话（不依赖 interrupt 是否生效，直接设标记）。 */
     private final java.util.Set<String> cancelledSessions = ConcurrentHashMap.newKeySet();
+    /** 每会话选定的模型（session.selectModel 写入）；runTurn 读取，缺省回退 active profile 的 model。 */
+    private final ConcurrentMap<String, String> sessionModelSelection = new ConcurrentHashMap<>();
 
     /** 系统 agent 预设名单（id/显示名/说明）。用户预设存于 ~/.dsh/presets/*.yml。 */
     private static final String[][] SYSTEM_PRESETS = {
@@ -105,6 +107,7 @@ public class ApiproxyController {
                 case "session.fork" -> response(rpcId, ok(sessionFork(payload)));
                 case "session.rename" -> response(rpcId, ok(sessionRename(payload)));
                 case "session.models" -> response(rpcId, ok(sessionModels()));
+                case "session.selectModel" -> response(rpcId, ok(sessionSelectModel(payload)));
                 case "settings.describe" -> response(rpcId, ok(settingsDescribe()));
                 case "settings.openDocument" -> response(rpcId, ok(openSettingsDocument()));
                 case "settings.mutate", "settings.update", "settings.replace" -> response(rpcId, ok(settingsWrite(payload)));
@@ -399,12 +402,47 @@ public class ApiproxyController {
         Map<String, Object> sel = new LinkedHashMap<>();
         sel.put("provider", "openai-compatible");
         sel.put("model", model);
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", model); m.put("name", model);
+        // 列出 active profile 的 models 数组里全部模型（用户在设置里添加的模型也出现在选择器）
+        List<Map<String, Object>> models = new ArrayList<>();
+        ModelProfile ap = activeProfile();
+        if (ap != null && ap.models() != null) {
+            for (Map<String, Object> mm : ap.models()) {
+                Object idObj = mm.getOrDefault("id", mm.get("name"));
+                String id = idObj == null ? "" : String.valueOf(idObj);
+                if (id.isEmpty() || "null".equals(id)) continue;
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("id", id);
+                Object nameObj = mm.get("name");
+                entry.put("name", nameObj == null || String.valueOf(nameObj).isEmpty() ? id : String.valueOf(nameObj));
+                models.add(entry);
+            }
+        }
+        if (models.isEmpty()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", model); m.put("name", model);
+            models.add(m);
+        }
         Map<String, Object> group = new LinkedHashMap<>();
         group.put("id", "openai-compatible"); group.put("name", "OpenAI Compatible");
-        group.put("models", List.of(m));
+        group.put("models", models);
         return Map.of("current", sel, "routable", true, "groups", List.of(group), "failures", List.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> sessionSelectModel(Object payload) {
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        String sessionId = String.valueOf(p.getOrDefault("sessionId", ""));
+        String model = String.valueOf(p.getOrDefault("model", currentModelName()));
+        if (model.isEmpty() || "null".equals(model)) model = currentModelName();
+        if (!sessionId.isEmpty() && !"null".equals(sessionId)) sessionModelSelection.put(sessionId, model);
+        // agent 从 active profile 读模型，故把 active profile 的 model 字段切到所选模型，使聊天实际用它
+        ModelProfileStore s = storeOrNone();
+        ModelProfile ap = activeProfile();
+        if (s != null && ap != null && !model.equals(ap.model())) {
+            s.upsert(new ModelProfile(ap.id(), ap.displayName(), ap.apiKey(), ap.baseUrl(), model, ap.models(), ap.route()));
+            s.setActive(ap.id());
+        }
+        return Map.of("selected", Map.of("provider", "openai-compatible", "model", model));
     }
 
     // ---- session.prompt → agent → frames ----
@@ -465,7 +503,7 @@ public class ApiproxyController {
     }
 
     private void runTurn(String sessionId, String text, int turn) {
-        String model = currentModelName();
+        String model = sessionModelSelection.getOrDefault(sessionId, currentModelName());
         // 当前 step 索引：-1 表示尚无模型回复。每次 onAssistantMessage 先收尾上一 step（step/end），
         // 再自增并开新 step（step/start），保证 step/start↔step/end 严格嵌套、节点 id（turn:step）唯一，避免「more than one start Match」。
         int[] step = {-1};
@@ -517,6 +555,29 @@ public class ApiproxyController {
             });
         } catch (Exception e) {
             log.warn("agent turn {}: {}", Thread.currentThread().isInterrupted() ? "cancelled" : "failed", e.toString());
+            // 把 agent/模型失败的原因作为 assistant 消息推入聊天流，让用户在聊天框看到具体错误
+            // （如 LLM stream error 403 / Model.AccessDenied），而不是静默「无回复」。
+            if (!cancelledSessions.contains(sessionId)) {
+                if (step[0] < 0) { step[0] = 0; sendSessionEvent(sessionId, "step/start", Map.of("turn", turn, "step", step[0])); }
+                String detail = e.getMessage();
+                Throwable cause = e.getCause();
+                if (cause != null && cause.getMessage() != null) detail += " — " + cause.getMessage();
+                String errMsg = "模型调用失败：" + detail;
+                sendSessionEvent(sessionId, "assistant/chunk", Map.of(
+                        "chunk", Map.of("type", "text-delta", "index", 0, "text", errMsg),
+                        "turn", turn, "step", step[0]));
+                sendSessionEvent(sessionId, "assistant/message", Map.of(
+                        "message", Map.of(
+                                "id", "a-err-" + uuid().substring(0, 8),
+                                "content", List.of(textPart(errMsg)),
+                                "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", model)),
+                        "turn", turn, "step", step[0]));
+                // 记入 session log，使 session.history 回放也含该错误（UI 刷新/重连后仍可见，不只走实时 mux）
+                try {
+                    SessionLog slog = holder.context().require(Sessions.class).get(SessionId.of(sessionId)).orElse(null);
+                    if (slog != null) slog.append(SessionEvent.Type.ASSISTANT_MESSAGE, SessionEvent.Payload.text(errMsg));
+                } catch (Exception ignored) { /* session log 不可用时仅实时 mux 推送 */ }
+            }
         } finally {
             runningTurns.remove(sessionId);
         }
@@ -939,10 +1000,10 @@ public class ApiproxyController {
         return routeToProfileId.get(route);
     }
 
-    /** 启动后为每个档案确保有持久化 route：旧档案无 route 则从 model 名派生唯一路由并回写，再重建 routeToProfileId，使所有档案跨重启按 route 展示。 */
+    /** 为每个档案确保有 route：无 route 则从 model/displayName 派生唯一路由并回写，再重建 routeToProfileId。
+     *  每次调用都跑（幂等：已有 route 的档案跳过 upsert）—— 这样会话中途新增的档案也能立即拿到 route，
+     *  llm.providers 随即列出，UI 无需重启即可显示（修复「创建提供方后不显示」）。 */
     private void ensureRoutes() {
-        if (routesSeeded) return;
-        routesSeeded = true;
         ModelProfileStore s = storeOrNone();
         if (s == null) return;
         java.util.Set<String> taken = new java.util.HashSet<>();

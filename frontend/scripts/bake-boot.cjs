@@ -26,14 +26,15 @@ const path = require('node:path')
 
 const FRONTEND_ROOT = path.resolve(__dirname, '..')
 const DIST_INDEX = path.join(FRONTEND_ROOT, 'apps', 'web', 'dist', 'index.html')
-// Browser plugins `dsh web` mounts dynamically via the directory-picker-auto
-// host plugin (which itself needs the Cordis host — absent under dsh-app's
-// static serve). Statically baking BOTH -browse and -native makes each register
+// The web profile mounts ONE directory-picker surface via the directory-picker-auto
+// host plugin (browse for web, native for electron/tauri). That host plugin needs
+// the Cordis host — absent under dsh-app's static serve — so we bake the web
+// surface directly. Bake ONLY -browse (the <input webkitdirectory> variant); -native
+// needs a node FS backend unavailable here, and baking BOTH makes each register
 // the single slot `conversation.hero.workspace.directoryFlow` at priority 0 →
-// conflict. Exclude both; the picker surface renders empty (a minor gap) but
-// the shell boots clean. Every other dsh.client.platform=web package is baked.
+// conflict. With only -browse it is the sole registrant → no conflict and the
+// workspace directory picker (gated on that slot being occupied) renders.
 const EXCLUDE = new Set([
-  '@deepseek-ai/dsh-client-ui-directory-picker-browse',
   '@deepseek-ai/dsh-client-ui-directory-picker-native',
 ])
 
