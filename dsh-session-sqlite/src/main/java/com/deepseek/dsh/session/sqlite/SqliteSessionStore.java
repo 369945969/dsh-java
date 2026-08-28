@@ -113,7 +113,7 @@ public final class SqliteSessionStore implements SessionStore, AutoCloseable {
                         String toolCallId = rs.getString("tool_call_id");
                         String createdAt = rs.getString("created_at");
                         SessionEvent.Payload payload = new SessionEvent.Payload(
-                                text, java.util.Map.of(), toolName, toolCallId);
+                                text, java.util.Map.of(), toolName, toolCallId, null);
                         out.add(new SessionEvent(seq, sessionId, type, payload,
                                 java.time.Instant.parse(createdAt), SessionEvent.Lineage.root()));
                     }

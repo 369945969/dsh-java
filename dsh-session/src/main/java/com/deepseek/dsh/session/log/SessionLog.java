@@ -50,6 +50,11 @@ public final class SessionLog {
         return events.isEmpty() ? -1 : events.get(events.size() - 1).seq();
     }
 
+    /** 全部原始事件的不可变快照（供历史重放遍历原始事件，含 TOOL_CALL/TOOL_RESULT/推理）。 */
+    public synchronized List<SessionEvent> events() {
+        return List.copyOf(events);
+    }
+
     /** 追加一条事件（不可变）。 */
     public synchronized SessionEvent append(SessionEvent.Type type, SessionEvent.Payload payload) {
         long seq = nextSeq.getAndIncrement();

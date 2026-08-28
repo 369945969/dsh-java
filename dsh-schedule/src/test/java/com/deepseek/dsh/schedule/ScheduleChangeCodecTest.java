@@ -82,7 +82,7 @@ class ScheduleChangeCodecTest {
     void extractIgnoresNonScheduleCommands() {
         SessionLog session = new SessionLog(SessionId.of("ses-1"));
         session.append(SessionEvent.Type.COMMAND,
-                new SessionEvent.Payload(null, java.util.Map.of("feedback", "record", "text", "hi"), null, null));
+                new SessionEvent.Payload(null, java.util.Map.of("feedback", "record", "text", "hi"), null, null, null));
         session.append(SessionEvent.Type.USER_MESSAGE, SessionEvent.Payload.text("hello"));
         assertTrue(ScheduleChangeCodec.extract(session.snapshot()).isEmpty());
     }
@@ -95,7 +95,7 @@ class ScheduleChangeCodecTest {
         SessionEvent scheduleEvent = session.snapshot().get(0);
 
         session.append(SessionEvent.Type.COMMAND,
-                new SessionEvent.Payload(null, java.util.Map.of("other", "x"), null, null));
+                new SessionEvent.Payload(null, java.util.Map.of("other", "x"), null, null, null));
         SessionEvent otherEvent = session.snapshot().get(1);
 
         assertTrue(ScheduleChangeCodec.isScheduleChange(scheduleEvent));
@@ -105,14 +105,14 @@ class ScheduleChangeCodecTest {
     @Test
     void decodeRejectsBadVersion() {
         SessionEvent.Payload bad = new SessionEvent.Payload(null,
-                java.util.Map.of("schedule", "change", "version", 2, "operation", "create"), null, null);
+                java.util.Map.of("schedule", "change", "version", 2, "operation", "create"), null, null, null);
         assertThrows(ScheduleException.class, () -> ScheduleChangeCodec.decode(bad));
     }
 
     @Test
     void decodeRejectsBadOperation() {
         SessionEvent.Payload bad = new SessionEvent.Payload(null,
-                java.util.Map.of("schedule", "change", "version", 1, "operation", "nope"), null, null);
+                java.util.Map.of("schedule", "change", "version", 1, "operation", "nope"), null, null, null);
         assertThrows(ScheduleException.class, () -> ScheduleChangeCodec.decode(bad));
     }
 

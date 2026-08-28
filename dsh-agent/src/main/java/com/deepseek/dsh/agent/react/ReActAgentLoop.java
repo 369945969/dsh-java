@@ -232,9 +232,9 @@ public class ReActAgentLoop implements Agent {
             if (o != null) o.onAssistantChunk(chunk.delta(), chunk.reasoningDelta());
         });
 
-        // 4. 记录助手消息到日志
+        // 4. 记录助手消息到日志（含推理 reasoning，供历史重放思维链）
         SessionEvent assistantEvent = sessionLog.append(SessionEvent.Type.ASSISTANT_MESSAGE,
-                SessionEvent.Payload.text(response.content()));
+                SessionEvent.Payload.textWithReasoning(response.content(), response.reasoning()));
         ctx.require(Sessions.class).persist(assistantEvent);
         if (o != null) o.onAssistantMessage(response.content(), response.reasoning());
 

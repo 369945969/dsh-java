@@ -52,21 +52,28 @@ public record SessionEvent(
             String text,
             /** 结构化内容（工具调用的参数、结果 JSON 等）。 */
             Map<String, Object> structured,
-            /** 工具名（仅 TOOL_CALL / TOOL_RESULT 有意义）。 */
+            /** 工具名（仅 TOOL_CALL / TOOL_RESULT 有义）。 */
             String toolName,
             /** 工具调用 ID（关联 TOOL_CALL 与 TOOL_RESULT）。 */
-            String toolCallId
+            String toolCallId,
+            /** 助手消息的推理/思考内容（reasoning_content，仅 ASSISTANT_MESSAGE 有义；模型可见投影只用 text，不回放推理）。 */
+            String reasoning
     ) {
         public static Payload text(String text) {
-            return new Payload(text, Map.of(), null, null);
+            return new Payload(text, Map.of(), null, null, null);
+        }
+
+        /** 助手消息负载：正文 content + 推理 reasoning（reasoning 可为 null/空）。 */
+        public static Payload textWithReasoning(String content, String reasoning) {
+            return new Payload(content, Map.of(), null, null, reasoning);
         }
 
         public static Payload toolCall(String toolName, String toolCallId, Map<String, Object> args) {
-            return new Payload(null, args, toolName, toolCallId);
+            return new Payload(null, args, toolName, toolCallId, null);
         }
 
         public static Payload toolResult(String toolCallId, String text) {
-            return new Payload(text, Map.of(), null, toolCallId);
+            return new Payload(text, Map.of(), null, toolCallId, null);
         }
     }
 

@@ -87,14 +87,14 @@ class FeedbackCommandTest {
     void feedbackRecordDecodeIgnoresNonFeedbackCommands() {
         SessionLog session = newSession();
         session.append(SessionEvent.Type.COMMAND,
-                new SessionEvent.Payload(null, java.util.Map.of("feedback", "other"), null, null));
+                new SessionEvent.Payload(null, java.util.Map.of("feedback", "other"), null, null, null));
         assertNull(FeedbackRecord.decode(session.snapshot().get(0).payload()));
     }
 
     @Test
     void feedbackRecordDecodeNullPayload() {
         assertNull(FeedbackRecord.decode(null));
-        assertNull(FeedbackRecord.decode(new SessionEvent.Payload(null, java.util.Map.of(), null, null)));
+        assertNull(FeedbackRecord.decode(new SessionEvent.Payload(null, java.util.Map.of(), null, null, null)));
     }
 
     @Test

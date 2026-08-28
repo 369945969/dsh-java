@@ -542,50 +542,79 @@ public class ApiproxyController {
             Sessions sessions = ctx.require(Sessions.class);
                 SessionLog slog = sessions.get(SessionId.of(sessionId)).orElse(null);
                 if (slog != null) {
-                var msgs = slog.deriveMessages().messages();
-                for (int i = 0; i < msgs.size(); i++) {
-                    var msg = msgs.get(i);
-                    String role = msg.role() == null ? "" : msg.role().name();
-                    String content = msg.content() == null ? "" : msg.content();
-                    boolean isUser = "USER".equals(role);
-                    boolean isAssistant = "ASSISTANT".equals(role);
-                    if (!isUser && !isAssistant) continue;
-                    int tn = turn[0]++;
-                    // 每个回合：turn/start → step/start → user/message → assistant/message → step/end → turn/end（与实时流同构）
-                    // 事件 seq 用全局 mux seq（seq.getAndIncrement，与 sendSessionEvent 同源），避免历史重放与实时流分属不同 seq 空间致前端去重/乱序
-                    events.add(historyEntry(envelope("turn/start", seq.getAndIncrement(), t++, Map.of("turn", tn))));
-                    events.add(historyEntry(envelope("step/start", seq.getAndIncrement(), t++, Map.of("turn", tn, "step", 0))));
-                    if (isUser) {
-                        events.add(historyEntry(envelope("user/message", seq.getAndIncrement(), t++, Map.of(
-                                "id", "u-" + idc[0]++, "content", List.of(textPart(content)), "source", Map.of("kind", "user")))));
-                        if (i + 1 < msgs.size() && msgs.get(i + 1).role() != null
-                                && "ASSISTANT".equals(msgs.get(i + 1).role().name())) {
-                            i++;
-                            String ac = msgs.get(i).content() == null ? "" : msgs.get(i).content();
-                            // 工具调用步的助手消息内容为空（仅 tool_calls）——跳过，避免 UI 渲染占位"-"（与实时流 onAssistantMessage 的空内容跳过一致）
-                            if (!ac.isBlank()) {
-                                events.add(historyEntry(envelope("assistant/message", seq.getAndIncrement(), t++, Map.of(
-                                        "message", Map.of(
-                                                "id", "a-" + idc[0]++,
-                                                "content", List.of(textPart(ac)),
-                                                "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
-                                        "turn", tn, "step", 0))));
+                    int[] step = {0};
+                    boolean[] turnOpen = {false};
+                    // 遍历原始事件重放完整轨迹：用户/助手消息 + 思维链(reasoning) + 工具调用/结果，
+                    // 使刷新页面后思维链与工具调用仍可见（与实时流帧同构）。
+                    for (SessionEvent e : slog.events()) {
+                        switch (e.type()) {
+                            case USER_MESSAGE -> {
+                                if (turnOpen[0]) {
+                                    events.add(historyEntry(envelope("step/end", seq.getAndIncrement(), t++, Map.of("turn", turn[0] - 1, "step", step[0]))));
+                                    events.add(historyEntry(envelope("turn/end", seq.getAndIncrement(), t++, Map.of("turn", turn[0] - 1, "reason", Map.of("kind", "complete")))));
+                                }
+                                int tn = turn[0]++;
+                                step[0] = 0;
+                                turnOpen[0] = true;
+                                events.add(historyEntry(envelope("turn/start", seq.getAndIncrement(), t++, Map.of("turn", tn))));
+                                events.add(historyEntry(envelope("step/start", seq.getAndIncrement(), t++, Map.of("turn", tn, "step", step[0]))));
+                                String uc = e.payload().text() == null ? "" : e.payload().text();
+                                events.add(historyEntry(envelope("user/message", seq.getAndIncrement(), t++, Map.of(
+                                        "id", "u-" + idc[0]++, "content", List.of(textPart(uc)), "source", Map.of("kind", "user")))));
                             }
-                        }
-                    } else {
-                        if (!content.isBlank()) {
-                            events.add(historyEntry(envelope("assistant/message", seq.getAndIncrement(), t++, Map.of(
-                                    "message", Map.of(
-                                            "id", "a-" + idc[0]++,
-                                            "content", List.of(textPart(content)),
-                                            "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
-                                    "turn", tn, "step", 0))));
+                            case ASSISTANT_MESSAGE -> {
+                                if (turnOpen[0]) {
+                                    int tn = turn[0] - 1;
+                                    String content = e.payload().text() == null ? "" : e.payload().text();
+                                    String reasoning = e.payload().reasoning();
+                                    if (reasoning != null && !reasoning.isBlank()) {
+                                        events.add(historyEntry(envelope("assistant/chunk", seq.getAndIncrement(), t++, Map.of(
+                                                "chunk", Map.of("type", "reasoning-delta", "index", 0, "text", reasoning),
+                                                "turn", tn, "step", step[0]))));
+                                    }
+                                    if (!content.isBlank()) {
+                                        events.add(historyEntry(envelope("assistant/message", seq.getAndIncrement(), t++, Map.of(
+                                                "message", Map.of(
+                                                        "id", "a-" + idc[0]++,
+                                                        "content", List.of(textPart(content)),
+                                                        "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
+                                                "turn", tn, "step", step[0]))));
+                                    }
+                                }
+                            }
+                            case TOOL_CALL -> {
+                                if (turnOpen[0]) {
+                                    int tn = turn[0] - 1;
+                                    events.add(historyEntry(envelope("tool/call", seq.getAndIncrement(), t++, Map.of(
+                                            "callId", e.payload().toolCallId() == null ? "" : e.payload().toolCallId(),
+                                            "name", e.payload().toolName() == null ? "" : e.payload().toolName(),
+                                            "arguments", toolArgsJson(e.payload().structured()),
+                                            "turn", tn, "step", step[0]))));
+                                }
+                            }
+                            case TOOL_RESULT -> {
+                                if (turnOpen[0]) {
+                                    int tn = turn[0] - 1;
+                                    Map<String, Object> toolResultBlock = new LinkedHashMap<>();
+                                    toolResultBlock.put("type", "tool-result");
+                                    toolResultBlock.put("toolCallId", e.payload().toolCallId() == null ? "" : e.payload().toolCallId());
+                                    toolResultBlock.put("content", List.of(textPart(e.payload().text())));
+                                    toolResultBlock.put("isError", false);
+                                    Map<String, Object> msg = new LinkedHashMap<>();
+                                    msg.put("content", List.of(toolResultBlock));
+                                    msg.put("source", Map.of("callId", e.payload().toolCallId() == null ? "" : e.payload().toolCallId()));
+                                    events.add(historyEntry(envelope("tool/result", seq.getAndIncrement(), t++, Map.of(
+                                            "message", msg, "turn", tn, "step", step[0]))));
+                                }
+                            }
+                            default -> {}
                         }
                     }
-                    events.add(historyEntry(envelope("step/end", seq.getAndIncrement(), t++, Map.of("turn", tn, "step", 0))));
-                    events.add(historyEntry(envelope("turn/end", seq.getAndIncrement(), t++, Map.of("turn", tn, "reason", Map.of("kind", "complete")))));
+                    if (turnOpen[0]) {
+                        events.add(historyEntry(envelope("step/end", seq.getAndIncrement(), t++, Map.of("turn", turn[0] - 1, "step", step[0]))));
+                        events.add(historyEntry(envelope("turn/end", seq.getAndIncrement(), t++, Map.of("turn", turn[0] - 1, "reason", Map.of("kind", "complete")))));
+                    }
                 }
-            }
         } catch (Exception e) {
             log.warn("session.history failed: {}", e.toString());
         }
@@ -606,6 +635,15 @@ public class ApiproxyController {
         }
         return Map.of("events", events, "hasMore", false,
                 "projections", Map.of("asOfSeq", lastSeq, "values", Map.of("title", histTitle)));
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON_MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** 工具调用参数 Map → JSON 字符串（历史重放的 tool/call.arguments 需字符串，对齐实时流）。 */
+    private static String toolArgsJson(Map<String, Object> args) {
+        if (args == null || args.isEmpty()) return "{}";
+        try { return JSON_MAPPER.writeValueAsString(args); }
+        catch (Exception ex) { return "{}"; }
     }
 
     private static Map<String, Object> textPart(String text) {

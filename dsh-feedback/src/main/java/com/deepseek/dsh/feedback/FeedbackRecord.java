@@ -23,7 +23,7 @@ public final class FeedbackRecord {
 
     /** 把一条已规整化的反馈文本编码为 COMMAND 事件的结构化负载。 */
     public static SessionEvent.Payload encode(String text) {
-        return new SessionEvent.Payload(null, Map.of("feedback", "record", "text", text), null, null);
+        return new SessionEvent.Payload(null, Map.of("feedback", "record", "text", text), null, null, null);
     }
 
     /** 从 COMMAND 事件的结构化负载中提取反馈文本（若为 feedback/record 动作）。 */

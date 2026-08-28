@@ -43,7 +43,7 @@ public final class ScheduleChangeCodec {
                 }
             }
         }
-        return new SessionEvent.Payload(null, payload, null, null);
+        return new SessionEvent.Payload(null, payload, null, null, null);
     }
 
     /** 从 COMMAND 事件的结构化负载解码一条 {@link ScheduleChange}（若为调度变更）。 */
