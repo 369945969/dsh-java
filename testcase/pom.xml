@@ -12,7 +12,10 @@
     <name>RPC 集成测试（基于 dsh SDK）</name>
     <description>用 dsh SDK 客户端进程内驱动 DshRpcServer，验证后端 RPC 提供的全部功能。
         使用环境变量 DEEPSEEK_API_KEY/DSH_BASE_URL/DSH_MODEL 配置的真实模型（如阿里云 glm-5.2）；
-        无 key 时整套测试通过 assumeTrue 跳过，不影响常规构建。</description>
+        无 key 时整套测试通过 assumeTrue 跳过，不影响常规构建。    </description>
+    <properties>
+        <exec.mainClass>com.deepseek.dsh.testcase.RpcE2e</exec.mainClass>
+    </properties>
     <dependencies>
         <dependency>
             <groupId>com.deepseek.dsh</groupId>
@@ -34,7 +37,7 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.4.1</version>
                 <configuration>
-                    <mainClass>com.deepseek.dsh.testcase.RpcE2e</mainClass>
+                    <mainClass>${exec.mainClass}</mainClass>
                 </configuration>
             </plugin>
         </plugins>
