@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.deepseek.dsh.agent.Agent;
+import com.deepseek.dsh.agent.TurnObserver;
 import com.deepseek.dsh.core.brand.ScopeKey;
 import com.deepseek.dsh.core.brand.SessionId;
 import com.deepseek.dsh.core.context.Context;
@@ -64,21 +65,39 @@ public class AgentStreamController {
 
                 emitter.send(SseEmitter.event().name("session").data(sessionId.value()));
 
-                // 逐 token 流式下发（基于 LlmModel.stream，纯对话）
-                StringBuilder acc = new StringBuilder();
-                String reply = agent.streamChat(sessionId, scopeKey, ctx, request.message(),
-                        chunk -> {
-                            try {
-                                emitter.send(SseEmitter.event().name("delta").data(chunk));
-                                acc.append(chunk);
-                            } catch (Exception e) {
-                                log.debug("SSE delta send failed: {}", e.toString());
+                // ReAct 循环（带工具 + 思维链）：逐 token 推送 think(reasoning)/delta(content)，工具调用/结果即时下发
+                agent.runObserved(sessionId, scopeKey, ctx, request.message(), new TurnObserver() {
+                    @Override public void onAssistantChunk(String contentDelta, String reasoningDelta) {
+                        try {
+                            if (reasoningDelta != null && !reasoningDelta.isEmpty()) {
+                                emitter.send(SseEmitter.event().name("think").data(reasoningDelta));
                             }
-                        });
-                // 兜底：若流式未产出内容（如回退到 run），整段下发
-                if (acc.length() == 0 && reply != null && !reply.isEmpty()) {
-                    emitter.send(SseEmitter.event().name("delta").data(reply));
-                }
+                            if (contentDelta != null && !contentDelta.isEmpty()) {
+                                emitter.send(SseEmitter.event().name("delta").data(contentDelta));
+                            }
+                        } catch (Exception e) {
+                            log.debug("SSE chunk send failed: {}", e.toString());
+                        }
+                    }
+                    @Override public void onAssistantMessage(String content, String reasoning) {
+                        // 逐 token 已下发，无需再整段重复
+                    }
+                    @Override public void onToolCall(String callId, String name, String argumentsJson) {
+                        try {
+                            emitter.send(SseEmitter.event().name("tool_call")
+                                    .data(name + "\t" + argumentsJson));
+                        } catch (Exception e) {
+                            log.debug("SSE tool_call send failed: {}", e.toString());
+                        }
+                    }
+                    @Override public void onToolResult(String callId, String resultText) {
+                        try {
+                            emitter.send(SseEmitter.event().name("tool_result").data(resultText));
+                        } catch (Exception e) {
+                            log.debug("SSE tool_result send failed: {}", e.toString());
+                        }
+                    }
+                });
 
                 emitter.send(SseEmitter.event().name("done").data("[DONE]"));
                 emitter.complete();

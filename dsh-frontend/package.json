@@ -1,0 +1,23 @@
+{
+  "name": "dsh-frontend",
+  "version": "0.1.1-rc.2",
+  "private": true,
+  "type": "module",
+  "description": "DeepSeek Harness Web UI —— 移植原 Harness 设计令牌与组件，对接 Java 后端 REST/SSE",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "postbuild": "rm -rf ../dsh-app/src/main/resources/static/assets && cp -r dist/* ../dsh-app/src/main/resources/static/",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.0"
+  }
+}

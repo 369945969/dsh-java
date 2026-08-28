@@ -69,38 +69,60 @@ public class SessionQueryController {
         return Map.of("sessions", items, "count", items.size(), "totalTokens", totalTokens);
     }
 
-    /** 投影某会话为模型可见消息列表。 */
+    /** 投影某会话为消息列表（含思维链 reasoning + 工具调用/结果），供前端刷新后重放。 */
     @GetMapping("/{id}/messages")
     public Map<String, Object> messages(@PathVariable String id) {
         Context ctx = holder.context();
         Sessions sessions = ctx.require(Sessions.class);
-        SessionLog log = sessions.get(SessionId.of(id))
+        SessionLog slog = sessions.get(SessionId.of(id))
                 .orElseGet(() -> sessions.getOrCreate(SessionId.of(id)));
-        SessionEvent.Projection p = log.deriveMessages();
         List<Map<String, Object>> messages = new ArrayList<>();
-        for (ChatMessage m : p.messages()) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("role", m.role().name().toLowerCase());
-            row.put("content", m.content() == null ? "" : m.content());
-            if (m.toolCalls() != null && !m.toolCalls().isEmpty()) {
-                List<Map<String, Object>> calls = new ArrayList<>();
-                for (ChatMessage.ToolCall c : m.toolCalls()) {
-                    Map<String, Object> call = new LinkedHashMap<>();
-                    call.put("id", c.id());
-                    call.put("name", c.name());
-                    call.put("arguments", c.argumentsJson());
-                    calls.add(call);
+        for (SessionEvent e : slog.events()) {
+            switch (e.type()) {
+                case USER_MESSAGE -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("role", "user");
+                    m.put("content", e.payload().text() == null ? "" : e.payload().text());
+                    messages.add(m);
                 }
-                row.put("toolCalls", calls);
+                case ASSISTANT_MESSAGE -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("role", "assistant");
+                    m.put("content", e.payload().text() == null ? "" : e.payload().text());
+                    String reasoning = e.payload().reasoning();
+                    if (reasoning != null && !reasoning.isBlank()) m.put("reasoning", reasoning);
+                    messages.add(m);
+                }
+                case TOOL_CALL -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("role", "tool");
+                    m.put("name", e.payload().toolName() == null ? "" : e.payload().toolName());
+                    m.put("arguments", toolArgsJson(e.payload().structured()));
+                    messages.add(m);
+                }
+                case TOOL_RESULT -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("role", "tool_result");
+                    m.put("content", e.payload().text() == null ? "" : e.payload().text());
+                    messages.add(m);
+                }
+                default -> {}
             }
-            messages.add(row);
         }
         long totalTokens = ctx.get(TokenMeterService.class).map(TokenMeterService::totalTokens).orElse(0L);
         return Map.of(
                 "sessionId", id,
                 "messages", messages,
                 "totalTokens", totalTokens,
-                "lastSeq", p.lastSeq());
+                "lastSeq", slog.lastSeq());
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    private static String toolArgsJson(Map<String, Object> args) {
+        if (args == null || args.isEmpty()) return "{}";
+        try { return MAPPER.writeValueAsString(args); }
+        catch (Exception ex) { return "{}"; }
     }
 
     private static String titleOf(List<ChatMessage> messages, SessionId id) {
