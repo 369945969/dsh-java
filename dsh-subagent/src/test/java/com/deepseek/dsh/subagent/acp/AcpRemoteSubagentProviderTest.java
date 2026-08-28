@@ -32,7 +32,7 @@ class AcpRemoteSubagentProviderTest {
                 SessionId.of("parent"), ScopeKey.random(),
                 Context.root(), new FakeAgent(), "子任务");
         assertFalse(result.success());
-        assertTrue(result.report().contains("失败"));
+        assertTrue(result.report().contains("failed"));
         provider.close();
     }
 }

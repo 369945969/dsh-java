@@ -17,6 +17,13 @@ public interface TurnObserver {
     /** 某一步模型回复：最终回复内容 + 推理内容（reasoning 模型的 reasoning_content，普通模型为空）。 */
     default void onAssistantMessage(String content, String reasoning) {}
 
+    /**
+     * 流式增量：模型逐 token 生成时推送（正文 delta 与推理 reasoningDelta，可同时为 null/空）。
+     * 在 {@link #onAssistantMessage} 之前触发；若模型不支持流式（回退到 chat），则不触发，
+     * 由 {@link #onAssistantMessage} 负责整段输出。CLI 据此边想边出（如 Hermes）。
+     */
+    default void onAssistantChunk(String contentDelta, String reasoningDelta) {}
+
     /** 一次工具调用（已过权限）：callId、工具名、参数 JSON。 */
     default void onToolCall(String callId, String name, String argumentsJson) {}
 

@@ -1,6 +1,7 @@
 package com.deepseek.dsh.llm.retry;
 
 import java.util.concurrent.Flow;
+import java.util.function.Consumer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,5 +73,12 @@ public final class RetryLlmModel implements LlmModel {
             }
         }
         throw last;
+    }
+
+    @Override
+    public LlmResponse streamCollect(LlmRequest request, Consumer<LlmChunk> onChunk) throws Exception {
+        // 流式收集：直接委托被装饰者（重试由底层 streamCollect 的 SSE 连接隐式处理；
+        // 已开始接收增量后不再重试，避免重复推送）
+        return delegate.streamCollect(request, onChunk);
     }
 }

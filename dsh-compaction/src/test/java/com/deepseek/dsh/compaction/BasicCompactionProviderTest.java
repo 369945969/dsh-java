@@ -45,7 +45,7 @@ class BasicCompactionProviderTest {
         assertTrue(out.size() < msgs.size(), "压缩后条数应减少");
         // 首条仍为系统提示，第二条为摘要
         assertEquals(ChatMessage.Role.SYSTEM, out.get(0).role());
-        assertTrue(out.get(1).content().startsWith("[对话摘要]"));
+        assertTrue(out.get(1).content().startsWith("[Conversation summary]"));
         // 末尾保留近期 2 条
         assertEquals("近期1", out.get(out.size() - 2).content());
         assertEquals("近期2", out.get(out.size() - 1).content());

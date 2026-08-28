@@ -29,7 +29,7 @@ class FileReferenceServiceTest {
         Files.writeString(f, "x".repeat(20000));
         var svc = new FileReferenceService();
         String out = svc.resolve(dir, "big.txt");
-        assertTrue(out.contains("已截断"));
+        assertTrue(out.contains("[truncated]"));
         // 截断后内容上限 + 头部不超过约 10000 + 头
         assertTrue(out.length() < 11000);
     }

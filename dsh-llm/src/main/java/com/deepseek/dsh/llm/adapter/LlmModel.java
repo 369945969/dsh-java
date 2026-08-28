@@ -1,6 +1,7 @@
 package com.deepseek.dsh.llm.adapter;
 
 import java.util.concurrent.Flow;
+import java.util.function.Consumer;
 
 /**
  * LLM 模型适配器能力缝 —— 对应原 Harness 的 {@code ctx.llm}。
@@ -31,4 +32,17 @@ public interface LlmModel {
      * @return 分块发布者
      */
     Flow.Publisher<LlmChunk> stream(LlmRequest request) throws Exception;
+
+    /**
+     * 流式调用并收集：逐 chunk 经 {@code onChunk} 推送增量（正文 {@link LlmChunk#delta}
+     * 与推理 {@link LlmChunk#reasoningDelta}），同时累积完整响应（含工具调用），流结束后返回
+     * 完整 {@link LlmResponse}。默认实现回退到 {@link #chat}（不推送增量），供不支持流式的模型复用。
+     *
+     * @param request 完整请求
+     * @param onChunk 每个增量分块的回调（可为 null）
+     * @return 累积后的完整响应
+     */
+    default LlmResponse streamCollect(LlmRequest request, Consumer<LlmChunk> onChunk) throws Exception {
+        return chat(request);
+    }
 }

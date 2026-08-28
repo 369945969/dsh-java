@@ -3,8 +3,12 @@ package com.deepseek.dsh.llm.deepseek;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
 import java.util.concurrent.SubmissionPublisher;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -160,6 +164,100 @@ public final class DeepSeekLlmAdapter implements LlmModel {
             @Override public void onComplete() { es.cancel(); }
         });
         return pub;
+    }
+
+    /**
+     * 流式调用并收集：逐 chunk 推送正文/推理增量（{@code onChunk}），同时累积工具调用与 usage，
+     * 流结束后返回完整 {@link LlmResponse}。让调用方边接收边渲染（如 CLI 思维流式输出），
+     * 又能拿到完整响应驱动 ReAct 工具循环。
+     */
+    @Override
+    public LlmResponse streamCollect(LlmRequest request, Consumer<LlmChunk> onChunk) throws Exception {
+        ObjectNode body = buildRequestBody(request, true);
+        body.putObject("stream_options").put("include_usage", true);
+        Request httpReq = new Request.Builder()
+                .url(effectiveBaseUrl() + "/chat/completions")
+                .header("Authorization", "Bearer " + effectiveApiKey())
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .post(RequestBody.create(mapper.writeValueAsString(body), JSON))
+                .build();
+
+        StringBuilder content = new StringBuilder();
+        StringBuilder reasoning = new StringBuilder();
+        TreeMap<Integer, String[]> toolAccum = new TreeMap<>(); // index -> [id, name, args]
+        String[] finish = {"stop"};
+        int[] usage = {0, 0, 0};
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<Throwable> err = new AtomicReference<>();
+
+        EventSource es = EventSources.createFactory(client)
+                .newEventSource(httpReq, new EventSourceListener() {
+                    @Override
+                    public void onEvent(EventSource source, String id, String type, String data) {
+                        if ("[DONE]".equals(data)) { latch.countDown(); return; }
+                        try {
+                            JsonNode json = mapper.readTree(data);
+                            JsonNode delta = json.path("choices").path(0).path("delta");
+                            String c = delta.path("content").asText("");
+                            String r = delta.path("reasoning_content").asText("");
+                            if (!c.isEmpty() || !r.isEmpty()) {
+                                if (!c.isEmpty()) content.append(c);
+                                if (!r.isEmpty()) reasoning.append(r);
+                                if (onChunk != null) {
+                                    onChunk.accept(new LlmChunk(
+                                            c.isEmpty() ? null : c,
+                                            r.isEmpty() ? null : r,
+                                            false));
+                                }
+                            }
+                            JsonNode tcs = delta.path("tool_calls");
+                            if (tcs.isArray()) {
+                                for (JsonNode tc : tcs) {
+                                    int idx = tc.path("index").asInt(0);
+                                    String[] acc = toolAccum.computeIfAbsent(idx, k -> new String[]{"", "", ""});
+                                    if (tc.has("id")) acc[0] = tc.path("id").asText();
+                                    JsonNode fn = tc.path("function");
+                                    if (fn.has("name")) acc[1] = fn.path("name").asText();
+                                    if (fn.has("arguments")) acc[2] += fn.path("arguments").asText("");
+                                }
+                            }
+                            String fr = json.path("choices").path(0).path("finish_reason").asText("");
+                            if (!fr.isEmpty()) finish[0] = fr;
+                            JsonNode u = json.path("usage");
+                            if (u.isObject()) {
+                                usage[0] = u.path("prompt_tokens").asInt(0);
+                                usage[1] = u.path("completion_tokens").asInt(0);
+                                usage[2] = u.path("total_tokens").asInt(0);
+                            }
+                        } catch (Exception e) {
+                            err.set(e);
+                            latch.countDown();
+                        }
+                    }
+                    @Override
+                    public void onClosed(EventSource source) { latch.countDown(); }
+                    @Override
+                    public void onFailure(EventSource source, Throwable t, Response response) {
+                        int code = response != null ? response.code() : 0;
+                        String msg = "stream error" + (code > 0 ? " " + code : "")
+                                + (t != null ? ": " + t.getMessage() : "");
+                        err.set(new com.deepseek.dsh.core.exception.LlmException(effectiveModel(), code, msg, null));
+                        latch.countDown();
+                    }
+                });
+        latch.await();
+        es.cancel();
+        if (err.get() != null) {
+            Throwable t = err.get();
+            throw (t instanceof Exception e ? e : new RuntimeException(t));
+        }
+        List<ChatMessage.ToolCall> toolCalls = new ArrayList<>();
+        for (String[] acc : toolAccum.values()) {
+            toolCalls.add(new ChatMessage.ToolCall(acc[0], acc[1], acc[2].isEmpty() ? "{}" : acc[2]));
+        }
+        return new LlmResponse(content.toString(), reasoning.toString(), toolCalls,
+                new LlmResponse.TokenUsage(usage[0], usage[1], usage[2]), finish[0]);
     }
 
     private ObjectNode buildRequestBody(LlmRequest request, boolean stream) {

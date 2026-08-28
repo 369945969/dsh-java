@@ -226,14 +226,16 @@ public class ReActAgentLoop implements Agent {
         // 2. 装配工具 schema
         LlmRequest request = LlmRequest.of(messages, tools.schemas(), modelIdentifier(ctx));
 
-        // 3. 模型请求
-        LlmResponse response = model.chat(request);
+        // 3. 模型请求（流式：逐 token 推送到观察者并累积工具调用；无观察者/不支持流式时等价于 chat）
+        TurnObserver o = observer.get();
+        LlmResponse response = model.streamCollect(request, chunk -> {
+            if (o != null) o.onAssistantChunk(chunk.delta(), chunk.reasoningDelta());
+        });
 
         // 4. 记录助手消息到日志
         SessionEvent assistantEvent = sessionLog.append(SessionEvent.Type.ASSISTANT_MESSAGE,
                 SessionEvent.Payload.text(response.content()));
         ctx.require(Sessions.class).persist(assistantEvent);
-        TurnObserver o = observer.get();
         if (o != null) o.onAssistantMessage(response.content(), response.reasoning());
 
         // 5. 执行工具调用（如果有）

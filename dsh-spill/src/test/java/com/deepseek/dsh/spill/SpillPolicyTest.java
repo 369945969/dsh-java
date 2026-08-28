@@ -47,7 +47,7 @@ class SpillPolicyTest {
         String big = "X".repeat(5000);
         var result = policy.handle(req("bash", "c2"), returning(big));
         assertNotEquals(big, result.text());
-        assertTrue(result.text().contains("完整结果已存于"));
+        assertTrue(result.text().contains("full result saved to"));
         // 替换文本不得超过上限
         assertTrue(result.text().getBytes().length <= 1000);
     }
