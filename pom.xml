@@ -253,6 +253,11 @@
             </dependency>
             <dependency>
                 <groupId>com.deepseek.dsh</groupId>
+                <artifactId>dsh-feedback</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.deepseek.dsh</groupId>
                 <artifactId>testcase</artifactId>
                 <version>${project.version}</version>
                 <scope>test</scope>

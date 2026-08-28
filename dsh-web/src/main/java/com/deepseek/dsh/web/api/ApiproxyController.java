@@ -181,14 +181,45 @@ public class ApiproxyController {
         return response(echoRpcId(request), ok("list".equals(method) ? pluginInventorySnapshot() : Map.of()));
     }
 
-    /** messageFeedback/* ：Java 后端无反馈 sidecar，list 返回空 items 以清「反馈状态加载失败」，put/delete 回告空桩（不持久化）。 */
+    /** messageFeedback/{list|put|delete}：接真实 MessageFeedbackService（持久化到 dataDir/message-feedback.json）。
+     * 字段对齐 TS：item={messageId,rating,note?,version,createdAt,updatedAt}；list→{items}、put→item、delete→{absent:true}；
+     * 失败回 err(TS 连字符 code)。list 对未持久化会话按空反馈返回（与原空桩一致，避免前端「加载失败」）。 */
     @PostMapping("/messageFeedback/{method}")
     public Map<String, Object> messageFeedback(@PathVariable String method, @RequestBody Map<String, Object> request) {
-        return response(echoRpcId(request), ok(switch (method) {
-            case "list" -> Map.of("items", List.of());
-            case "delete" -> Map.of("absent", true);
-            default -> Map.of();
-        }));
+        String rpcId = echoRpcId(request);
+        Object payload = request.get("payload");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        var feedbackOpt = holder.context().get(com.deepseek.dsh.feedback.MessageFeedbackService.class);
+        if (feedbackOpt.isEmpty()) return response(rpcId, err("internal", "message feedback service not registered"));
+        var feedback = feedbackOpt.get();
+        try {
+            return switch (method) {
+                case "list" -> response(rpcId, ok(Map.of("items",
+                        safeFeedbackItems(feedback, String.valueOf(p.getOrDefault("sessionId", ""))))));
+                case "put" -> {
+                    var item = feedback.put(
+                            SessionId.of(String.valueOf(p.getOrDefault("sessionId", ""))),
+                            String.valueOf(p.getOrDefault("messageId", "")),
+                            com.deepseek.dsh.feedback.FeedbackRating.of(String.valueOf(p.getOrDefault("rating", ""))),
+                            p.get("note") == null ? null : String.valueOf(p.get("note")),
+                            p.get("ifVersion") == null ? null : String.valueOf(p.get("ifVersion")));
+                    yield response(rpcId, ok(feedbackItem(item)));
+                }
+                case "delete" -> {
+                    feedback.delete(
+                            SessionId.of(String.valueOf(p.getOrDefault("sessionId", ""))),
+                            String.valueOf(p.getOrDefault("messageId", "")),
+                            p.get("ifVersion") == null ? null : String.valueOf(p.get("ifVersion")));
+                    yield response(rpcId, ok(Map.of("absent", true)));
+                }
+                default -> response(rpcId, err("internal", "unknown messageFeedback method: " + method));
+            };
+        } catch (com.deepseek.dsh.feedback.FeedbackException fe) {
+            return response(rpcId, err(feedbackWireCode(fe.code()), fe.getMessage()));
+        } catch (RuntimeException re) {
+            return response(rpcId, err("internal", re.getMessage()));
+        }
     }
 
     /** Java 后端无 Cordis Loader，但把 ~40 个已装配模块作为插件清单项返回，使前端 Plugins 页能列出它们。 */
@@ -1366,6 +1397,41 @@ public class ApiproxyController {
     private static String echoRpcId(Map<String, Object> request) {
         Object id = request.get("rpcId");
         return id != null ? id.toString() : UUID.randomUUID().toString();
+    }
+
+    /** 列出会话反馈项；会话未持久化（SESSION_NOT_FOUND）按空返回，避免前端「加载失败」。 */
+    private static List<Map<String, Object>> safeFeedbackItems(
+            com.deepseek.dsh.feedback.MessageFeedbackService feedback, String sessionId) {
+        try {
+            return feedback.list(SessionId.of(sessionId)).stream()
+                    .map(ApiproxyController::feedbackItem).toList();
+        } catch (com.deepseek.dsh.feedback.FeedbackException fe) {
+            return List.of();
+        }
+    }
+
+    /** 单条反馈项的 wire map（对齐 TS MessageFeedbackItem）。 */
+    private static Map<String, Object> feedbackItem(com.deepseek.dsh.feedback.MessageFeedbackItem item) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("messageId", item.messageId());
+        m.put("rating", item.rating().wire());
+        if (item.note() != null) m.put("note", item.note());
+        m.put("version", item.version());
+        m.put("createdAt", item.createdAt());
+        m.put("updatedAt", item.updatedAt());
+        return m;
+    }
+
+    /** Java Code → TS 连字符错误码。 */
+    private static String feedbackWireCode(com.deepseek.dsh.feedback.FeedbackException.Code code) {
+        return switch (code) {
+            case SESSION_NOT_FOUND -> "session-not-found";
+            case TARGET_NOT_FOUND -> "target-not-found";
+            case VERSION_CONFLICT -> "version-conflict";
+            case NOTE_BLANK -> "note-blank";
+            case NOTE_TOO_LARGE -> "note-too-large";
+            case SERVICE_DISPOSING -> "service-disposing";
+        };
     }
 
     private static Map<String, Object> ok(Object value) {

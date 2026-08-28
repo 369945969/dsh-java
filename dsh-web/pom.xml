@@ -26,6 +26,10 @@
         </dependency>
         <dependency>
             <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-feedback</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
             <artifactId>dsh-session</artifactId>
         </dependency>
         <dependency>

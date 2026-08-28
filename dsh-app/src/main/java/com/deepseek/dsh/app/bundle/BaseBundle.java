@@ -145,6 +145,13 @@ public final class BaseBundle {
         ctx.register(com.deepseek.dsh.llm.config.ModelConfig.class, modelConfig);
         ctx.register(com.deepseek.dsh.llm.config.ModelProfileStore.class, modelStore);
 
+        // 消息反馈侧车（点赞/点踩，持久化到 dataDir/message-feedback.json）
+        var feedback = new com.deepseek.dsh.feedback.MessageFeedbackService(
+                dataDir, com.deepseek.dsh.feedback.MessageFeedbackService.DEFAULT_MAX_NOTE_BYTES,
+                ctx.require(com.deepseek.dsh.session.Sessions.class));
+        ctx.register(com.deepseek.dsh.feedback.MessageFeedbackService.class, feedback);
+        ctx.track(feedback::dispose);
+
         // 注册具体能力提供者 + 工具
         ShellCapability shell = new BashLocalProvider();
         toolRegistry.register(new BashTool(shell));
