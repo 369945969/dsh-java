@@ -49,3 +49,6 @@ frontend/**/.dsh-build/
 frontend/**/.vite/
 frontend/**/target/
 frontend/.dsh-build/
+
+# dsh-frontend 旧简化前端（已删除；整个目录忽略）
+dsh-frontend/
