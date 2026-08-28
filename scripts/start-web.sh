@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 启动 Web 服务端（Spring Boot，含 REST + SSE 流式面）—— 对应原 Harness 的
 # dsh web 模式。前端（自带 React 或用户自有前端）通过 HTTP/SSE 对接。
-# 默认端口 8765；前端 dev 代理见 scripts/dev.sh。
+# 默认端口 8765；前端由后端同源托管。
 #
 # 用法： scripts/start-web.sh [port]
 # 环境变量同 start-rpc.sh（DEEPSEEK_API_KEY / DSH_BASE_URL / DSH_MODEL）。
