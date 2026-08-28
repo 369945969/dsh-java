@@ -10,6 +10,7 @@ import com.deepseek.dsh.core.context.Context;
 import com.deepseek.dsh.core.context.Disposable;
 import com.deepseek.dsh.core.context.Plugin;
 import com.deepseek.dsh.core.context.Service;
+import com.deepseek.dsh.core.context.SystemPromptInjectEvent;
 
 /**
  * AGENTS.md 指令加载器 —— 对应原 Harness 的 {@code agent-instructions}。
@@ -58,19 +59,5 @@ public final class AgentInstructionsPlugin implements Plugin, Service {
             }
         }
         return sb.toString();
-    }
-
-    /** 系统提示注入事件 —— 各上下文插件向系统提示追加段落。 */
-    public static class SystemPromptInjectEvent {
-        private final java.util.Map<String, String> sections = new java.util.LinkedHashMap<>();
-
-        public void appendSection(String name, String content) {
-            sections.put(name, content);
-        }
-
-        /** 合并全部段落为系统提示文本。 */
-        public String compose() {
-            return String.join("\n\n", sections.values());
-        }
     }
 }

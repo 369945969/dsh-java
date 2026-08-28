@@ -23,7 +23,7 @@ public final class TimeContextPlugin implements Plugin, Service {
 
     @Override
     public Disposable apply(Context ctx) {
-        ctx.events().on(com.deepseek.dsh.context.instructions.AgentInstructionsPlugin.SystemPromptInjectEvent.class,
+        ctx.events().on(com.deepseek.dsh.core.context.SystemPromptInjectEvent.class,
                 (event, next) -> {
                     String now = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
                             .format(Instant.now().atZone(ZoneId.systemDefault()));

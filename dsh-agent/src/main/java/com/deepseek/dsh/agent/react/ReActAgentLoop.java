@@ -113,6 +113,22 @@ public class ReActAgentLoop implements Agent {
     }
 
     /**
+     * 组装系统提示：分发 {@link com.deepseek.dsh.core.context.SystemPromptInjectEvent}，
+     * 让上下文插件（agent-instructions / time / skill-catalog）追加段落，再合并到基础提示后返回。
+     * 无段落时直接返回基础系统提示。监听器异常被吞并记录，不阻断提示组装。
+     */
+    private String composedSystemPrompt(Context ctx) {
+        var event = new com.deepseek.dsh.core.context.SystemPromptInjectEvent();
+        try {
+            ctx.events().waterfall(com.deepseek.dsh.core.context.SystemPromptInjectEvent.class, event);
+        } catch (RuntimeException e) {
+            log.warn("system-prompt inject error: {}", e.toString());
+        }
+        String sections = event.compose();
+        return sections.isEmpty() ? systemPrompt : systemPrompt + "\n\n" + sections;
+    }
+
+    /**
      * 运行一个 turn（模板方法）。接收用户消息，驱动 ReAct 循环直到模型停止或达上限。
      */
     @Override
@@ -163,7 +179,7 @@ public class ReActAgentLoop implements Agent {
         SessionEvent.Projection projection = sessionLog.deriveMessages();
         List<ChatMessage> messages = new ArrayList<>(projection.messages());
         if (messages.isEmpty() || messages.get(0).role() != ChatMessage.Role.SYSTEM) {
-            messages.add(0, ChatMessage.system(systemPrompt));
+            messages.add(0, ChatMessage.system(composedSystemPrompt(ctx)));
         }
         LlmRequest request = LlmRequest.of(messages, java.util.List.of(), modelIdentifier(ctx));
 
@@ -204,7 +220,7 @@ public class ReActAgentLoop implements Agent {
         List<ChatMessage> messages = new ArrayList<>(projection.messages());
         // 前置系统提示
         if (messages.isEmpty() || messages.get(0).role() != ChatMessage.Role.SYSTEM) {
-            messages.add(0, ChatMessage.system(systemPrompt));
+            messages.add(0, ChatMessage.system(composedSystemPrompt(ctx)));
         }
 
         // 2. 装配工具 schema

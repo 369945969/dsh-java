@@ -128,6 +128,7 @@ public class ApiproxyController {
                 case "workspace.archiveSession" -> response(rpcId, ok(workspaceArchiveSession(payload)));
                 case "workspace.list" -> response(rpcId, ok(Map.of("items", workspaces.list(), "archivedSessionIds", workspaces.archivedSessionIds())));
                 case "host.listDirectory" -> response(rpcId, ok(listDirectory(payload)));
+                case "skill.list" -> response(rpcId, ok(skillList()));
                 default -> response(rpcId, ok(valueOf(method)));
             };
         } catch (RuntimeException e) {
@@ -632,6 +633,25 @@ public class ApiproxyController {
             default -> Map.of();
         };
     }
+
+    /** skill.list：列出已发现技能（接真实 SkillRegistry；字段对齐 TS：name/description/whenToUse?/modelInvocable，过滤 user-invocable）。 */
+    private Map<String, Object> skillList() {
+        java.util.List<Map<String, Object>> entries = new java.util.ArrayList<>();
+        Context ctx = holder.context();
+        ctx.get(com.deepseek.dsh.skill.SkillService.class).ifPresent(skills -> {
+            for (var s : skills.list(null)) {
+                if (s.invocation() == null || !s.invocation().userInvocable()) continue;
+                Map<String, Object> e = new java.util.LinkedHashMap<>();
+                e.put("name", s.name());
+                e.put("description", s.description() == null ? "" : s.description());
+                if (s.whenToUse() != null && s.whenToUse().isPresent()) e.put("whenToUse", s.whenToUse().get());
+                e.put("modelInvocable", s.invocation() != null && s.invocation().modelInvocable());
+                entries.add(e);
+            }
+        });
+        return Map.of("skills", entries);
+    }
+
     /** host.listDirectory：真实目录列表（供前端 browse 选择器导航 → 选目录建工作区）。 */
     private Map<String, Object> listDirectory(Object payload) {
         @SuppressWarnings("unchecked")

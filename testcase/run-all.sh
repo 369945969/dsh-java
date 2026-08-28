@@ -29,6 +29,16 @@ echo "[run-all] 端到端验证  model=${DSH_MODEL:-deepseek-chat}  baseUrl=${DS
 echo "          临时数据目录: $DSH_DATA_DIR"
 echo "============================================================"
 
+# 种子一个技能到临时数据目录，供 web skill.list 端到端验证（apiproxy 接真实 SkillRegistry）
+mkdir -p "$DSH_DATA_DIR/skills/e2e-skill"
+cat > "$DSH_DATA_DIR/skills/e2e-skill/SKILL.md" <<'SKILL'
+---
+name: e2e-skill
+description: E2E seeded skill for skill.list verification.
+---
+Seeded skill body for end-to-end verification.
+SKILL
+
 # 1) 构建（install 刷新本地仓库 jar，确保 exec:java 与服务端 cp.txt 用到最新 dsh-sdk/dsh-web）
 echo
 echo "[run-all] 1/4 构建后端 + testcase 驱动（install）..."
@@ -53,6 +63,14 @@ for _ in $(seq 1 60); do
   if curl -sf http://localhost:8765/api/agent/health >/dev/null 2>&1; then break; fi
   sleep 1
 done
+
+# skill.list（apiproxy 接真实 SkillRegistry；应返回上面种子的 e2e-skill）
+echo
+echo "[run-all] skill.list 验证（apiproxy 返回种子技能 e2e-skill）..."
+skill_ok=0
+SKILLS=$(curl -s -X POST http://localhost:8765/api/skill.list \
+  -H 'Content-Type: application/json' -d '{"rpcId":"e2e","payload":{}}' || true)
+echo "$SKILLS" | grep -q '"e2e-skill"' || skill_ok=1
 
 # 4a) Web SSE/HTTP E2E（流响应 / 完整返回）
 echo
@@ -80,6 +98,6 @@ fi
 cleanup_web
 echo
 echo "============================================================"
-echo "[run-all] 总结: RPC=$([ $rpc_ok -eq 0 ] && echo PASS || echo FAIL)  Web=$([ $web_ok -eq 0 ] && echo PASS || echo FAIL)  WebSocket=$([ $ws_ok -eq 0 ] && echo PASS || echo FAIL)  Frontend=$([ $fe_ok -eq 0 ] && echo PASS || echo FAIL)"
+echo "[run-all] 总结: RPC=$([ $rpc_ok -eq 0 ] && echo PASS || echo FAIL)  Web=$([ $web_ok -eq 0 ] && echo PASS || echo FAIL)  WebSocket=$([ $ws_ok -eq 0 ] && echo PASS || echo FAIL)  Frontend=$([ $fe_ok -eq 0 ] && echo PASS || echo FAIL)  Skill=$([ $skill_ok -eq 0 ] && echo PASS || echo FAIL)"
 echo "============================================================"
-[ $rpc_ok -eq 0 ] && [ $web_ok -eq 0 ] && [ $ws_ok -eq 0 ] && [ $fe_ok -eq 0 ]
+[ $rpc_ok -eq 0 ] && [ $web_ok -eq 0 ] && [ $ws_ok -eq 0 ] && [ $fe_ok -eq 0 ] && [ $skill_ok -eq 0 ]

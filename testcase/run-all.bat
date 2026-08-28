@@ -28,6 +28,14 @@ rem 临时数据目录（hermetic：会话/技能隔离，不污染 %USERPROFILE
 set "DSH_DATA_DIR=%TEMP%\dsh-e2e-%RANDOM%-%RANDOM%"
 mkdir "%DSH_DATA_DIR%" 2>nul
 
+rem 种子一个技能到临时数据目录，供 web skill.list 端到端验证（apiproxy 接真实 SkillRegistry）
+mkdir "%DSH_DATA_DIR%\skills\e2e-skill" 2>nul
+> "%DSH_DATA_DIR%\skills\e2e-skill\SKILL.md" echo ---
+>>"%DSH_DATA_DIR%\skills\e2e-skill\SKILL.md" echo name: e2e-skill
+>>"%DSH_DATA_DIR%\skills\e2e-skill\SKILL.md" echo description: E2E seeded skill for skill.list verification.
+>>"%DSH_DATA_DIR%\skills\e2e-skill\SKILL.md" echo ---
+>>"%DSH_DATA_DIR%\skills\e2e-skill\SKILL.md" echo Seeded skill body for end-to-end verification.
+
 echo ============================================================
 echo [run-all] 端到端验证  model=%DSH_MODEL%  baseUrl=%DSH_BASE_URL%
 echo           临时数据目录: %DSH_DATA_DIR%
@@ -63,6 +71,12 @@ if %tries% geq 60 goto webup
 ping -n 2 127.0.0.1 >nul
 goto webwait
 :webup
+
+rem skill.list（apiproxy 接真实 SkillRegistry；应返回上面种子的 e2e-skill）
+echo.
+echo [run-all] skill.list 验证（apiproxy 返回种子技能 e2e-skill）...
+set skill_ok=0
+curl -s -X POST http://localhost:8765/api/skill.list -H "Content-Type: application/json" -d "{""rpcId"":""e2e"",""payload"":{}}" | findstr /c:"e2e-skill" >nul || set skill_ok=1
 
 rem 4a) Web SSE/HTTP E2E（流响应 / 完整返回）
 echo.
@@ -100,6 +114,7 @@ set "rpc_s=PASS" & if not "%rpc_ok%"=="0" set "rpc_s=FAIL"
 set "web_s=PASS" & if not "%web_ok%"=="0" set "web_s=FAIL"
 set "ws_s=PASS" & if not "%ws_ok%"=="0" set "ws_s=FAIL"
 set "fe_s=PASS" & if not "%fe_ok%"=="0" set "fe_s=FAIL"
-echo [run-all] 总结: RPC=%rpc_s%  Web=%web_s%  WebSocket=%ws_s%  Frontend=%fe_s%
+set "skill_s=PASS" & if not "%skill_ok%"=="0" set "skill_s=FAIL"
+echo [run-all] 总结: RPC=%rpc_s%  Web=%web_s%  WebSocket=%ws_s%  Frontend=%fe_s%  Skill=%skill_s%
 echo ============================================================
-if "%rpc_ok%%web_ok%%ws_ok%%fe_ok%"=="0000" ( exit /b 0 ) else ( exit /b 1 )
+if "%rpc_ok%%web_ok%%ws_ok%%fe_ok%%skill_ok%"=="00000" ( exit /b 0 ) else ( exit /b 1 )

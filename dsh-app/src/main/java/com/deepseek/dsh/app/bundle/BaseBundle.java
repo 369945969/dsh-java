@@ -133,6 +133,8 @@ public final class BaseBundle {
         // 技能注册表能力缝（先加入，start 后再挂文件系统提供者）
         var skills = new com.deepseek.dsh.skill.SkillRegistry();
         runner.add(skills);
+        // 技能目录注入：把 model-invocable 技能摘要注入系统提示，让模型能发现并调用 skill 工具
+        runner.add(new com.deepseek.dsh.skill.SkillCatalogPlugin(skills));
 
         // 启动插件（所有能力缝须在此之前加入，apply 才会注册到上下文）
         runner.start(ctx);
