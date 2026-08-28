@@ -1,0 +1,33 @@
+- generic [ref=f3e4]:
+  - generic [ref=f3e7]:
+    - generic [ref=f3e8]:
+      - button "新建会话" [ref=f3e9] [cursor=pointer]:
+        - generic [ref=f3e16]:
+          - generic [ref=f3e17]: DSH Local Build
+          - generic [ref=f3e18]: 02348f3
+      - button "收起侧边栏" [ref=f3e19] [cursor=pointer]
+    - button "新建会话" [ref=f3e22] [cursor=pointer]:
+      - generic [ref=f3e25]: 新会话
+    - generic [ref=f3e28]:
+      - generic [ref=f3e29]:
+        - generic [ref=f3e30]: 工作区
+        - generic [ref=f3e32]:
+          - button "搜索会话" [ref=f3e33] [cursor=pointer]
+          - textbox "搜索会话…"
+        - button "视图选项" [ref=f3e39] [cursor=pointer]
+      - tree "会话" [ref=f3e44]:
+        - generic [ref=f3e45]: 暂无会话
+    - button "设置" [ref=f3e49] [cursor=pointer]
+  - generic [ref=f3e63]:
+    - generic [ref=f3e66]:
+      - generic [ref=f3e71]: 探索未至之境
+      - generic [ref=f3e72]: 预览版
+    - button "选择工作区" [ref=f3e74] [cursor=pointer]
+    - generic [ref=f3e82] [cursor=pointer]:
+      - textbox "选择工作区" [ref=f3e85]:
+        - /placeholder: 选择一个工作区开始
+      - generic [ref=f3e86]:
+        - generic [ref=f3e87]:
+          - button "命令" [disabled]
+        - generic [ref=f3e88]:
+          - button "发送消息" [disabled]

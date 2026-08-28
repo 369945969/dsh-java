@@ -42,6 +42,8 @@ if "%NEED_BUILD%"=="1" (
 
 echo [start] 启动 Web 服务端: port=%PORT% model=%DSH_MODEL% 1>&2
 
+call :kill_port
+
 rem classpath 超 8KB（cmd 行/env 上限 8191），用 java @argfile 规避截断
 set "ARGF=%ROOT%\dsh-app\target\dsh-start-%RANDOM%.arg"
 > "%ARGF%" echo -Dserver.port=%PORT%
@@ -58,4 +60,21 @@ exit /b %EXITCODE%
 :check_pom_newer
 rem %1 = pom 路径；若比 %CP_FILE% 新（或 cp 缺失）则置 NEED_BUILD=1
 echo F| xcopy /D /L /Y "%~1" "%CP_FILE%" 2>nul | findstr /c:".xml" >nul && set "NEED_BUILD=1"
+goto :eof
+
+:kill_port
+rem 释放端口 %PORT%：netstat 查 LISTENING PID，taskkill /F /T 杀进程树，重试至端口空闲
+set /a KP_RETRY=0
+:kp_loop
+set "KP_PID="
+for /f "tokens=5" %%a in ('netstat -ano -p TCP ^| findstr "LISTENING" ^| findstr ":%PORT%"') do if not defined KP_PID set "KP_PID=%%a"
+if not defined KP_PID goto :kp_done
+if %KP_RETRY%==0 echo [start] 端口 %PORT% 被占用，结束旧进程 PID=%KP_PID% 1>&2
+taskkill /F /T /PID %KP_PID% >nul 2>&1
+set /a KP_RETRY+=1
+if %KP_RETRY% LSS 8 (
+  ping -n 2 127.0.0.1 >nul
+  goto :kp_loop
+)
+:kp_done
 goto :eof

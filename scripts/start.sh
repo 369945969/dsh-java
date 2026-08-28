@@ -20,7 +20,28 @@ if [ ! -f "$CP_FILE" ] || [ -n "$(find "$ROOT/pom.xml" "$ROOT"/dsh-*/pom.xml "$R
   mvn -q -f "$ROOT/pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="$CP_FILE"
 fi
 
+# 释放端口：先 SIGTERM 优雅关闭（等 ~3s 触发 Spring Boot shutdown hook），仍占用则 SIGKILL 强杀
+free_port() {
+  local pids i
+  pids="$(lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null || true)"
+  if [ -z "$pids" ]; then return 0; fi
+  echo "[start] 端口 $1 被占用，结束旧进程: $(echo "$pids" | tr '\n' ' ')" >&2
+  # shellcheck disable=SC2086
+  kill $pids 2>/dev/null || true
+  i=0
+  while [ $i -lt 10 ]; do
+    pids="$(lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null || true)"
+    if [ -z "$pids" ]; then return 0; fi
+    sleep 0.3; i=$((i+1))
+  done
+  echo "[start] 旧进程未优雅退出，强制结束" >&2
+  # shellcheck disable=SC2086
+  kill -9 $pids 2>/dev/null || true
+  sleep 0.3
+}
+
 echo "[start] 启动 Web 服务端: port=$PORT model=${DSH_MODEL:-deepseek-chat}" >&2
+free_port "$PORT"
 exec java -Dserver.port="$PORT" \
   -cp "$ROOT/dsh-app/target/classes:$(cat "$CP_FILE")" \
   com.deepseek.dsh.app.boot.DshApplication

@@ -1,0 +1,43 @@
+- generic [ref=f3e4]:
+  - generic [ref=f3e7]:
+    - generic [ref=f3e8]:
+      - button "新建会话" [ref=f3e9] [cursor=pointer]:
+        - generic [ref=f3e16]:
+          - generic [ref=f3e17]: DSH Local Build
+          - generic [ref=f3e18]: 02348f3
+      - button "收起侧边栏" [ref=f3e19] [cursor=pointer]
+    - button "新建会话" [ref=f3e22] [cursor=pointer]:
+      - generic [ref=f3e25]: 新会话
+    - generic [ref=f3e28]:
+      - generic [ref=f3e29]:
+        - generic [ref=f3e30]: 工作区
+        - generic [ref=f3e32]:
+          - button "搜索会话" [ref=f3e33] [cursor=pointer]
+          - textbox "搜索会话…"
+        - button "视图选项" [ref=f3e39] [cursor=pointer]
+      - tree "会话" [ref=f3e44]:
+        - generic [ref=f3e90]:
+          - treeitem "2026-08-27-23" [expanded] [ref=f3e92] [cursor=pointer]
+          - treeitem "新会话" [selected] [ref=f3e100] [cursor=pointer]
+    - button "设置" [ref=f3e49] [cursor=pointer]
+  - generic [ref=f3e63]:
+    - generic [ref=f3e66]:
+      - generic [ref=f3e71]: 探索未至之境
+      - generic [ref=f3e72]: 预览版
+    - generic [ref=f3e73]:
+      - button "选择工作区" [ref=f3e74] [cursor=pointer]:
+        - generic [ref=f3e77]: 2026-08-27-23
+      - button "标准模式" [ref=f3e108] [cursor=pointer]
+    - generic [ref=f3e82]:
+      - textbox "描述你想要构建的内容" [active] [ref=f3e116]
+      - generic [ref=f3e86]:
+        - button "命令" [ref=f3e117] [cursor=pointer]
+        - generic [ref=f3e88]:
+          - button "选择模型，当前 glm-5.1" [ref=f3e122] [cursor=pointer]:
+            - generic [ref=f3e123]: glm-5.1
+          - button "发送消息" [disabled] [ref=f3e126]
+  - generic [ref=f3e130]:
+    - generic [ref=f3e131]:
+      - generic: 详情
+      - button "关闭详情" [ref=f3e132] [cursor=pointer]
+    - generic [ref=f3e135]: 点击消息流中的工具行查看详情

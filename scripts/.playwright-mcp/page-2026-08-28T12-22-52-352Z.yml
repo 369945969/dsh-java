@@ -1,0 +1,37 @@
+- generic [ref=e4]:
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - button "新建会话" [ref=e9] [cursor=pointer]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: DSH Local Build
+          - generic [ref=e18]: 02348f3
+      - button "收起侧边栏" [ref=e19] [cursor=pointer]
+    - button "新建会话" [ref=e22] [cursor=pointer]:
+      - generic [ref=e25]: 新会话
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]: 工作区
+        - generic [ref=e32]:
+          - button "搜索会话" [ref=e33] [cursor=pointer]
+          - textbox "搜索会话…"
+        - generic [ref=e37]:
+          - button "视图选项" [ref=e39] [cursor=pointer]
+          - button "添加工作区" [ref=e42] [cursor=pointer]
+      - tree "会话" [ref=e48]:
+        - generic [ref=e49]: 暂无会话
+    - button "设置" [ref=e53] [cursor=pointer]
+  - generic [ref=e67]:
+    - generic [ref=e70]:
+      - generic [ref=e75]: 探索未至之境
+      - generic [ref=e76]: 预览版
+    - generic [ref=e77]:
+      - button "选择工作区" [ref=e78] [cursor=pointer]
+      - button "PTC 模式" [ref=e86] [cursor=pointer]
+    - generic [ref=e96] [cursor=pointer]:
+      - textbox "选择工作区" [ref=e99]:
+        - /placeholder: 选择一个工作区开始
+      - generic [ref=e100]:
+        - generic [ref=e101]:
+          - button "命令" [disabled]
+        - generic [ref=e102]:
+          - button "发送消息" [disabled]
