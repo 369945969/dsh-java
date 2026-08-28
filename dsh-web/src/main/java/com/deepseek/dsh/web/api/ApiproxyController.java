@@ -291,7 +291,7 @@ public class ApiproxyController {
             if (wv != null) downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed", Map.of("workspace", wv)));
         }
         downlink.sendMuxFrame(uuid(), muxFrame("session/subscribed",
-                Map.of("sessionId", sid.value(), "lastSeq", slog.lastSeq())));
+                Map.of("sessionId", sid.value(), "lastSeq", seq.get() - 1)));
         Map<String, Object> v = new LinkedHashMap<>();
         v.put("sessionId", sid.value());
         return v;
@@ -535,7 +535,7 @@ public class ApiproxyController {
         String sessionId = String.valueOf(p.getOrDefault("sessionId", ""));
         List<Map<String, Object>> events = new ArrayList<>();
         long t = System.currentTimeMillis();
-        long[] seq = {0};
+        long[] idc = {0}; // 消息 id 局部计数；事件 seq 用全局 mux seq（与实时流同源）
         int[] turn = {0};
         try {
             Context ctx = holder.context();
@@ -552,20 +552,21 @@ public class ApiproxyController {
                     if (!isUser && !isAssistant) continue;
                     int tn = turn[0]++;
                     // 每个回合：turn/start → step/start → user/message → assistant/message → step/end → turn/end（与实时流同构）
-                    events.add(historyEntry(envelope("turn/start", seq[0]++, t++, Map.of("turn", tn))));
-                    events.add(historyEntry(envelope("step/start", seq[0]++, t++, Map.of("turn", tn, "step", 0))));
+                    // 事件 seq 用全局 mux seq（seq.getAndIncrement，与 sendSessionEvent 同源），避免历史重放与实时流分属不同 seq 空间致前端去重/乱序
+                    events.add(historyEntry(envelope("turn/start", seq.getAndIncrement(), t++, Map.of("turn", tn))));
+                    events.add(historyEntry(envelope("step/start", seq.getAndIncrement(), t++, Map.of("turn", tn, "step", 0))));
                     if (isUser) {
-                        events.add(historyEntry(envelope("user/message", seq[0]++, t++, Map.of(
-                                "id", "u-" + seq[0], "content", List.of(textPart(content)), "source", Map.of("kind", "user")))));
+                        events.add(historyEntry(envelope("user/message", seq.getAndIncrement(), t++, Map.of(
+                                "id", "u-" + idc[0]++, "content", List.of(textPart(content)), "source", Map.of("kind", "user")))));
                         if (i + 1 < msgs.size() && msgs.get(i + 1).role() != null
                                 && "ASSISTANT".equals(msgs.get(i + 1).role().name())) {
                             i++;
                             String ac = msgs.get(i).content() == null ? "" : msgs.get(i).content();
-                            // 工具调用步的助手消息内容为空（仅 tool_calls）——跳过，避免 UI 渲染占位“-”（与实时流 onAssistantMessage 的空内容跳过一致）
+                            // 工具调用步的助手消息内容为空（仅 tool_calls）——跳过，避免 UI 渲染占位"-"（与实时流 onAssistantMessage 的空内容跳过一致）
                             if (!ac.isBlank()) {
-                                events.add(historyEntry(envelope("assistant/message", seq[0]++, t++, Map.of(
+                                events.add(historyEntry(envelope("assistant/message", seq.getAndIncrement(), t++, Map.of(
                                         "message", Map.of(
-                                                "id", "a-" + seq[0],
+                                                "id", "a-" + idc[0]++,
                                                 "content", List.of(textPart(ac)),
                                                 "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
                                         "turn", tn, "step", 0))));
@@ -573,16 +574,16 @@ public class ApiproxyController {
                         }
                     } else {
                         if (!content.isBlank()) {
-                            events.add(historyEntry(envelope("assistant/message", seq[0]++, t++, Map.of(
+                            events.add(historyEntry(envelope("assistant/message", seq.getAndIncrement(), t++, Map.of(
                                     "message", Map.of(
-                                            "id", "a-" + seq[0],
+                                            "id", "a-" + idc[0]++,
                                             "content", List.of(textPart(content)),
                                             "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
                                     "turn", tn, "step", 0))));
                         }
                     }
-                    events.add(historyEntry(envelope("step/end", seq[0]++, t++, Map.of("turn", tn, "step", 0))));
-                    events.add(historyEntry(envelope("turn/end", seq[0]++, t++, Map.of("turn", tn, "reason", Map.of("kind", "complete")))));
+                    events.add(historyEntry(envelope("step/end", seq.getAndIncrement(), t++, Map.of("turn", tn, "step", 0))));
+                    events.add(historyEntry(envelope("turn/end", seq.getAndIncrement(), t++, Map.of("turn", tn, "reason", Map.of("kind", "complete")))));
                 }
             }
         } catch (Exception e) {

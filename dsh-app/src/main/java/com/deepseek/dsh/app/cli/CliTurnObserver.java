@@ -102,10 +102,23 @@ public final class CliTurnObserver implements TurnObserver {
         out.flush();
     }
 
-    /** 折叠换行并截断到 max 字符，用于单行展示工具参数/结果。 */
+    /** 折叠空白、去除控制字符（ANSI 转义/二进制等会致乱码）、代理对安全截断到 max 字符，用于单行展示工具参数/结果。 */
     static String collapse(String s, int max) {
         if (s == null) return "";
-        String one = s.replace("\r", " ").replace("\n", " ");
-        return one.length() > max ? one.substring(0, max) + "..." : one;
+        StringBuilder sb = new StringBuilder(Math.min(s.length(), max + 16));
+        int i = 0;
+        for (; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\n' || c == '\r' || c == '\t') sb.append(' ');
+            else if (c < 0x20 || c == 0x7F) continue; // 跳过控制字符（含 ANSI 转义序列），避免终端乱码
+            else sb.append(c);
+            if (sb.length() > max) break; // 超过 max 即停（保留截断标记）
+        }
+        String one = sb.toString();
+        boolean truncated = i < s.length() || one.length() > max;
+        if (!truncated) return one;
+        int cut = Math.min(one.length(), max);
+        if (cut > 0 && Character.isHighSurrogate(one.charAt(cut - 1))) cut--; // 不在代理对中间截断
+        return one.substring(0, cut) + "...";
     }
 }
