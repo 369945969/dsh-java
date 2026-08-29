@@ -49,12 +49,13 @@ public final class DshRepl {
 
     private static final Logger log = LoggerFactory.getLogger(DshRepl.class);
 
-    private static final String CYAN = "\033[36m";
-    private static final String GREEN = "\033[32m";
-    private static final String YELLOW = "\033[33m";
-    private static final String DIM = "\033[2m";
-    private static final String BOLD = "\033[1m";
-    private static final String RESET = "\033[0m";
+    private static final boolean COLOR = CliColors.ON;
+    private static final String CYAN = COLOR ? "\033[36m" : "";
+    private static final String GREEN = COLOR ? "\033[32m" : "";
+    private static final String YELLOW = COLOR ? "\033[33m" : "";
+    private static final String DIM = COLOR ? "\033[2m" : "";
+    private static final String BOLD = COLOR ? "\033[1m" : "";
+    private static final String RESET = COLOR ? "\033[0m" : "";
     private static final String PROMPT = DIM + "> " + RESET;
 
     private static BufferedReader stdinReader;
@@ -97,25 +98,24 @@ public final class DshRepl {
     }
 
     private static String readUserLine() {
-        Console console = System.console();
+        // 总是用 stdinReader（InputStreamReader + 控制台字符集）读：Java Console.readLine() 在
+        // Windows 对中文 IME 不可靠（UTF-8/65001 控制台会乱码成 "pppp"）；按控制台字符集（zh_CN=GBK）
+        // 读 System.in 字节则正确。控制台本身仍提供行编辑/回显。
+        if (stdinReader == null) {
+            stdinReader = new BufferedReader(new InputStreamReader(System.in, consoleCharset()));
+        }
+        System.out.print(PROMPT);
         String line;
-        if (console != null) {
-            line = console.readLine(PROMPT);
-        } else {
-            System.out.print(PROMPT);
-            if (stdinReader == null) {
-                stdinReader = new BufferedReader(new InputStreamReader(System.in, consoleCharset()));
-            }
-            try {
-                line = stdinReader.readLine();
-            } catch (IOException e) {
-                line = null;
-            }
+        try {
+            line = stdinReader.readLine();
+        } catch (IOException e) {
+            line = null;
         }
         if (diagFirst && line != null) {
             diagFirst = false;
             StringBuilder cps = new StringBuilder();
             line.codePoints().limit(24).forEach(cp -> cps.append(Integer.toHexString(cp)).append(' '));
+            Console console = System.console();
             System.err.println("[diag] console=" + (console != null)
                 + " consoleCharset=" + (console != null ? console.charset() : "n/a")
                 + " default=" + Charset.defaultCharset()
@@ -128,6 +128,9 @@ public final class DshRepl {
     }
 
     private static Charset consoleCharset() {
+        if (System.console() == null) {
+            return Charset.defaultCharset();
+        }
         String ne = System.getProperty("native.encoding");
         if (ne != null) {
             try {

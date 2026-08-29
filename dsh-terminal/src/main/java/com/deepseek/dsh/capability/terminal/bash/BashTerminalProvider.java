@@ -31,11 +31,46 @@ public final class BashTerminalProvider implements TerminalCapability {
     private final Map<String, Session> sessions = new ConcurrentHashMap<>();
     private final AtomicInteger idSeq = new AtomicInteger(0);
 
+    private static final boolean WINDOWS =
+            System.getProperty("os.name", "").toLowerCase().contains("win");
+
+    private static String[] resolveShell() {
+        if (!WINDOWS) {
+            return new String[]{"bash", "--norc", "-i"};
+        }
+        String pwsh = findOnPath("pwsh");
+        if (pwsh == null) {
+            String pf = System.getenv("ProgramFiles");
+            if (pf != null) {
+                String candidate = pf + "\\PowerShell\\7\\pwsh.exe";
+                if (java.nio.file.Files.exists(java.nio.file.Paths.get(candidate))) {
+                    pwsh = candidate;
+                }
+            }
+        }
+        if (pwsh != null) {
+            return new String[]{pwsh, "-NoProfile", "-NoLogo", "-NoExit", "-Command", "-"};
+        }
+        return new String[]{"powershell", "-NoProfile", "-NoLogo", "-NoExit", "-Command", "-"};
+    }
+
+    private static String findOnPath(String name) {
+        String pathEnv = System.getenv("PATH");
+        if (pathEnv == null) return null;
+        String exe = WINDOWS ? name + ".exe" : name;
+        for (String dir : pathEnv.split(java.io.File.pathSeparator)) {
+            java.io.File f = new java.io.File(dir, exe);
+            if (f.exists()) return f.getAbsolutePath();
+        }
+        return null;
+    }
+
     @Override
     public String createSession(String cwd) {
         String id = "term-" + idSeq.incrementAndGet();
         try {
-            ProcessBuilder pb = new ProcessBuilder("bash", "--norc", "-i");
+            String[] shell = resolveShell();
+            ProcessBuilder pb = new ProcessBuilder(shell);
             pb.redirectErrorStream(true);
             if (cwd != null) pb.directory(new java.io.File(cwd));
             Process process = pb.start();

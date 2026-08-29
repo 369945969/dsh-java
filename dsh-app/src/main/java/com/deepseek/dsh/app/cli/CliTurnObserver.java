@@ -20,7 +20,7 @@ import com.deepseek.dsh.agent.TurnObserver;
  */
 public final class CliTurnObserver implements TurnObserver {
 
-    private static final boolean TTY = System.console() != null;
+    private static final boolean TTY = CliColors.ON;
     private static final String DIM = TTY ? "\033[2m" : "";
     private static final String RESET = TTY ? "\033[0m" : "";
 

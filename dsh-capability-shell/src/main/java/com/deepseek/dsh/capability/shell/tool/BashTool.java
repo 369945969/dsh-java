@@ -24,7 +24,7 @@ public final class BashTool extends AbstractTool {
 
     @Override
     protected ToolSchema buildSchema() {
-        return ToolSchema.builder("bash", "执行一条 bash 命令并返回输出。")
+        return ToolSchema.builder("bash", "执行一条 " + shell.shellName() + " 命令并返回输出。")
                 .string("command", "要执行的命令", true)
                 .string("workdir", "工作目录（可选）")
                 .intProp("timeout", "超时秒数（默认 120）")
