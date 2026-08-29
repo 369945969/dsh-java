@@ -27,5 +27,6 @@ if [ "$need_build" -eq 1 ]; then
 fi
 
 echo "[start-cli] 启动 CLI 交互终端: model=${DSH_MODEL:-deepseek-chat} baseUrl=${DSH_BASE_URL:-https://api.deepseek.com}" >&2
-exec java -cp "$ROOT/dsh-app/target/classes:$(cat "$CP_FILE")" \
+exec java -Dlogback.configurationFile=logback-cli.xml \
+  -cp "$ROOT/dsh-app/target/classes:$(cat "$CP_FILE")" \
   com.deepseek.dsh.app.cli.DshRepl

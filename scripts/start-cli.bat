@@ -44,7 +44,8 @@ echo [start-cli] 启动 CLI 交互终端: model=%DSH_MODEL% baseUrl=%DSH_BASE_UR
 
 rem classpath 超 8KB（cmd 行/env 上限 8191），用 java @argfile 规避截断
 set "ARGF=%ROOT%\dsh-app\target\dsh-cli-%RANDOM%.arg"
-> "%ARGF%" echo -cp
+> "%ARGF%" echo -Dlogback.configurationFile=logback-cli.xml
+>>"%ARGF%" echo -cp
 <nul >>"%ARGF%" set /p "=%ROOT%\dsh-app\target\classes;"
 >>"%ARGF%" type "%CP_FILE%"
 >>"%ARGF%" echo.
