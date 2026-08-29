@@ -46,6 +46,7 @@ public final class CliTurnObserver implements TurnObserver {
         }
         if (contentDelta != null && !contentDelta.isEmpty()) {
             if (inThink) {
+                out.println();
                 out.println("------------------------");
                 out.print(RESET);
                 inThink = false;
@@ -61,6 +62,7 @@ public final class CliTurnObserver implements TurnObserver {
         if (streamed) {
             // 已逐 token 输出：收尾（关闭未闭合 think 块 + 换行），不重复打印正文
             if (inThink) {
+                out.println();
                 out.println("------------------------");
                 out.print(RESET);
                 inThink = false;
@@ -97,7 +99,15 @@ public final class CliTurnObserver implements TurnObserver {
     @Override
     public void onToolResult(String callId, String resultText) {
         out.print(DIM);
-        out.println("  -> " + collapse(resultText, 600));
+        out.print("  -> ");
+        String r = resultText == null ? "" : resultText.replace("\r", "");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < r.length(); i++) {
+            char c = r.charAt(i);
+            if (c == '\n' || c == '\t' || (c >= 0x20 && c != 0x7F)) sb.append(c);
+            if (sb.length() >= 600) { sb.append("..."); break; }
+        }
+        out.println(sb.toString());
         out.print(RESET);
         out.flush();
     }
