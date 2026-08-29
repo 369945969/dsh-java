@@ -4,7 +4,7 @@ import java.io.BufferedReader;
 import java.io.Console;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
@@ -102,13 +102,24 @@ public final class DshRepl {
         }
         System.out.print(PROMPT);
         if (stdinReader == null) {
-            stdinReader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+            stdinReader = new BufferedReader(new InputStreamReader(System.in, consoleCharset()));
         }
         try {
             return stdinReader.readLine();
         } catch (IOException e) {
             return null;
         }
+    }
+
+    private static Charset consoleCharset() {
+        String ne = System.getProperty("native.encoding");
+        if (ne != null) {
+            try {
+                return Charset.forName(ne);
+            } catch (Exception ignore) {
+            }
+        }
+        return Charset.defaultCharset();
     }
 
     private boolean handleCommand(String cmd) {
