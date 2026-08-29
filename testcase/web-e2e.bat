@@ -31,7 +31,7 @@ set "STARTED=0"
 curl -sf "%BASE%/api/agent/health" >nul 2>nul
 if errorlevel 1 (
   echo [web-e2e] 启动 Web 服务端 (port=%PORT%)... 1>&2
-  start "" /B "%ROOT%\scripts\start-web.bat" %PORT%
+  start "" /B "%ROOT%\scripts\start.bat" %PORT%
   set "STARTED=1"
 )
 

@@ -55,7 +55,7 @@ mvn -q -pl testcase exec:java -Dexec.mainClass=com.deepseek.dsh.testcase.RpcE2e 
 # 3) Web 服务端（一个实例供 SSE + WebSocket 共用）
 echo
 echo "[run-all] 3/4 启动 Web 服务端（REST + SSE + WebSocket）..."
-"$ROOT/scripts/start-web.sh" 8765 >&2 &
+"$ROOT/scripts/start.sh" 8765 >&2 &
 WEB_PID=$!
 cleanup_web() { [ -n "${WEB_PID:-}" ] && kill "$WEB_PID" 2>/dev/null || true; }
 trap 'cleanup_web; rm -rf "$DSH_DATA_DIR"' EXIT

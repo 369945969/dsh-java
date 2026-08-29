@@ -21,7 +21,7 @@ if [ -f "$ROOT/.env" ]; then set -a; . "$ROOT/.env"; set +a; fi
 start_server=0
 if ! curl -sf "$BASE/api/agent/health" >/dev/null 2>&1; then
   echo "[web-e2e] 启动 Web 服务端 (port=$PORT)..." >&2
-  "$ROOT/scripts/start-web.sh" "$PORT" >&2 &
+  "$ROOT/scripts/start.sh" "$PORT" >&2 &
   WEB_PID=$!
   start_server=1
   trap '[ -n "${WEB_PID:-}" ] && kill "$WEB_PID" 2>/dev/null || true' EXIT INT TERM

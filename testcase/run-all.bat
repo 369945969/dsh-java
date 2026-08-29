@@ -61,7 +61,7 @@ if errorlevel 1 set rpc_ok=1
 rem 3) Web 服务端（一个实例供 SSE + WebSocket 共用）
 echo.
 echo [run-all] 3/4 启动 Web 服务端（REST + SSE + WebSocket）...
-start "" /B "%ROOT%\scripts\start-web.bat" 8765
+start "" /B "%ROOT%\scripts\start.bat" 8765
 set /a tries=0
 :webwait
 curl -sf http://localhost:8765/api/agent/health >nul 2>nul

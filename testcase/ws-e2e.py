@@ -5,7 +5,7 @@
   C→S: {"action":"prompt","sessionId":"s1","message":"..."} / {"action":"cancel","sessionId":"s1"}
   S→C: {"event":"session|delta|done|cancelled|error","sessionId":"s1","data":"..."}
 
-依赖：python3 + websockets（已随环境）。需先启动 Web 服务端（scripts/start-web.sh，默认 8765）。
+依赖：python3 + websockets（已随环境）。需先启动 Web 服务端（scripts/start.sh，默认 8765）。
 """
 import asyncio
 import json

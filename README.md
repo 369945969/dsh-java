@@ -198,12 +198,11 @@ cp .env.example .env      # 复制模板，填入 DEEPSEEK_API_KEY
 | 脚本 | 入口类 | 传输/模式 | 说明 |
 |------|--------|-----------|------|
 | `start.sh` | `DshApplication` | Web（SPA+REST+SSE+WS） | 一键构建前端并启动 Web 服务（推荐） |
-| `start-web.sh` | `DshApplication` | Spring Boot REST+SSE | 纯后端 Web 服务（默认 8765） |
 | `start-rpc.sh` | `DshRpcServer` | stdio JSON-RPC | 运行时 SDK 全功能（进程外子进程） |
 | `start-acp.sh` | `DshAcpServer` | stdio JSON-RPC | ACP 自动化最小方法集 |
 | `start-cli.sh` | `DshRepl` | 终端 REPL | 交互式对话（斜杠命令） |
 
-> 所有脚本共享首次 classpath 构建缓存（`dsh-app/target/rpc-cp.txt`），从仓库根 `.env` 自动加载模型配置。
+> 启动脚本每次执行前会 `clean install` 重编译后端并刷新共享 classpath（`dsh-app/target/rpc-cp.txt`），从仓库根 `.env` 自动加载模型配置。
 >
 > Windows：每个脚本均有同名 `.bat`（如 `scripts\start.bat`），与 `.sh` 一一对应，同样自动加载 `.env`、构建并缓存 classpath（依赖 mvn + Java；端到端脚本 `run-all.bat` / `web-e2e.bat` 另需 curl 与 PowerShell）。
 
