@@ -57,7 +57,7 @@ rem 用 PowerShell 写 argfile（正确引用含空格的 classpath），再用 
 rem 不经 PowerShell Process.Start 启动 java，使 java 直接继承 cmd 控制台 → System.console()
 rem 非 null，readLine 走 ReadConsoleW 宽字符 API，正确读取中文（与控制台代码页无关）。
 set "ARGF=%ROOT%\dsh-app\target\dsh-cli-%RANDOM%.arg"
-powershell -NoProfile -Command "$cp='%ROOT%\dsh-app\target\classes;'+[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $n=[char]10; $q=[char]34; [IO.File]::WriteAllText('%ARGF%', '-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dlogback.configurationFile=logback-cli.xml'+$n+'-cp'+$n+$q+$cp+$q+$n+'com.deepseek.dsh.app.cli.DshRepl'+$n)"
+powershell -NoProfile -Command "$cp='%ROOT%\dsh-app\target\classes;'+[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp=$cp.Replace('\','\\'); $n=[char]10; $q=[char]34; [IO.File]::WriteAllText('%ARGF%', '-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dlogback.configurationFile=logback-cli.xml'+$n+'-cp'+$n+$q+$cp+$q+$n+'com.deepseek.dsh.app.cli.DshRepl'+$n)"
 if errorlevel 1 ( echo [%SELF%] failed to write argfile 1>&2 & exit /b 1 )
 chcp 65001 >nul
 "%JAVABIN%" @%ARGF%

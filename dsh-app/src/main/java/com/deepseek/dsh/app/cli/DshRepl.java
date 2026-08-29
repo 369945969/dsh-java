@@ -270,16 +270,15 @@ public final class DshRepl {
 
     /** 入口：装配插件树并启动交互循环。 */
     public static void main(String[] args) throws Exception {
-        String apiKey = System.getenv().getOrDefault("DEEPSEEK_API_KEY", "");
-        String baseUrl = System.getenv().getOrDefault("DSH_BASE_URL", "https://api.deepseek.com");
-        String model = System.getenv().getOrDefault("DSH_MODEL", "deepseek-chat");
+        // 模型配置来自 dataDir/model-config.json（ModelProfileStore 启动时加载活跃档案并同步到 ModelConfig）；
+        // 不从环境变量读取模型/key/端点。
         Path dataDir = Path.of(System.getenv().getOrDefault("DSH_DATA_DIR",
                 Path.of(System.getProperty("user.home"), ".dsh").toString()));
 
-        log.info("Starting CLI interactive mode: model={}, baseUrl={}", model, baseUrl);
+        log.info("Starting CLI interactive mode (model from {}/model-config.json)", dataDir);
         Context context = Context.root();
         PluginRunner runner = new PluginRunner();
-        Agent agent = new BaseBundle(apiKey, baseUrl, model, dataDir).assemble(context, runner);
+        Agent agent = new BaseBundle(dataDir).assemble(context, runner);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("Unloading plugin tree...");

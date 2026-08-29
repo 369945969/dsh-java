@@ -67,6 +67,11 @@ public final class BaseBundle {
         this.dataDir = dataDir;
     }
 
+    /** 仅数据目录：模型/key/端点完全来自 dataDir/model-config.json，不从环境变量加载。 */
+    public BaseBundle(Path dataDir) {
+        this("", "", "", dataDir);
+    }
+
     /**
      * 将所有核心插件挂载到上下文，并返回一个已装配的 {@link Agent}。
      */
@@ -174,7 +179,7 @@ public final class BaseBundle {
         toolRegistry.register(new TerminalTool(terminal));
 
         // Web 搜索/抓取
-        var searchProvider = new com.deepseek.dsh.capability.web.search.DeepSeekSearchProvider(apiKey);
+        var searchProvider = new com.deepseek.dsh.capability.web.search.DeepSeekSearchProvider(modelConfig.apiKey());
         var fetchProvider = new com.deepseek.dsh.capability.web.fetch.HttpFetchProvider();
         toolRegistry.register(new com.deepseek.dsh.capability.web.tool.WebSearchTool(searchProvider));
         toolRegistry.register(new com.deepseek.dsh.capability.web.tool.WebFetchTool(fetchProvider));
