@@ -58,6 +58,7 @@ public final class DshRepl {
     private static final String PROMPT = DIM + "> " + RESET;
 
     private static BufferedReader stdinReader;
+    private static boolean diagFirst = true;
 
     private final Context context;
     private final Agent agent;
@@ -97,18 +98,33 @@ public final class DshRepl {
 
     private static String readUserLine() {
         Console console = System.console();
+        String line;
         if (console != null) {
-            return console.readLine(PROMPT);
+            line = console.readLine(PROMPT);
+        } else {
+            System.out.print(PROMPT);
+            if (stdinReader == null) {
+                stdinReader = new BufferedReader(new InputStreamReader(System.in, consoleCharset()));
+            }
+            try {
+                line = stdinReader.readLine();
+            } catch (IOException e) {
+                line = null;
+            }
         }
-        System.out.print(PROMPT);
-        if (stdinReader == null) {
-            stdinReader = new BufferedReader(new InputStreamReader(System.in, consoleCharset()));
+        if (diagFirst && line != null) {
+            diagFirst = false;
+            StringBuilder cps = new StringBuilder();
+            line.codePoints().limit(24).forEach(cp -> cps.append(Integer.toHexString(cp)).append(' '));
+            System.err.println("[diag] console=" + (console != null)
+                + " consoleCharset=" + (console != null ? console.charset() : "n/a")
+                + " default=" + Charset.defaultCharset()
+                + " native=" + System.getProperty("native.encoding")
+                + " file=" + System.getProperty("file.encoding")
+                + " stdin=" + System.getProperty("stdin.encoding")
+                + " | line.len=" + line.length() + " cps=" + cps);
         }
-        try {
-            return stdinReader.readLine();
-        } catch (IOException e) {
-            return null;
-        }
+        return line;
     }
 
     private static Charset consoleCharset() {

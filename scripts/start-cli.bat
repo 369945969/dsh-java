@@ -53,8 +53,14 @@ call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.ou
 
 echo [%SELF%] launching CLI REPL: model=%DSH_MODEL% baseUrl=%DSH_BASE_URL% 1>&2
 
-rem Classpath may exceed 8KB and the .m2 path contains spaces. java @argfile cannot quote-group
-rem backslashed Windows paths, so launch via PowerShell + ProcessStartInfo (CreateProcess ~32KB line,
-rem CRT parses -cp "..." correctly).
-powershell -NoProfile -Command "$cp=[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp='%ROOT%\dsh-app\target\classes;'+$cp; $q=[string][char]34; $psi=New-Object Diagnostics.ProcessStartInfo; $psi.FileName='%JAVABIN%'; $psi.Arguments='-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -cp '+$q+$cp+$q+' com.deepseek.dsh.app.cli.DshRepl'; $psi.UseShellExecute=$false; $p=[Diagnostics.Process]::Start($psi); $p.WaitForExit(); exit $p.ExitCode"
-exit /b %ERRORLEVEL%
+rem 用 PowerShell 写 argfile（正确引用含空格的 classpath），再用 java @argfile 直接启动。
+rem 不经 PowerShell Process.Start 启动 java，使 java 直接继承 cmd 控制台 → System.console()
+rem 非 null，readLine 走 ReadConsoleW 宽字符 API，正确读取中文（与控制台代码页无关）。
+set "ARGF=%ROOT%\dsh-app\target\dsh-cli-%RANDOM%.arg"
+powershell -NoProfile -Command "$cp='%ROOT%\dsh-app\target\classes;'+[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $n=[char]10; $q=[char]34; [IO.File]::WriteAllText('%ARGF%', '-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dlogback.configurationFile=logback-cli.xml'+$n+'-cp'+$n+$q+$cp+$q+$n+'com.deepseek.dsh.app.cli.DshRepl'+$n)"
+if errorlevel 1 ( echo [%SELF%] failed to write argfile 1>&2 & exit /b 1 )
+chcp 65001 >nul
+"%JAVABIN%" @%ARGF%
+set "EXITCODE=%ERRORLEVEL%"
+if exist "%ARGF%" del "%ARGF%" 2>nul
+exit /b %EXITCODE%
