@@ -110,6 +110,8 @@ public final class BaseBundle {
         runner.add(new com.deepseek.dsh.context.instructions.AgentInstructionsPlugin(dataDir));
         runner.add(new com.deepseek.dsh.context.time.TimeContextPlugin());
         runner.add(new com.deepseek.dsh.context.reference.FileReferenceService());
+        runner.add(new com.deepseek.dsh.context.tmux.TmuxContextPlugin());
+        runner.add(new com.deepseek.dsh.context.reference.SessionReferencePlugin());
 
         // 遥测能力缝（默认 no-op；可换 LoggingTelemetryProvider 启用 OTel 风格日志）
         var telemetry = new com.deepseek.dsh.telemetry.NoopTelemetryProvider();
@@ -155,6 +157,10 @@ public final class BaseBundle {
         // 注册具体能力提供者 + 工具
         ShellCapability shell = new BashLocalProvider();
         toolRegistry.register(new BashTool(shell));
+        ShellCapability pwshShell = new com.deepseek.dsh.capability.shell.local.PwshLocalProvider();
+        toolRegistry.register(new com.deepseek.dsh.capability.shell.tool.PwshTool(pwshShell));
+        ShellCapability sandboxedShell = new com.deepseek.dsh.capability.shell.sandbox.BashSandboxProvider(shell);
+        // sandboxedShell 可用于需要沙箱限制的场景
 
         FsCapability fs = new FsLocalProvider();
         toolRegistry.register(new ReadTool(fs));
