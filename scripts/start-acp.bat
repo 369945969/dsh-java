@@ -1,17 +1,19 @@
 @echo off
 chcp 65001 >nul
 setlocal
-rem 启动 ACP 服务端（Automation-only Agent Client Protocol，stdio newline-delimited
-rem JSON-RPC 2.0）—— 对应原 Harness 的 dsh acp 模式。stdout 仅承载 JSON-RPC 帧，
-rem 所有日志走 stderr（logback-rpc.xml），保证自动化客户端可干净读取。
+rem Launch the ACP server (Automation-only Agent Client Protocol, stdio newline-delimited
+rem JSON-RPC 2.0) - the original Harness dsh acp mode. stdout carries only JSON-RPC frames;
+rem all logs go to stderr (logback-rpc.xml) so automation clients can read cleanly.
 rem
-rem 方法面（自动化专用最小集）：session.create / session.run / session.list / shutdown
+rem Method surface (automation-only minimal set): session.create / session.run / session.list / shutdown
 rem
-rem 用法： scripts\start-acp.bat
-rem 环境变量（从仓库根 .env 自动加载，亦可手动 set）：
-rem   DEEPSEEK_API_KEY  模型 API Key（必填）
-rem   DSH_BASE_URL      OpenAI 兼容端点
-rem   DSH_MODEL         模型名
+rem Usage: scripts\start-acp.bat
+rem Env vars (auto-loaded from repo root .env, or set manually):
+rem   DEEPSEEK_API_KEY  model API key (required)
+rem   DSH_BASE_URL      OpenAI-compatible endpoint
+rem   DSH_MODEL         model name
+
+set "SELF=start-acp"
 
 pushd "%~dp0.." >nul
 set "ROOT=%CD%"
@@ -19,14 +21,34 @@ popd >nul
 
 set "CP_FILE=%ROOT%\dsh-app\target\rpc-cp.txt"
 
-rem 加载 .env（若存在；不提交密钥）
-if exist "%ROOT%\.env" (
-  for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /v /c:"#" "%ROOT%\.env"`) do set "%%a=%%b"
+rem --- Java version check: project requires Java 21 (jakarta + Spring Boot 3). mvn uses JAVA_HOME,
+rem     runtime uses the same java. If not 21, error out early. ---
+set "JAVABIN=java"
+if defined JAVA_HOME set "JAVABIN=%JAVA_HOME%\bin\java.exe"
+set "JV_TMP=%ROOT%\dsh_jv.txt"
+"%JAVABIN%" -version >nul 2>"%JV_TMP%"
+if errorlevel 1 ( echo [%SELF%] error: cannot run java, path=%JAVABIN% 1>&2 & del "%JV_TMP%" 2>nul & exit /b 1 )
+set "JV_VER="
+for /f "tokens=3" %%v in ('type "%JV_TMP%"') do if not defined JV_VER set "JV_VER=%%v"
+del "%JV_TMP%" 2>nul
+set "JV_VER=%JV_VER:"=%"
+for /f "delims=." %%m in ("%JV_VER%") do set "JV_MAJOR=%%m"
+if not "%JV_MAJOR%"=="21" (
+  echo [%SELF%] error: Java 21 required, found %JV_VER% 1>&2
+  echo [%SELF%]        JAVA_HOME=%JAVA_HOME% 1>&2
+  echo [%SELF%]        set JAVA_HOME to a JDK 21 and retry, e.g. D:\Program Files\Java\jdk-21 1>&2
+  exit /b 1
 )
+echo [%SELF%] java %JV_VER% ok 1>&2
+
+rem load .env if present (do not commit secrets)
+if not exist "%ROOT%\.env" goto :skip_env
+for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /v /c:"#" "%ROOT%\.env"`) do set "%%a=%%b"
+:skip_env
 if not defined DSH_MODEL set "DSH_MODEL=deepseek-chat"
 if not defined DSH_BASE_URL set "DSH_BASE_URL=https://api.deepseek.com"
 
-rem 首次或任意模块 pom 变更时重建 classpath（与 start-rpc.bat / start-web.bat 共用缓存）
+rem rebuild classpath on first run or when any pom changed (cache shared with start-rpc / start)
 set "NEED_BUILD=0"
 if not exist "%CP_FILE%" set "NEED_BUILD=1"
 if "%NEED_BUILD%"=="0" (
@@ -35,29 +57,20 @@ if "%NEED_BUILD%"=="0" (
   for /d %%D in (%ROOT%\dsh-*) do if exist "%%D\pom.xml" call :check_pom_newer "%%D\pom.xml"
 )
 if "%NEED_BUILD%"=="1" (
-  echo [start-acp] 首次构建 classpath（install + build-classpath）... 1>&2
-  call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app -am install -DskipTests -Dmaven.test.skip=true
-  if errorlevel 1 ( echo [start-acp] mvn install 失败 1>&2 & exit /b 1 )
-  call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%CP_FILE%"
-  if errorlevel 1 ( echo [start-acp] mvn build-classpath 失败 1>&2 & exit /b 1 )
+  echo [%SELF%] building classpath install+build-classpath... 1>&2
+  call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app -am install -DskipTests -Dmaven.test.skip=true || ( echo [%SELF%] mvn install failed 1>&2 & exit /b 1 )
+  call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%CP_FILE%" || ( echo [%SELF%] mvn build-classpath failed 1>&2 & exit /b 1 )
 )
 
-echo [start-acp] 启动 ACP 服务端: model=%DSH_MODEL% baseUrl=%DSH_BASE_URL% 1>&2
+echo [%SELF%] launching ACP server: model=%DSH_MODEL% baseUrl=%DSH_BASE_URL% 1>&2
 
-rem classpath 超 8KB（cmd 行/env 上限 8191），用 java @argfile 规避截断
-set "ARGF=%ROOT%\dsh-app\target\dsh-acp-%RANDOM%.arg"
-> "%ARGF%" echo -Dlogback.configurationFile=logback-rpc.xml
->>"%ARGF%" echo -cp
-<nul >>"%ARGF%" set /p "=%ROOT%\dsh-app\target\classes;"
->>"%ARGF%" type "%CP_FILE%"
->>"%ARGF%" echo.
->>"%ARGF%" echo com.deepseek.dsh.app.acp.DshAcpServer
-java @%ARGF%
-set "EXITCODE=%ERRORLEVEL%"
-if exist "%ARGF%" del "%ARGF%"
-exit /b %EXITCODE%
+rem Classpath may exceed 8KB and the .m2 path contains spaces. java @argfile cannot quote-group
+rem backslashed Windows paths, so launch via PowerShell + ProcessStartInfo (CreateProcess ~32KB line,
+rem CRT parses -cp "..." correctly).
+powershell -NoProfile -Command "$cp=[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp='%ROOT%\dsh-app\target\classes;'+$cp; $q=[string][char]34; $psi=New-Object Diagnostics.ProcessStartInfo; $psi.FileName='%JAVABIN%'; $psi.Arguments='-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dlogback.configurationFile=logback-rpc.xml -cp '+$q+$cp+$q+' com.deepseek.dsh.app.acp.DshAcpServer'; $psi.UseShellExecute=$false; $p=[Diagnostics.Process]::Start($psi); $p.WaitForExit(); exit $p.ExitCode"
+exit /b %ERRORLEVEL%
 
 :check_pom_newer
-rem %1 = pom 路径；若比 %CP_FILE% 新（或 cp 缺失）则置 NEED_BUILD=1
+rem %1 = pom path; set NEED_BUILD=1 if newer than %CP_FILE% (or cp missing)
 echo F| xcopy /D /L /Y "%~1" "%CP_FILE%" 2>nul | findstr /c:".xml" >nul && set "NEED_BUILD=1"
 goto :eof

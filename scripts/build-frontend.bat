@@ -1,15 +1,16 @@
 @echo off
 chcp 65001 >nul
 setlocal
-rem 编译前端（frontend/ vendored Cordis）并烘焙 boot 后部署到后端 static：
-rem   1. pnpm install --frozen-lockfile — 安装 workspace 依赖
-rem   2. pnpm run build — 全量构建（build:lib 编译各包 lib/client.js + build:web 构建 web app dist/）
-rem   3. 部署 dist → static（源 resources + 运行时 target/classes）
-rem   4. bake-boot：apps/web 只是 shell，__DSH_BOOT__ + __ModuleLoader__ facade 由 dsh web 每次请求注入；
-rem      离线复用 harness 的 bootInjections/renderIndexInjections 把 boot 烘焙进 index.html，
-rem      并把各包 lib/client.js 复制到 static/plugins/<id>/client.js（rev 与 manifest 一致），
-rem      产出可由 dsh-app 静态托管的自包含前端。
-rem 用法： scripts\build-frontend.bat
+rem Build frontend (frontend/ vendored Cordis) and bake boot, then deploy to backend static:
+rem   1. pnpm install --frozen-lockfile - install workspace dependencies
+rem   2. pnpm run build - full build (build:lib compiles each package lib/client.js + build:web builds web app dist/)
+rem   3. deploy dist -> static (source resources + runtime target/classes)
+rem   4. bake-boot: apps/web is only a shell, __DSH_BOOT__ + __ModuleLoader__ facade is injected
+rem      by dsh web on each request; offline reuse of harness bootInjections/renderIndexInjections
+rem      bakes boot into index.html and copies each package lib/client.js to
+rem      static/plugins/<id>/client.js (rev matches manifest), producing a self-contained
+rem      frontend that dsh-app can statically host.
+rem Usage: scripts\build-frontend.bat
 pushd "%~dp0.." >nul
 set "ROOT=%CD%"
 popd >nul
@@ -18,39 +19,58 @@ set "STATIC_RES=%ROOT%\dsh-app\src\main\resources\static"
 set "STATIC_CP=%ROOT%\dsh-app\target\classes\static"
 set "BAKE=%ROOT%\frontend\scripts\bake-boot.cjs"
 
-echo [build-frontend] 安装依赖 + 全量构建（frontend\）...
+rem --- environment check: Node 22.19.0+ (below 23) or 24.0.0+; older Node lacks import.meta.main,
+rem     so frontend/scripts/build.ts `if (import.meta.main) main()` is a silent no-op (no dist). ---
+where node >nul 2>nul
+if errorlevel 1 ( echo [build-frontend] error: node not found on PATH & exit /b 1 )
+for /f "delims=" %%V in ('node --version') do set "NODE_VER=%%V"
+set "NODE_VER=%NODE_VER:v=%"
+for /f "tokens=1,2 delims=." %%a in ("%NODE_VER%") do ( set "NODE_MAJOR=%%a" & set "NODE_MINOR=%%b" )
+set "NODE_OK=0"
+if %NODE_MAJOR% EQU 22 ( if %NODE_MINOR% GEQ 19 set "NODE_OK=1" )
+if %NODE_MAJOR% GEQ 24 set "NODE_OK=1"
+if not "%NODE_OK%"=="1" (
+  echo [build-frontend] error: Node version requirement not met.
+  echo [build-frontend]        required 22.19.0+ and below 23, or 24.0.0+
+  echo [build-frontend]        found    v%NODE_VER%
+  echo [build-frontend]        older Node lacks import.meta.main, so build.ts is a silent no-op.
+  exit /b 1
+)
+echo [build-frontend] node v%NODE_VER% ok
+
+echo [build-frontend] install deps + full build (frontend\)...
 pushd "%ROOT%\frontend"
 call pnpm install --frozen-lockfile
-if errorlevel 1 ( echo [build-frontend] pnpm install 失败 & exit /b 1 )
+if errorlevel 1 ( echo [build-frontend] pnpm install failed & exit /b 1 )
 call pnpm run build
-if errorlevel 1 ( echo [build-frontend] pnpm build 失败 & exit /b 1 )
+if errorlevel 1 ( echo [build-frontend] pnpm build failed & exit /b 1 )
 popd
 
 if not exist "%WEB_DIST%\index.html" (
-  echo [build-frontend] 错误：%WEB_DIST%\index.html 不存在，构建未产出 dist
+  echo [build-frontend] error: %WEB_DIST%\index.html does not exist, build produced no dist
   exit /b 1
 )
 
-echo [build-frontend] 部署 dist -^> static（源 + 运行时 classpath）...
+echo [build-frontend] deploy dist -^> static (source + runtime classpath)...
 
-rem 部署到源 static
+rem deploy to source static
 if exist "%STATIC_RES%\assets" rmdir /s /q "%STATIC_RES%\assets"
 for %%F in ("%STATIC_RES%\index.html" "%STATIC_RES%\favicon.svg" "%STATIC_RES%\manifest.webmanifest") do if exist "%%~F" del /q "%%~F"
 xcopy "%WEB_DIST%\*" "%STATIC_RES%\" /E /Y /I /Q >nul
-if errorlevel 1 ( echo [build-frontend] 部署到源 static 失败 & exit /b 1 )
+if errorlevel 1 ( echo [build-frontend] deploy to source static failed & exit /b 1 )
 
-rem 部署到运行时 classpath static（start.sh 直接 java -cp 读取，跳过 mvn 时需已更新）
+rem deploy to runtime classpath static (start.sh reads it directly via java -cp, must be updated when skipping mvn)
 if not exist "%STATIC_CP%" mkdir "%STATIC_CP%"
 if exist "%STATIC_CP%\assets" rmdir /s /q "%STATIC_CP%\assets"
 for %%F in ("%STATIC_CP%\index.html" "%STATIC_CP%\favicon.svg" "%STATIC_CP%\manifest.webmanifest") do if exist "%%~F" del /q "%%~F"
 xcopy "%WEB_DIST%\*" "%STATIC_CP%\" /E /Y /I /Q >nul
-if errorlevel 1 ( echo [build-frontend] 部署到 classpath static 失败 & exit /b 1 )
+if errorlevel 1 ( echo [build-frontend] deploy to classpath static failed & exit /b 1 )
 
-echo [build-frontend] 烘焙 boot（注入 __DSH_BOOT__ + __ModuleLoader__ facade + 部署 plugin bundles）...
+echo [build-frontend] bake boot (inject __DSH_BOOT__ + __ModuleLoader__ facade + deploy plugin bundles)...
 call node "%BAKE%" "%STATIC_RES%"
-if errorlevel 1 ( echo [build-frontend] bake-boot 源 static 失败 & exit /b 1 )
+if errorlevel 1 ( echo [build-frontend] bake-boot source static failed & exit /b 1 )
 call node "%BAKE%" "%STATIC_CP%"
-if errorlevel 1 ( echo [build-frontend] bake-boot classpath static 失败 & exit /b 1 )
+if errorlevel 1 ( echo [build-frontend] bake-boot classpath static failed & exit /b 1 )
 
-echo [build-frontend] 完成：自包含 static 已就绪（dsh-app 同源托管，无需 dsh web 注入）
+echo [build-frontend] done: self-contained static ready (dsh-app same-origin hosting, no dsh web injection needed)
 exit /b 0

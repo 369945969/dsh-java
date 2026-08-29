@@ -1,13 +1,13 @@
 @echo off
 chcp 65001 >nul
 setlocal
-rem 一键启动：编译后端 -> 启动 Web 服务（托管原版 Cordis 前端 shell + apiproxy 网关）。
-rem 前端静态资源（原版 shell + __DSH_BOOT__ 启动快照 + 插件包）已构建并提交于
-rem dsh-app/src/main/resources/static，由后端同源托管，无需运行时重建。
-rem 打开 http://localhost:8765 即可用原版前端对话后端 agent。
+rem One-click start: build backend -> launch Web server (hosts the vendored Cordis frontend shell + apiproxy gateway).
+rem Frontend static assets (shell + __DSH_BOOT__ snapshot + plugin bundles) are built and committed under
+rem dsh-app/src/main/resources/static, served same-origin by the backend; no runtime rebuild needed.
+rem Open http://localhost:8765 to use the frontend against the backend agent.
 rem
-rem 用法： scripts\start.bat [port]
-rem 环境变量从仓库根 .env 自动加载（DEEPSEEK_API_KEY / DSH_BASE_URL / DSH_MODEL）。
+rem Usage: scripts\start.bat [port]
+rem Env vars loaded from repo root .env (DEEPSEEK_API_KEY / DSH_BASE_URL / DSH_MODEL).
 
 pushd "%~dp0.." >nul
 set "ROOT=%CD%"
@@ -17,14 +17,34 @@ set "PORT=%~1"
 if not defined PORT set "PORT=8765"
 set "CP_FILE=%ROOT%\dsh-app\target\rpc-cp.txt"
 
-rem 加载 .env（若存在；不提交密钥）
-if exist "%ROOT%\.env" (
-  for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /v /c:"#" "%ROOT%\.env"`) do set "%%a=%%b"
+rem --- Java version check: project requires Java 21 (jakarta + Spring Boot 3). mvn uses JAVA_HOME,
+rem     runtime uses the same java. If not 21, error out early instead of confusing build/launch failures. ---
+set "JAVABIN=java"
+if defined JAVA_HOME set "JAVABIN=%JAVA_HOME%\bin\java.exe"
+set "JV_TMP=%ROOT%\dsh_jv.txt"
+"%JAVABIN%" -version >nul 2>"%JV_TMP%"
+if errorlevel 1 ( echo [start] error: cannot run java, path=%JAVABIN% 1>&2 & del "%JV_TMP%" 2>nul & exit /b 1 )
+set "JV_VER="
+for /f "tokens=3" %%v in ('type "%JV_TMP%"') do if not defined JV_VER set "JV_VER=%%v"
+del "%JV_TMP%" 2>nul
+set "JV_VER=%JV_VER:"=%"
+for /f "delims=." %%m in ("%JV_VER%") do set "JV_MAJOR=%%m"
+if not "%JV_MAJOR%"=="21" (
+  echo [start] error: Java 21 required, found %JV_VER% 1>&2
+  echo [start]        JAVA_HOME=%JAVA_HOME% 1>&2
+  echo [start]        set JAVA_HOME to a JDK 21 and retry, e.g. D:\Program Files\Java\jdk-21 1>&2
+  exit /b 1
 )
+echo [start] java %JV_VER% ok 1>&2
+
+rem load .env if present (do not commit secrets)
+if not exist "%ROOT%\.env" goto :skip_env
+for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /v /c:"#" "%ROOT%\.env"`) do set "%%a=%%b"
+:skip_env
 if not defined DSH_MODEL set "DSH_MODEL=deepseek-chat"
 if not defined DSH_BASE_URL set "DSH_BASE_URL=https://api.deepseek.com"
 
-rem 首次构建 classpath（任意模块 pom 变更即重建）
+rem build classpath on first run (or when any pom changed)
 set "NEED_BUILD=0"
 if not exist "%CP_FILE%" set "NEED_BUILD=1"
 if "%NEED_BUILD%"=="0" (
@@ -33,43 +53,35 @@ if "%NEED_BUILD%"=="0" (
   for /d %%D in (%ROOT%\dsh-*) do if exist "%%D\pom.xml" call :check_pom_newer "%%D\pom.xml"
 )
 if "%NEED_BUILD%"=="1" (
-  echo [start] 首次构建 classpath... 1>&2
-  call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app -am install -DskipTests -Dmaven.test.skip=true
-  if errorlevel 1 ( echo [start] mvn install 失败 1>&2 & exit /b 1 )
-  call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%CP_FILE%"
-  if errorlevel 1 ( echo [start] mvn build-classpath 失败 1>&2 & exit /b 1 )
+  echo [start] building classpath... 1>&2
+  call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app -am install -DskipTests -Dmaven.test.skip=true || ( echo [start] mvn install failed 1>&2 & exit /b 1 )
+  call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%CP_FILE%" || ( echo [start] mvn build-classpath failed 1>&2 & exit /b 1 )
 )
 
-echo [start] 启动 Web 服务端: port=%PORT% model=%DSH_MODEL% 1>&2
+echo [start] launching web server: port=%PORT% model=%DSH_MODEL% 1>&2
 
 call :kill_port
 
-rem classpath 超 8KB（cmd 行/env 上限 8191），用 java @argfile 规避截断
-set "ARGF=%ROOT%\dsh-app\target\dsh-start-%RANDOM%.arg"
-> "%ARGF%" echo -Dserver.port=%PORT%
->>"%ARGF%" echo -cp
-<nul >>"%ARGF%" set /p "=%ROOT%\dsh-app\target\classes;"
->>"%ARGF%" type "%CP_FILE%"
->>"%ARGF%" echo.
->>"%ARGF%" echo com.deepseek.dsh.app.boot.DshApplication
-java @%ARGF%
-set "EXITCODE=%ERRORLEVEL%"
-if exist "%ARGF%" del "%ARGF%"
-exit /b %EXITCODE%
+rem The classpath may exceed 8KB and the .m2 path contains spaces (user dir "Jack Peng").
+rem java @argfile cannot quote-group backslashed Windows paths, so launch via PowerShell +
+rem ProcessStartInfo: CreateProcess allows ~32KB command line (bypassing cmd's 8191 limit),
+rem and the CRT correctly parses -cp "..." preserving spaces and backslashes.
+powershell -NoProfile -Command "$cp=[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp='%ROOT%\dsh-app\target\classes;'+$cp; $q=[string][char]34; $psi=New-Object Diagnostics.ProcessStartInfo; $psi.FileName='%JAVABIN%'; $psi.Arguments='-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dserver.port=%PORT% -cp '+$q+$cp+$q+' com.deepseek.dsh.app.boot.DshApplication'; $psi.UseShellExecute=$false; $p=[Diagnostics.Process]::Start($psi); $p.WaitForExit(); exit $p.ExitCode"
+exit /b %ERRORLEVEL%
 
 :check_pom_newer
-rem %1 = pom 路径；若比 %CP_FILE% 新（或 cp 缺失）则置 NEED_BUILD=1
+rem %1 = pom path; set NEED_BUILD=1 if newer than %CP_FILE% (or cp missing)
 echo F| xcopy /D /L /Y "%~1" "%CP_FILE%" 2>nul | findstr /c:".xml" >nul && set "NEED_BUILD=1"
 goto :eof
 
 :kill_port
-rem 释放端口 %PORT%：netstat 查 LISTENING PID，taskkill /F /T 杀进程树，重试至端口空闲
+rem free port %PORT%: netstat for LISTENING PID, taskkill /F /T the tree, retry until free
 set /a KP_RETRY=0
 :kp_loop
 set "KP_PID="
 for /f "tokens=5" %%a in ('netstat -ano -p TCP ^| findstr "LISTENING" ^| findstr ":%PORT%"') do if not defined KP_PID set "KP_PID=%%a"
 if not defined KP_PID goto :kp_done
-if %KP_RETRY%==0 echo [start] 端口 %PORT% 被占用，结束旧进程 PID=%KP_PID% 1>&2
+if %KP_RETRY%==0 echo [start] port %PORT% in use, killing old process PID=%KP_PID% 1>&2
 taskkill /F /T /PID %KP_PID% >nul 2>&1
 set /a KP_RETRY+=1
 if %KP_RETRY% LSS 8 (
