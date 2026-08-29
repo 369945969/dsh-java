@@ -104,6 +104,14 @@ public class WorkspaceRegistry {
         return null;
     }
 
+    /** 查找会话所属工作区的目录路径（供 agent 工具设为 cwd）。 */
+    public String findSessionWorkspacePath(String sessionId) {
+        for (Workspace w : byId.values()) {
+            if (w.sessionIds().contains(sessionId)) return w.path();
+        }
+        return null;
+    }
+
     /** 全部工作区视图。 */
     public List<Map<String, Object>> list() {
         List<Map<String, Object>> items = new ArrayList<>();

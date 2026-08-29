@@ -471,8 +471,8 @@ public class ApiproxyController {
                 "source", Map.of("kind", "user")));
         // 推送标题投影（首条用户消息前 40 字符），使侧边栏显示问答标题而非 cwd basename。
         sendSessionProjection(sessionId, "title", text.length() > 40 ? text.substring(0, 40) + "…" : text);
-        downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
-                Map.of("sessionId", sessionId, "running", true)));
+        try { downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
+                Map.of("sessionId", sessionId, "running", true))); } catch (Exception e) { log.debug("runTurn host/session-status(running): {}", e.toString()); }
 
         // 未分组会话自动按「年-月-日-时」分配工作区，便于按时间批量查询
         if (workspaces.findSessionWorkspace(sessionId) == null) {
@@ -483,7 +483,7 @@ public class ApiproxyController {
                 String wsId = String.valueOf(wv.get("workspaceId"));
                 Map<String, Object> attached = workspaces.attachSession(wsId, sessionId);
                 if (attached != null) {
-                    downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed", Map.of("workspace", attached)));
+                    try { downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed", Map.of("workspace", attached))); } catch (Exception e) { log.debug("runTurn host/workspace-changed: {}", e.toString()); }
                 }
             }
         }
@@ -515,6 +515,18 @@ public class ApiproxyController {
         // 再自增并开新 step（step/start），保证 step/start↔step/end 严格嵌套、节点 id（turn:step）唯一，避免「more than one start Match」。
         int[] step = {-1};
         boolean cancelled = false;
+        // 设置会话工作区 cwd（供 bash 等工具默认使用）
+        String wsPath = workspaces.findSessionWorkspacePath(sessionId);
+        if (wsPath != null) {
+            java.nio.file.Path wsDir = java.nio.file.Path.of(wsPath);
+            if (!java.nio.file.Files.isDirectory(wsDir)) {
+                // 工作区目录不存在 → 在程序执行目录下创建工作区名称的文件夹作为工作目录
+                String wsName = wsDir.getFileName() != null ? wsDir.getFileName().toString() : "workspace";
+                wsDir = java.nio.file.Path.of(System.getProperty("user.dir"), wsName);
+                try { java.nio.file.Files.createDirectories(wsDir); } catch (Exception e) { log.debug("create workspace dir failed: {}", e.toString()); }
+            }
+            com.deepseek.dsh.core.context.SessionCwd.set(wsDir.toString());
+        }
         try {
             Context ctx = holder.context();
             Agent agent = holder.agent();
@@ -587,13 +599,14 @@ public class ApiproxyController {
             }
         } finally {
             runningTurns.remove(sessionId);
+            com.deepseek.dsh.core.context.SessionCwd.clear();
         }
         cancelled = cancelledSessions.remove(sessionId);
         if (step[0] >= 0) sendSessionEvent(sessionId, "step/end", Map.of("turn", turn, "step", step[0]));
         sendSessionEvent(sessionId, "turn/end", Map.of("turn", turn,
                 "reason", Map.of("kind", cancelled ? "aborted" : "complete")));
-        downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
-                Map.of("sessionId", sessionId, "running", false)));
+        try { downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
+                Map.of("sessionId", sessionId, "running", false))); } catch (Exception e) { log.debug("runTurn host/session-status(done): {}", e.toString()); }
     }
 
     /** session.history：把 dsh-java 投影消息映射为 harness 事件信封（user/message + turn/assistant-message），供 UI 重放历史。 */
@@ -1470,8 +1483,13 @@ public class ApiproxyController {
         event.put("time", System.currentTimeMillis());
         event.put("data", data);
         if (isSurfaceMessageEvent(eventType)) event.put("surfaceOp", "append");
-        downlink.sendMuxFrame(uuid(), muxFrame("session/event",
-                Map.of("sessionId", sessionId, "event", event)));
+        try {
+            downlink.sendMuxFrame(uuid(), muxFrame("session/event",
+                    Map.of("sessionId", sessionId, "event", event)));
+        } catch (Exception e) {
+            // mux WS 断开（如刷新）不应中断 agent 回合——事件已记入会话日志，重连后可重放
+            log.debug("sendSessionEvent ({}): downlink disconnected: {}", eventType, e.toString());
+        }
     }
 
     /** surface 消息事件须带 surfaceOp:'append'，否则前端 isAppendSurfaceEvent 判否、消息节点不匹配 → 不渲染（用户消息不显示的根因）。 */
@@ -1487,7 +1505,11 @@ public class ApiproxyController {
         f.put("key", key);
         f.put("value", value);
         f.put("seq", seq.getAndIncrement());
-        downlink.sendMuxFrame(uuid(), f);
+        try {
+            downlink.sendMuxFrame(uuid(), f);
+        } catch (Exception e) {
+            log.debug("sendSessionProjection ({}): downlink disconnected: {}", key, e.toString());
+        }
     }
 
     private static Map<String, Object> muxFrame(String type, Map<String, Object> fields) {

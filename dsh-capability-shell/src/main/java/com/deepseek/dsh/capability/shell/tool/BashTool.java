@@ -35,6 +35,7 @@ public final class BashTool extends AbstractTool {
     protected String execute(ToolArgs args, ToolContext ctx) throws Exception {
         String command = args.requiredString("command");
         String workdir = args.optionalString("workdir", null);
+        if (workdir == null) workdir = com.deepseek.dsh.core.context.SessionCwd.get();
         int timeout = args.optionalInt("timeout", 120);
         var result = shell.execute(command, Map.of(), workdir, timeout);
         return result.combinedOutput();
