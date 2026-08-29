@@ -156,8 +156,8 @@ window.__ModuleLoader__.load({
 			return matches.length === 1 ? matches[0] : void 0;
 		}
 		//#endregion
-		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-deliverables/src/client/ProducedFiles.module.css.mjs
-		const css = ".-fGs2q_root{grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:6px 8px;margin-top:16px;font-size:13px;line-height:22px;display:grid;position:relative}.-fGs2q_label{color:var(--dsw-alias-label-tertiary);grid-area:1/1}.-fGs2q_row{flex-wrap:nowrap;grid-area:1/2;align-items:center;gap:8px;min-width:0;display:flex;overflow:hidden}.-fGs2q_file{text-overflow:ellipsis;white-space:nowrap;background:var(--dsw-alias-interactive-bg-hover);max-width:320px;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;border:none;border-radius:6px;flex:none;margin:0;padding:0 8px;overflow:hidden}.-fGs2q_file:hover{color:var(--dsw-alias-label-primary);text-decoration:underline}.-fGs2q_file:focus-visible,.-fGs2q_showFolder:focus-visible{box-shadow:inset 0 0 0 2px var(--dsw-alias-border-l3);outline:none}.-fGs2q_more{white-space:nowrap;color:var(--dsw-alias-label-tertiary);flex:none}.-fGs2q_showFolder{color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:none;border-radius:4px;grid-area:2/2;justify-self:start;margin:0;padding:0 2px;line-height:20px}.-fGs2q_showFolder:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}.-fGs2q_measure{visibility:hidden;pointer-events:none;contain:strict;width:0;height:0;position:absolute;overflow:hidden}.-fGs2q_probe{width:max-content;position:absolute;inset:0 auto auto 0}";
+		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-deliverables/src/client/ProducedFiles.module.css.mjs
+		const css = ".NpaGGq_root{grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:6px 8px;margin-top:16px;font-size:13px;line-height:22px;display:grid;position:relative}.NpaGGq_label{color:var(--dsw-alias-label-tertiary);grid-area:1/1}.NpaGGq_row{flex-wrap:nowrap;grid-area:1/2;align-items:center;gap:8px;min-width:0;display:flex;overflow:hidden}.NpaGGq_file{text-overflow:ellipsis;white-space:nowrap;background:var(--dsw-alias-interactive-bg-hover);max-width:320px;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;border:none;border-radius:6px;flex:none;margin:0;padding:0 8px;overflow:hidden}.NpaGGq_file:hover{color:var(--dsw-alias-label-primary);text-decoration:underline}.NpaGGq_file:focus-visible,.NpaGGq_showFolder:focus-visible{box-shadow:inset 0 0 0 2px var(--dsw-alias-border-l3);outline:none}.NpaGGq_more{white-space:nowrap;color:var(--dsw-alias-label-tertiary);flex:none}.NpaGGq_showFolder{color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:none;border-radius:4px;grid-area:2/2;justify-self:start;margin:0;padding:0 2px;line-height:20px}.NpaGGq_showFolder:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}.NpaGGq_measure{visibility:hidden;pointer-events:none;contain:strict;width:0;height:0;position:absolute;overflow:hidden}.NpaGGq_probe{width:max-content;position:absolute;inset:0 auto auto 0}";
 		const tagId = "@deepseek-ai/dsh-client-ui-deliverables/ProducedFiles.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -167,14 +167,14 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ProducedFiles_module_css_default = {
-			"file": "-fGs2q_file",
-			"label": "-fGs2q_label",
-			"measure": "-fGs2q_measure",
-			"more": "-fGs2q_more",
-			"probe": "-fGs2q_probe",
-			"root": "-fGs2q_root",
-			"row": "-fGs2q_row",
-			"showFolder": "-fGs2q_showFolder"
+			"file": "NpaGGq_file",
+			"label": "NpaGGq_label",
+			"measure": "NpaGGq_measure",
+			"more": "NpaGGq_more",
+			"probe": "NpaGGq_probe",
+			"root": "NpaGGq_root",
+			"row": "NpaGGq_row",
+			"showFolder": "NpaGGq_showFolder"
 		};
 		//#endregion
 		//#region lib/types/client/ProducedFiles.js
