@@ -95,6 +95,8 @@ public class ApiproxyController {
     @PostMapping("/{method:^(?!events\\.).[A-Za-z0-9.]+$}")
     public Map<String, Object> dispatch(@PathVariable String method, @RequestBody Map<String, Object> request) {        String rpcId = echoRpcId(request);
         Object payload = request.get("payload");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
         log.debug("apiproxy {} payload={}", method, payload);
         try {
             return switch (method) {
@@ -132,6 +134,8 @@ public class ApiproxyController {
                 case "workspace.list" -> response(rpcId, ok(Map.of("items", workspaces.list(), "archivedSessionIds", workspaces.archivedSessionIds())));
                 case "host.listDirectory" -> response(rpcId, ok(listDirectory(payload)));
                 case "skill.list" -> response(rpcId, ok(skillList()));
+                case "messageFeedback.list", "messageFeedback.put", "messageFeedback.delete" ->
+                        handleMessageFeedback(method.substring("messageFeedback.".length()), p, rpcId);
                 default -> response(rpcId, ok(valueOf(method)));
             };
         } catch (RuntimeException e) {
@@ -184,15 +188,18 @@ public class ApiproxyController {
         return response(echoRpcId(request), ok("list".equals(method) ? pluginInventorySnapshot() : Map.of()));
     }
 
-    /** messageFeedback/{list|put|delete}：接真实 MessageFeedbackService（持久化到 dataDir/message-feedback.json）。
-     * 字段对齐 TS：item={messageId,rating,note?,version,createdAt,updatedAt}；list→{items}、put→item、delete→{absent:true}；
-     * 失败回 err(TS 连字符 code)。list 对未持久化会话按空反馈返回（与原空桩一致，避免前端「加载失败」）。 */
+    /** messageFeedback/{list|put|delete}（REST 斜杠形式，兼容非 Cordis 客户端）。Cordis 前端走 dispatch 的点号形式（messageFeedback.put）。 */
     @PostMapping("/messageFeedback/{method}")
     public Map<String, Object> messageFeedback(@PathVariable String method, @RequestBody Map<String, Object> request) {
         String rpcId = echoRpcId(request);
         Object payload = request.get("payload");
         @SuppressWarnings("unchecked")
         Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        return handleMessageFeedback(method, p, rpcId);
+    }
+
+    /** messageFeedback 处理（dispatch 点号 + REST 斜杠共用）：接真实 MessageFeedbackService。 */
+    private Map<String, Object> handleMessageFeedback(String method, Map<String, Object> p, String rpcId) {
         var feedbackOpt = holder.context().get(com.deepseek.dsh.feedback.MessageFeedbackService.class);
         if (feedbackOpt.isEmpty()) return response(rpcId, err("internal", "message feedback service not registered"));
         var feedback = feedbackOpt.get();
