@@ -13,12 +13,10 @@ CP_FILE="$ROOT/dsh-app/target/rpc-cp.txt"
 
 if [ -f "$ROOT/.env" ]; then set -a; . "$ROOT/.env"; set +a; fi
 
-# 首次构建 classpath（任意模块 pom 变更即重建）
-if [ ! -f "$CP_FILE" ] || [ -n "$(find "$ROOT/pom.xml" "$ROOT"/dsh-*/pom.xml "$ROOT"/testcase/pom.xml -newer "$CP_FILE" 2>/dev/null | head -1)" ]; then
-  echo "[start] 首次构建 classpath..." >&2
-  mvn -q -f "$ROOT/pom.xml" -pl dsh-app -am install -DskipTests -Dmaven.test.skip=true
-  mvn -q -f "$ROOT/pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="$CP_FILE"
-fi
+# 每次启动前重新编译后端（clean install 拾取任意 .java/pom 改动），再刷新 classpath
+echo "[start] 重新编译后端（mvn clean install）..." >&2
+mvn -q -f "$ROOT/pom.xml" -pl dsh-app -am clean install -DskipTests -Dmaven.test.skip=true
+mvn -q -f "$ROOT/pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="$CP_FILE"
 
 # 释放端口：先 SIGTERM 优雅关闭（等 ~3s 触发 Spring Boot shutdown hook），仍占用则 SIGKILL 强杀
 free_port() {

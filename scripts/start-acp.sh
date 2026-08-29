@@ -17,16 +17,10 @@ CP_FILE="$ROOT/dsh-app/target/rpc-cp.txt"
 # 加载 .env（若存在；不提交密钥）
 if [ -f "$ROOT/.env" ]; then set -a; . "$ROOT/.env"; set +a; fi
 
-# 首次或任意模块 pom 变更时重建 classpath（与 start-rpc.sh / start-web.sh 共用缓存）
-need_build=0
-if [ ! -f "$CP_FILE" ]; then need_build=1
-elif [ -n "$(find "$ROOT/pom.xml" "$ROOT"/dsh-*/pom.xml "$ROOT"/testcase/pom.xml -newer "$CP_FILE" 2>/dev/null | head -1)" ]; then need_build=1; fi
-
-if [ "$need_build" -eq 1 ]; then
-  echo "[start-acp] 首次构建 classpath（install + build-classpath）..." >&2
-  mvn -q -f "$ROOT/pom.xml" -pl dsh-app -am install -DskipTests -Dmaven.test.skip=true
-  mvn -q -f "$ROOT/pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="$CP_FILE"
-fi
+# 每次启动前重新编译后端（clean install 拾取任意 .java/pom 改动），再刷新 classpath
+echo "[start-acp] 重新编译后端（mvn clean install）..." >&2
+mvn -q -f "$ROOT/pom.xml" -pl dsh-app -am clean install -DskipTests -Dmaven.test.skip=true
+mvn -q -f "$ROOT/pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="$CP_FILE"
 
 echo "[start-acp] 启动 ACP 服务端: model=${DSH_MODEL:-deepseek-chat} baseUrl=${DSH_BASE_URL:-https://api.deepseek.com}" >&2
 exec java -Dlogback.configurationFile=logback-rpc.xml \

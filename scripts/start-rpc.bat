@@ -46,29 +46,15 @@ for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /v /c:"#" "%ROOT%\.env
 if not defined DSH_MODEL set "DSH_MODEL=deepseek-chat"
 if not defined DSH_BASE_URL set "DSH_BASE_URL=https://api.deepseek.com"
 
-rem rebuild classpath on first run or when any pom changed
-set "NEED_BUILD=0"
-if not exist "%CP_FILE%" set "NEED_BUILD=1"
-if "%NEED_BUILD%"=="0" (
-  call :check_pom_newer "%ROOT%\pom.xml"
-  call :check_pom_newer "%ROOT%\testcase\pom.xml"
-  for /d %%D in (%ROOT%\dsh-*) do if exist "%%D\pom.xml" call :check_pom_newer "%%D\pom.xml"
-)
-if "%NEED_BUILD%"=="1" (
-  echo [%SELF%] building classpath install+build-classpath... 1>&2
-  call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app -am install -DskipTests -Dmaven.test.skip=true || ( echo [%SELF%] mvn install failed 1>&2 & exit /b 1 )
-  call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%CP_FILE%" || ( echo [%SELF%] mvn build-classpath failed 1>&2 & exit /b 1 )
-)
+rem recompile backend before launch (clean install picks up any .java/pom change), then refresh classpath
+echo [%SELF%] recompiling backend (mvn clean install)... 1>&2
+call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app -am clean install -DskipTests -Dmaven.test.skip=true || ( echo [%SELF%] mvn clean install failed 1>&2 & exit /b 1 )
+call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%CP_FILE%" || ( echo [%SELF%] mvn build-classpath failed 1>&2 & exit /b 1 )
 
 echo [%SELF%] launching RPC server: model=%DSH_MODEL% baseUrl=%DSH_BASE_URL% 1>&2
 
 rem Classpath may exceed 8KB and the .m2 path contains spaces. java @argfile cannot quote-group
 rem backslashed Windows paths, so launch via PowerShell + ProcessStartInfo: CreateProcess allows
 rem ~32KB command line and the CRT parses -cp "..." correctly.
-powershell -NoProfile -Command "$cp=[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp='%ROOT%\dsh-app\target\classes;'+$cp; $q=[string][char]34; $psi=New-Object Diagnostics.ProcessStartInfo; $psi.FileName='%JAVABIN%'; $psi.Arguments='-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dlogback.configurationFile=logback-rpc.xml -cp '+$q+$cp+$q+' com.deepseek.dsh.app.rpc.DshRpcServer'; $psi.UseShellExecute=$false; $p=[Diagnostics.Process]::Start($psi); $p.WaitForExit(); exit $p.ExitCode"
+powershell -NoProfile -Command "$cp=[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp='%ROOT%\dsh-app\target\classes;'+$cp; $q=[string][char]34; $psi=New-Object Diagnostics.ProcessStartInfo; $psi.FileName='%JAVABIN%'; $psi.Arguments='-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dstdin.encoding=UTF-8 -Dlogback.configurationFile=logback-rpc.xml -cp '+$q+$cp+$q+' com.deepseek.dsh.app.rpc.DshRpcServer'; $psi.UseShellExecute=$false; $p=[Diagnostics.Process]::Start($psi); $p.WaitForExit(); exit $p.ExitCode"
 exit /b %ERRORLEVEL%
-
-:check_pom_newer
-rem %1 = pom path; set NEED_BUILD=1 if newer than %CP_FILE% (or cp missing)
-echo F| xcopy /D /L /Y "%~1" "%CP_FILE%" 2>nul | findstr /c:".xml" >nul && set "NEED_BUILD=1"
-goto :eof

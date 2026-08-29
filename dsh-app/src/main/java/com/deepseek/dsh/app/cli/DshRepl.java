@@ -1,8 +1,12 @@
 package com.deepseek.dsh.app.cli;
 
+import java.io.BufferedReader;
+import java.io.Console;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Scanner;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -51,6 +55,9 @@ public final class DshRepl {
     private static final String DIM = "\033[2m";
     private static final String BOLD = "\033[1m";
     private static final String RESET = "\033[0m";
+    private static final String PROMPT = DIM + "> " + RESET;
+
+    private static BufferedReader stdinReader;
 
     private final Context context;
     private final Agent agent;
@@ -65,18 +72,16 @@ public final class DshRepl {
     /** 运行 read-eval-print 循环直到 /exit 或 EOF。 */
     public void runLoop() {
         printBanner();
-        Scanner in = new Scanner(System.in);
         while (true) {
-            System.out.print(DIM + "> " + RESET);
-            if (!in.hasNextLine()) break;
-            String line = in.nextLine();
+            String line = readUserLine();
+            if (line == null) break;
             if (line.isBlank()) continue;
 
             String trimmed = line.trim();
 
             // 斜杠命令
             if (trimmed.startsWith("/") || trimmed.equals("?")) {
-                if (handleCommand(trimmed, in)) break;
+                if (handleCommand(trimmed)) break;
                 continue;
             }
 
@@ -90,7 +95,23 @@ public final class DshRepl {
         }
     }
 
-    private boolean handleCommand(String cmd, Scanner in) {
+    private static String readUserLine() {
+        Console console = System.console();
+        if (console != null) {
+            return console.readLine(PROMPT);
+        }
+        System.out.print(PROMPT);
+        if (stdinReader == null) {
+            stdinReader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        }
+        try {
+            return stdinReader.readLine();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private boolean handleCommand(String cmd) {
         String[] parts = cmd.split("\\s+", 2);
         String name = parts[0];
         String args = parts.length > 1 ? parts[1].trim() : "";
@@ -109,7 +130,7 @@ public final class DshRepl {
                         .map(TokenMeterService::totalTokens).orElse(0L);
                 System.out.println(DIM + "  Cumulative tokens: " + total + RESET);
             }
-            case "/model" -> handleModelCommand(args, in);
+            case "/model" -> handleModelCommand(args);
             case "/compact" -> handleCompactCommand(args);
             case "/help", "?" -> printHelp();
             default -> System.out.println(YELLOW + "  Unknown command: " + name + " (type /help)" + RESET);
@@ -118,7 +139,7 @@ public final class DshRepl {
     }
 
     /** /model — 列出或切换模型。 */
-    private void handleModelCommand(String args, Scanner in) {
+    private void handleModelCommand(String args) {
         ModelProfileStore store = context.get(ModelProfileStore.class).orElse(null);
         if (store == null) {
             System.out.println(YELLOW + "  Model store not registered" + RESET);
