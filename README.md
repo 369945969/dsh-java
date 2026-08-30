@@ -166,10 +166,10 @@ cp .env.example .env      # 复制模板，填入 DEEPSEEK_API_KEY
 ## 会话与工作区
 
 ### 会话标题
-- **自动生成**：取首条用户消息前 40 字符（对应 `BasicSessionTitleProvider` 策略）
-- **投影推送**：`session.prompt` 时推送 `session/projection` mux 帧（key=title）+ session.history 携带 `projections` 块
-- **侧边栏即时显示**：mux WS 连接时推送所有会话的 title 投影，刷新后无需点击即可显示标题
-- **手动重命名**：`session.rename` 持久化到内存（覆盖自动生成）
+- **自动生成**：从原始事件流过滤 `source.kind=plugin` 的上下文注入消息，取首条真实用户消息前 40 字符
+- **投影推送**：`session.prompt` 时推送 `session/projection` control 帧（key=title, seq=lastSeq），克服 `ProjectionValueStore` 的 stale 检查
+- **侧边栏即时显示**：control 流连接时推送所有会话的 title 投影，刷新后无需点击即可显示标题
+- **手动重命名**：`session.rename` 存储标题 + 推送投影（自动剥离 `(N)` fork 后缀）
 
 ### 工作区
 - **自动分组**：未分组会话发送消息时自动按 `yyyy-MM-dd-HH` 创建/复用时段工作区
@@ -181,7 +181,7 @@ cp .env.example .env      # 复制模板，填入 DEEPSEEK_API_KEY
 - **session.create** → 返回 sessionId
 - **session.prompt** → 异步运行 agent turn（ReAct 循环，含工具调用）
 - **session.history** → 分页返回事件 + projections 块（title 投影）
-- **session.fork** → 复制父会话全部事件到新会话（保留记忆）
+- **session.fork** → 复制父会话全部事件 + 注入 forked-from 上下文消息（父标题+sessionId），挂到父同工作区，推送 `workspace/upsert` + `projection/title` 帧
 - **session.cancel** → 中断运行中的 agent turn 线程 + cancelledSessions 标记 + turn/end reason=aborted
 - **session.rename** → 更新会话标题
 - **session.list** → 返回所有会话（含 title / blank / running / updatedAt）
@@ -202,6 +202,8 @@ cp .env.example .env      # 复制模板，填入 DEEPSEEK_API_KEY
 | `start-acp.sh` | `DshAcpServer` | stdio JSON-RPC | ACP 自动化最小方法集 |
 | `start-cli.sh` | `DshRepl` | 终端 REPL | 交互式对话（斜杠命令） |
 
+> 四种模式共享 `TurnOrchestrator`：系统提示词注入、上下文注入、事件日志、TurnObserver 回调统一处理。Web 用 `sendSessionEvent`（SessionLog + WS 广播），CLI 用 `CliEventSink`（SessionLog + stdout），RPC 用 `RpcEventSink`（SessionLog + stderr 日志），ACP 用 `AcpEventSink`（同 RPC）。
+
 > 启动脚本每次执行前会 `clean install` 重编译后端并刷新共享 classpath（`dsh-app/target/rpc-cp.txt`），从仓库根 `.env` 自动加载模型配置。
 >
 > Windows：每个脚本均有同名 `.bat`（如 `scripts\start.bat`），与 `.sh` 一一对应，同样自动加载 `.env`、构建并缓存 classpath（依赖 mvn + Java；端到端脚本 `run-all.bat` / `web-e2e.bat` 另需 curl 与 PowerShell）。
@@ -211,7 +213,41 @@ cp .env.example .env      # 复制模板，填入 DEEPSEEK_API_KEY
 - `/api/events.host` → host WS（host/session-added / session-status / workspace-changed / archived-sessions-changed / remote-event 帧）
 - mux WS 连接时自动推送所有会话的 title 投影
 
-## REST / SSE API
+### CLI 斜杠命令
+
+| 命令 | 说明 |
+|------|------|
+| `/help` | 显示帮助 |
+| `/model [id]` | 列出/切换模型 |
+| `/sessions` | 列出全部会话（含持久化，显示短ID/标题/轮次） |
+| `/session <id>` | 按前缀切换会话 |
+| `/fork` | 分叉当前会话（注入 forked-from 上下文） |
+| `/compact` | 压缩上下文 |
+| `/new` | 新建会话 |
+| `/tokens` | 查看 token 用量 |
+| `/exit` | 退出 |
+
+## TurnOrchestrator（共享 turn 逻辑）
+
+Web/CLI/RPC/ACP 四种入口共享 `TurnOrchestrator`（`dsh-web` 模块）：
+
+- **`prepareTurn`** — turn 0 时注入 `request/header`（系统提示词 `{{cwd}}`/`{{model}}`/`{{platform}}`）+ `request/context` + 上下文消息（AGENTS.md / runtime context / skills），后续轮不重复注入
+- **`runAgent`** — `agent.runObserved` + TurnObserver → `SessionEventSink.emit`（step/start/end、assistant/chunk/message、tool/call/result、turn/end）
+- **`forkSession`** — 复制父事件 + 注入 forked-from `user/message`（父标题+sessionId）
+- **`nextTurn`** — 从 SessionLog 计数 USER 消息轮次
+- **`generateTitle`** — 从原始事件过滤 `source.kind=plugin`，取首条真实用户消息前 40 字符
+
+### 系统提示词模板
+
+| 变量 | 解析 |
+|------|------|
+| `{{cwd}}` | 会话工作区路径（`SessionCwd`，虚拟线程 ThreadLocal） |
+| `{{model}}` | 当前活跃模型名 |
+| `{{platform}}` | OS 名 + 架构 + shell 类型（如 `Mac OS X (aarch64), shell: bash`） |
+
+### 平台互斥 Shell
+
+Unix → `bash`，Windows → `pwsh`。模型只看到当前平台可用的 shell 工具（镜像 harness 的 `disabled` 逻辑）。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -260,13 +296,20 @@ bash testcase/run-e2e.sh          # 启动后端 + 运行 16 项 TS 测试 + 报
 
 ## 单元测试
 
-196 个单元测试覆盖 28 个后端模块的核心纯逻辑（无网络、无外部依赖）。
+230+ 个单元测试覆盖全部后端模块的核心纯逻辑（无网络、无外部依赖）。
 
 ```bash
 mvn test                          # 运行全部单元测试
 ```
 
-## 数据目录
+## 会话持久化
+
+- `SessionStore.listAll()` — 扫描持久化目录（JSONL 文件 / SQLite `SELECT DISTINCT`）
+- `SessionManager.list()` — 合并内存活跃 + 持久化会话，跨重启存活
+- `getOrCreate(id)` — 自动从持久化重放历史（旧格式事件通过 `FAIL_ON_UNKNOWN_PROPERTIES=false` 兼容）
+- `sessionList` / `buildControlBaseline` — 用 `getOrCreate` 加载，`cwd` 取工作区路径，`updatedAt` 取最后事件时间，`running` 取 `runningTurns` 实时状态
+
+## REST / SSE API
 
 | 文件 | 说明 |
 |------|------|
@@ -280,7 +323,7 @@ mvn test                          # 运行全部单元测试
 
 ## 与原项目的关系
 
-已实现（41 个模块，221+ Java 源文件，196 个单元测试全绿）：
+已实现（41 个模块，221+ Java 源文件，230+ 个单元测试全绿，14 项 E2E 全绿）：
 
 **核心层**：插件基座（Context/Plugin + 可逆副作用 + 作用域遮蔽 + Event Bus 四模式 + Middleware 链）、
 agent loop（ReAct + turn/step/round + TurnObserver 事件映射 + setSystemPrompt 预设切换）、
@@ -318,5 +361,14 @@ Java 重写版与原版 TS Harness 的主要架构差异：
 | Typert Remote | Typert 协议 + 生成编解码 | slash-path + JSON 直返 | Java 用 REST 路径替代 Typert 编解码 |
 | 模型管理 | settings-driven provider profiles | ModelProfileStore + route 持久化 | Java 用 JSON 档案 + route 映射 |
 | 会话流式 | 逐 token 流式（model.stream） | 非流式（model.chat）+ reasoning 捕获 | Java 用非流式 chat + reasoning_content |
+| 工具结果 | SessionEvent.Payload | Map<String,Object> wire 格式 | deriveMessages 递归提取 tool-result 嵌套 content |
+| Shell | bash + pwsh 同时注册 | 平台互斥（Unix→bash, Windows→pwsh） | 模型只看到当前平台可用的 shell |
+| Turn 逻辑 | 各入口独立 | TurnOrchestrator 共享 | Web/CLI/RPC/ACP 统一注入+事件+错误处理 |
 
-> Web apiproxy 已支持 WebSocket 下行流（mux/host）、session/event 帧（surfaceOp:'append'）、tool-result content block（type:'tool-result'）、session/projection 帧（title 投影）、reasoning-delta chunk（思考内容）。
+> Web apiproxy 已支持 WebSocket 下行流（mux/host）、session/event 帧（surfaceOp:'append'）、tool-result content block（type:'tool-result'）、session/projection 帧（title 投影，seq=lastSeq）、reasoning-delta chunk（思考内容）、workspace/upsert 增量帧、control 流 projection 增量帧。
+>
+> `SessionLog.deriveMessages` 递归提取 `tool-result` 嵌套 `content` 块中的 `text`，确保模型看到工具输出。
+>
+> `messageFeedback` REST 端点支持 `unwrapArgs`（解包 Typert `args.request` 信封），`ensureSession` 用 `getOrCreate` 加载持久化会话。
+>
+> `dsh-schedule` 的 `ScheduleChangeCodec` 已适配 wire 格式（`SessionEvent.Type.COMMAND` → `String "schedule/change"`，`SessionEvent.Payload` → `Map`）。
