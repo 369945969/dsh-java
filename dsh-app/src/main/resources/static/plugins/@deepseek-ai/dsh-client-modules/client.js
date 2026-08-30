@@ -73,21 +73,26 @@ window.__ModuleLoader__.load({
 			const graph = wire;
 			if (typeof graph.rev !== "string") throw new Error("client-modules: boot manifest rev must be a string");
 			if (!Array.isArray(graph.entries)) throw new Error("client-modules: boot manifest entries must be an array");
-			const modules = [];
+			if (!Array.isArray(graph.batches)) throw new Error("client-modules: boot manifest batches must be an array");
+			const moduleFields = [];
 			const plugins = [];
+			const seenEntryIds = /* @__PURE__ */ new Set();
 			for (const value of graph.entries) {
 				if (typeof value !== "object" || value === null) throw new Error("client-modules: boot manifest entry is not an object");
 				const row = value;
 				const where = typeof row.id === "string" ? `"${row.id}"` : JSON.stringify(row);
 				if (typeof row.id !== "string" || typeof row.url !== "string" || typeof row.rev !== "string") throw new Error(`client-modules: boot manifest entry ${where} must carry string id/url/rev`);
+				if (seenEntryIds.has(row.id)) throw new Error(`client-modules: duplicate graph entry "${row.id}"`);
+				seenEntryIds.add(row.id);
 				const subject = `boot manifest entry ${where}`;
 				const inject = optionalStringArray(subject, "inject", row.inject);
 				const external = optionalStringArray(subject, "external", row.external);
 				if (row.immediately !== void 0 && typeof row.immediately !== "boolean") throw new Error(`client-modules: boot manifest entry ${where} immediately must be a boolean`);
-				modules.push({
+				moduleFields.push({
 					id: row.id,
 					url: row.url,
 					rev: row.rev,
+					inject: inject === void 0 ? [] : [...inject],
 					external: external === void 0 ? [] : [...external]
 				});
 				plugins.push({
@@ -96,6 +101,33 @@ window.__ModuleLoader__.load({
 					immediately: row.immediately === true
 				});
 			}
+			const entryIds = new Set(moduleFields.map((row) => row.id));
+			const initialUrls = /* @__PURE__ */ new Map();
+			const batchUrls = /* @__PURE__ */ new Set();
+			for (const value of graph.batches) {
+				if (typeof value !== "object" || value === null) throw new Error("client-modules: boot manifest batch is not an object");
+				const batch = value;
+				const phase = batch.phase;
+				if (phase !== "bootstrap" && phase !== "application") throw new Error(`client-modules: boot manifest batch phase must be "bootstrap" or "application", received ${JSON.stringify(phase)}`);
+				if (typeof batch.url !== "string" || typeof batch.rev !== "string") throw new Error(`client-modules: boot manifest ${phase} batch must carry string url/rev`);
+				if (batchUrls.has(batch.url)) throw new Error(`client-modules: boot manifest carries duplicate batch URL ${JSON.stringify(batch.url)}`);
+				batchUrls.add(batch.url);
+				const entries = optionalStringArray(`boot manifest ${phase} batch`, "entries", batch.entries);
+				if (entries === void 0 || entries.length === 0) throw new Error(`client-modules: boot manifest ${phase} batch entries must be a non-empty string array`);
+				for (const id of entries) {
+					if (!entryIds.has(id)) throw new Error(`client-modules: boot manifest ${phase} batch names unknown entry "${id}"`);
+					if (initialUrls.has(id)) throw new Error(`client-modules: boot manifest entry "${id}" belongs to more than one batch`);
+					initialUrls.set(id, batch.url);
+				}
+			}
+			const modules = moduleFields.map((row) => {
+				const initialUrl = initialUrls.get(row.id);
+				if (initialUrl === void 0) throw new Error(`client-modules: boot manifest entry "${row.id}" belongs to no initial-load batch`);
+				return {
+					...row,
+					initialUrl
+				};
+			});
 			return {
 				rev: graph.rev,
 				modules,
@@ -125,6 +157,11 @@ window.__ModuleLoader__.load({
 			}, { once: true });
 			document.head.append(el);
 		});
+		/** Replace the rev query while preserving absolute, protocol-relative, or path-relative form. */
+		function atRevision(url, rev) {
+			if (!/[?&]rev=[^&#]*/.test(url)) throw new Error(`client-modules: bundle URL ${url} has no revision`);
+			return url.replace(/([?&]rev=)[^&#]*/, `$1${encodeURIComponent(rev)}`);
+		}
 		/**
 		* Claim and inventory the <style> tags a factory injected during
 		* materialization: preset-emitted tags arrive pre-tagged with data-plugin;
@@ -151,8 +188,10 @@ window.__ModuleLoader__.load({
 			seed;
 			factories = /* @__PURE__ */ new Map();
 			bootstrapIds = /* @__PURE__ */ new Set();
-			/** In-flight prefetch (script load) per id; concurrent callers share it. */
+			/** In-flight script transport per URL; every row in one batch shares it. */
 			pendingArrival = /* @__PURE__ */ new Map();
+			/** Single-resource combo URL selected by HMR after invalidating one row. */
+			reloadUrls = /* @__PURE__ */ new Map();
 			/** Materialization re-entrancy guard: factory-form CJS cannot deliver partial exports, so a cycle is fatal. */
 			materializing = /* @__PURE__ */ new Set();
 			graphRows = /* @__PURE__ */ new Map();
@@ -194,28 +233,38 @@ window.__ModuleLoader__.load({
 			}
 			/** Load one graph row so its factory is registered (idempotent per in-flight arrival). */
 			arrive(row) {
-				const { id, url } = row;
-				const pending = this.pendingArrival.get(id);
-				if (pending !== void 0) return pending;
+				const { id } = row;
 				if (this.loadCache.has(id) || this.factories.has(id)) return Promise.resolve();
-				const task = this.loadBundle(url).then(() => {
+				const reloadUrl = this.reloadUrls.get(id);
+				const url = reloadUrl ?? row.initialUrl;
+				let transport = this.pendingArrival.get(url);
+				if (transport === void 0) {
+					transport = this.loadBundle(url).finally(() => {
+						this.pendingArrival.delete(url);
+					});
+					this.pendingArrival.set(url, transport);
+				}
+				return transport.then(() => {
 					if (!this.factories.has(id)) throw new Error(`client-modules: bundle ${url} loaded without registering "${id}" via __ModuleLoader__.load`);
-				}).finally(() => {
-					this.pendingArrival.delete(id);
+					if (reloadUrl !== void 0 && this.reloadUrls.get(id) === reloadUrl) this.reloadUrls.delete(id);
 				});
-				this.pendingArrival.set(id, task);
-				return task;
 			}
-			/** Register each unresolved dynamic request before registering its consumer. */
-			async arriveGraphRow(row, open = []) {
+			/** Register each injected package and unresolved dynamic request before its consumer. */
+			async arriveGraphRow(row, open = [], visited = /* @__PURE__ */ new Set()) {
 				const cycleStart = open.indexOf(row.id);
 				if (cycleStart !== -1) throw new Error(`client-modules: module arrival cycle ${[...open.slice(cycleStart), row.id].join(" -> ")} (the host must reject this graph before serving it)`);
+				if (visited.has(row.id)) return;
+				visited.add(row.id);
 				const next = [...open, row.id];
 				for (const request of row.external) {
 					const id = stripClientSuffix(request);
 					if (this.seed.has(request) || this.loadCache.has(id)) continue;
 					const dependency = this.graphRows.get(id);
-					if (dependency !== void 0) await this.arriveGraphRow(dependency, next);
+					if (dependency !== void 0) await this.arriveGraphRow(dependency, next, visited);
+				}
+				for (const packageName of row.inject) {
+					const dependency = this.graphRows.get(packageName);
+					if (dependency !== void 0) await this.arriveGraphRow(dependency, [], visited);
 				}
 				await this.arrive(row);
 			}
@@ -276,9 +325,12 @@ window.__ModuleLoader__.load({
 				if (row === void 0) throw new Error(`client-modules: prefetch("${id}") — not a graph entry`);
 				await this.arriveGraphRow(row);
 			}
-			invalidate(id) {
+			invalidate(id, rev) {
 				const normalized = stripClientSuffix(id);
 				if (this.bootstrapIds.has(normalized)) return;
+				const row = this.graphRows.get(normalized);
+				if (row !== void 0) this.reloadUrls.set(normalized, atRevision(row.url, rev ?? row.rev));
+				else this.reloadUrls.delete(normalized);
 				this.factories.delete(normalized);
 				this.loadCache.delete(normalized);
 			}

@@ -6,7 +6,7 @@ window.__ModuleLoader__.load({
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
+		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		/** Viewport width below which the sidebar auto-collapses to the rail (deepsuite
 		* LG breakpoint); a manual toggle below it re-expands over the squeezed center
 		* (stores.ts narrowExpanded). */
@@ -52,8 +52,25 @@ window.__ModuleLoader__.load({
 			};
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-layout/src/client/AppFrame.module.css.mjs
-		const css = ".uDORdq_frame{background:var(--dsw-alias-bg-base);height:100%;transition:grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);grid-template-rows:100%;display:grid;position:relative;overflow:hidden}.uDORdq_frame[data-dragging]{transition:none}@media (prefers-reduced-motion:reduce){.uDORdq_frame{transition:none}}.uDORdq_sidebarCol{background:var(--dsw-specific-sidebar-fill);border-right:1px solid var(--dsw-alias-border-l1);min-width:0;overflow:hidden}.uDORdq_centerCol{flex-direction:column;min-width:0;display:flex;overflow:hidden}.uDORdq_detailsCol{border-left:1px solid var(--dsw-alias-border-l2);min-width:0;overflow:hidden}.uDORdq_frame[data-details-collapsed] .uDORdq_detailsCol{border-left:none}.uDORdq_handle{cursor:col-resize;z-index:2;touch-action:none;width:8px;transition:left var(--ds-transition-duration-slow) var(--ds-ease-in-out);margin-left:-4px;position:absolute;top:0;bottom:0}.uDORdq_frame[data-dragging] .uDORdq_handle{transition:none}@media (prefers-reduced-motion:reduce){.uDORdq_handle{transition:none}}.uDORdq_handle[data-side=details]:after{content:\"\";box-sizing:border-box;background:var(--dsw-alias-button-floating-fill);border:1px solid var(--dsw-alias-border-l2-darkmode-thin);opacity:0;width:12px;height:32px;transition:opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out), background var(--ds-transition-duration-slow) var(--ds-ease-in-out);border-radius:10px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}.uDORdq_detailsCol:hover~.uDORdq_handle[data-side=details]:after,.uDORdq_handle[data-side=details]:hover:after,.uDORdq_handle[data-side=details][data-dragging=true]:after{opacity:1}.uDORdq_handle[data-side=details]:hover:after,.uDORdq_handle[data-side=details][data-dragging=true]:after{background:var(--dsw-alias-button-floating-hover);border-color:var(--dsw-alias-border-l3)}.uDORdq_overlayLayer{z-index:20;pointer-events:none;position:absolute;inset:0}.uDORdq_overlayLayer>*{pointer-events:auto}";
+		//#region lib/types/client/DocumentTitle.js
+		/**
+		* Project the selected durable session title into the browser title and
+		* restore the build-selected product title when unmounted.
+		* @param props - Selected session title projection.
+		* @returns No rendered content.
+		*/
+		function DocumentTitle({ title, productTitle }) {
+			(0, react.useEffect)(() => {
+				document.title = title === void 0 ? productTitle : `${title} — ${productTitle}`;
+				return () => {
+					document.title = productTitle;
+				};
+			}, [productTitle, title]);
+			return null;
+		}
+		//#endregion
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-layout/src/client/AppFrame.module.css.mjs
+		const css = ".j_ovwa_frame{background:var(--dsw-alias-bg-base);height:100%;transition:grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);grid-template-rows:100%;display:grid;position:relative;overflow:hidden}.j_ovwa_frame[data-dragging]{transition:none}@media (prefers-reduced-motion:reduce){.j_ovwa_frame{transition:none}}.j_ovwa_sidebarCol{background:var(--dsw-specific-sidebar-fill);border-right:1px solid var(--dsw-alias-border-l1);min-width:0;overflow:hidden}.j_ovwa_centerCol{flex-direction:column;min-width:0;display:flex;overflow:hidden}.j_ovwa_detailsCol{border-left:1px solid var(--dsw-alias-border-l2);min-width:0;overflow:hidden}.j_ovwa_frame[data-details-collapsed] .j_ovwa_detailsCol{border-left:none}.j_ovwa_handle{cursor:col-resize;z-index:2;touch-action:none;width:8px;transition:left var(--ds-transition-duration-slow) var(--ds-ease-in-out);margin-left:-4px;position:absolute;top:0;bottom:0}.j_ovwa_frame[data-dragging] .j_ovwa_handle{transition:none}@media (prefers-reduced-motion:reduce){.j_ovwa_handle{transition:none}}.j_ovwa_handle[data-side=details]:after{content:\"\";box-sizing:border-box;background:var(--dsw-alias-button-floating-fill);border:1px solid var(--dsw-alias-border-l2-darkmode-thin);opacity:0;width:12px;height:32px;transition:opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out), background var(--ds-transition-duration-slow) var(--ds-ease-in-out);border-radius:10px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}.j_ovwa_detailsCol:hover~.j_ovwa_handle[data-side=details]:after,.j_ovwa_handle[data-side=details]:hover:after,.j_ovwa_handle[data-side=details][data-dragging=true]:after{opacity:1}.j_ovwa_handle[data-side=details]:hover:after,.j_ovwa_handle[data-side=details][data-dragging=true]:after{background:var(--dsw-alias-button-floating-hover);border-color:var(--dsw-alias-border-l3)}.j_ovwa_overlayLayer{z-index:20;pointer-events:none;position:absolute;inset:0}.j_ovwa_overlayLayer>*{pointer-events:auto}";
 		const tagId = "@deepseek-ai/dsh-client-ui-layout/AppFrame.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -63,12 +80,12 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var AppFrame_module_css_default = {
-			"centerCol": "uDORdq_centerCol",
-			"detailsCol": "uDORdq_detailsCol",
-			"frame": "uDORdq_frame",
-			"handle": "uDORdq_handle",
-			"overlayLayer": "uDORdq_overlayLayer",
-			"sidebarCol": "uDORdq_sidebarCol"
+			"centerCol": "j_ovwa_centerCol",
+			"detailsCol": "j_ovwa_detailsCol",
+			"frame": "j_ovwa_frame",
+			"handle": "j_ovwa_handle",
+			"overlayLayer": "j_ovwa_overlayLayer",
+			"sidebarCol": "j_ovwa_sidebarCol"
 		};
 		//#endregion
 		//#region lib/types/client/AppFrame.js
@@ -155,11 +172,15 @@ window.__ModuleLoader__.load({
 			});
 		}
 		/** The three-column frame (see module doc). */
-		function AppFrame({ useStore, useSessions, actions, renderSlot }) {
+		function AppFrame({ useStore, useSessions, actions, renderSlot, SessionProvider, t }) {
 			const panels = useStore((s) => s);
 			const detailsSession = useSessions((s) => {
 				const current = s.current;
 				return current !== void 0 && s.byId[current]?.blank === false ? current : void 0;
+			});
+			const documentTitle = useSessions((s) => {
+				const current = s.current;
+				return current === void 0 ? void 0 : s.byId[current]?.title;
 			});
 			const frameRef = (0, react.useRef)(null);
 			const [viewport, setViewport] = (0, react.useState)(() => window.innerWidth);
@@ -215,6 +236,7 @@ window.__ModuleLoader__.load({
 			const onDetailsDrag = (0, react.useCallback)((dx) => {
 				actions.setDetails(detailsBase.current - dx);
 			}, [actions]);
+			const productTitle = {}.DSH_CLIENT_TITLE ?? t("brand.localBuild");
 			return (0, react_jsx_runtime.jsxs)("div", {
 				ref: frameRef,
 				className: AppFrame_module_css_default.frame,
@@ -223,6 +245,10 @@ window.__ModuleLoader__.load({
 				"data-details-collapsed": cols.details === 0 || void 0,
 				"data-dragging": dragging || void 0,
 				children: [
+					(0, react_jsx_runtime.jsx)(DocumentTitle, {
+						productTitle,
+						...documentTitle === void 0 ? {} : { title: documentTitle }
+					}),
 					(0, react_jsx_runtime.jsx)("div", {
 						className: AppFrame_module_css_default.sidebarCol,
 						children: renderSlot("sidebar", {
@@ -230,7 +256,7 @@ window.__ModuleLoader__.load({
 							width: cols.sidebar
 						})
 					}),
-					(0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(CenterColumn, { children: renderSlot("conversation", {}) }), (0, react_jsx_runtime.jsx)(DetailsColumn, { children: renderSlot("details", {}) })] }),
+					(0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(CenterColumn, { children: renderSlot("conversation", {}) }), (0, react_jsx_runtime.jsx)(DetailsColumn, { children: (0, react_jsx_runtime.jsx)(SessionProvider, { children: renderSlot("details", {}) }) })] }),
 					(0, react_jsx_runtime.jsx)("div", {
 						className: AppFrame_module_css_default.overlayLayer,
 						"data-shell-overlay": true,
@@ -275,7 +301,7 @@ window.__ModuleLoader__.load({
 		* @returns the store handle (spec + type + identity + factory in one).
 		*/
 		function createLayoutStore() {
-			return (0, _deepseek_ai_dsh_client_runtime_client.defineStore)({
+			return (0, _deepseek_ai_dsh_client_store.defineStore)({
 				init: () => ({
 					sidebar: 280,
 					details: 0,
@@ -343,6 +369,8 @@ window.__ModuleLoader__.load({
 		//#region lib/types/client/theme-presenter.js
 		/** Body attribute selecting the dark base palette in the token stylesheets. */
 		const DARK_ATTRIBUTE = "data-ds-dark-theme";
+		/** Body variable carrying the user's content font size in px. */
+		const CONTENT_FONT_SIZE_VARIABLE = "--dsh-content-font-size";
 		/** Applies theme snapshots to the document; one instance per plugin fiber. */
 		var ThemePresenter = class {
 			/** Token names this presenter wrote in the last apply (its retraction set). */
@@ -357,10 +385,10 @@ window.__ModuleLoader__.load({
 			/**
 			* Project a snapshot onto the document: set root `color-scheme` and the body
 			* palette attribute from `active.colorScheme` (never the id — `system` is
-			* resolved upstream), then replace the previously applied token variables
-			* with `active.tokens`. Browser theme-color metadata follows the computed
-			* body background after those writes, so the rendered palette remains the
-			* color authority.
+			* resolved upstream), publish the content font-size axis, then replace the
+			* previously applied token variables with `active.tokens`. Browser
+			* theme-color metadata follows the computed body background after those
+			* writes, so the rendered palette remains the color authority.
 			* @param snapshot - resolved theme snapshot from ctx.theme.
 			*/
 			apply(snapshot) {
@@ -369,6 +397,7 @@ window.__ModuleLoader__.load({
 				const body = document.body;
 				if (scheme === "dark") body.setAttribute(DARK_ATTRIBUTE, "");
 				else body.removeAttribute(DARK_ATTRIBUTE);
+				body.style.setProperty(CONTENT_FONT_SIZE_VARIABLE, `${snapshot.fontSize}px`);
 				for (const name of this.appliedTokens) body.style.removeProperty(name);
 				this.appliedTokens = [];
 				for (const [name, value] of Object.entries(snapshot.active.tokens)) {
@@ -378,11 +407,12 @@ window.__ModuleLoader__.load({
 				this.themeColorMeta.content = getComputedStyle(body).backgroundColor;
 				if (!this.themeColorMeta.isConnected) document.head.append(this.themeColorMeta);
 			}
-			/** Retract root color-scheme, the palette attribute, token variables, and the owned metadata node. */
+			/** Retract root color-scheme, the palette attribute, token variables, the font-size axis, and the owned metadata node. */
 			dispose() {
 				document.documentElement.style.removeProperty("color-scheme");
 				const body = document.body;
 				body.removeAttribute(DARK_ATTRIBUTE);
+				body.style.removeProperty(CONTENT_FONT_SIZE_VARIABLE);
 				for (const name of this.appliedTokens) body.style.removeProperty(name);
 				this.appliedTokens = [];
 				this.themeColorMeta.remove();
@@ -391,7 +421,11 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/types/client/index.js
 		/** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
-		const inject = ["slots", "theme"];
+		const inject = [
+			"slots",
+			"theme",
+			"locale"
+		];
 		/**
 		* Client plugin body: provide ctx.layout, then one register() call — AppFrame
 		* into 'root' with the four child-slot declarations, the layout store seat,
@@ -404,6 +438,7 @@ window.__ModuleLoader__.load({
 				const disposeService = ctx.reflect.provide("layout", layout);
 				const disposeRegistration = ctx.slots.register({
 					name: "root",
+					locale: "common",
 					children: {
 						"sidebar": {
 							kind: "single",

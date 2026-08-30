@@ -22,8 +22,8 @@ window.__ModuleLoader__.load({
 			return n;
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-sidebar/src/client/SidebarRoot.module.css.mjs
-		const css = "._8I0QgG_root{--dsh-sidebar-inline-padding:12px;height:100%;padding:6px var(--dsh-sidebar-inline-padding);box-sizing:border-box;background:var(--dsw-specific-sidebar-fill);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);flex-direction:column;font-size:14px;display:flex}._8I0QgG_root._8I0QgG_collapsed{padding:18px 10px 6px}._8I0QgG_root._8I0QgG_quietBars{--dsh-scrollbar-thumb:transparent;--dsh-scrollbar-thumb-hover:transparent}._8I0QgG_fading>*{opacity:0;transition:opacity .15s var(--ds-ease-in-out)}._8I0QgG_wide{animation:_8I0QgG_wide-in .2s var(--ds-ease-in-out)}@keyframes _8I0QgG_wide-in{0%{opacity:0}}._8I0QgG_railIn ._8I0QgG_iconButton,._8I0QgG_railIn ._8I0QgG_newSession,._8I0QgG_railIn ._8I0QgG_regionArea{animation:_8I0QgG_rail-in .15s var(--ds-ease-in-out) backwards}._8I0QgG_railIn ._8I0QgG_footArea{animation:_8I0QgG_rail-fade-in .15s var(--ds-ease-in-out) backwards}@keyframes _8I0QgG_rail-in{0%{opacity:0;transform:translate(49px)}}@keyframes _8I0QgG_rail-fade-in{0%{opacity:0}}._8I0QgG_logoRow{box-sizing:border-box;flex:none;justify-content:flex-end;align-items:center;gap:8px;height:60px;margin-bottom:8px;padding:8px 0 8px 4px;display:flex;overflow:hidden}._8I0QgG_collapsed ._8I0QgG_logoRow{justify-content:flex-start;height:36px;margin-bottom:12px;padding:0}._8I0QgG_brand{min-width:0;color:inherit;cursor:pointer;background:0 0;border:none;flex:1;align-items:center;padding:0;display:inline-flex;overflow:hidden}._8I0QgG_brandIdentity{align-items:center;gap:8px;min-width:0;height:24px;display:inline-flex}._8I0QgG_brandMark{flex:none;justify-content:center;align-items:center;display:inline-flex}._8I0QgG_brandName{letter-spacing:.04em;align-items:center;gap:6px;min-width:0;height:24px;font-size:18px;font-weight:600;line-height:24px;display:inline-flex}._8I0QgG_fallbackBrandName{letter-spacing:0;white-space:nowrap;font-size:17px}._8I0QgG_iconButton{cursor:pointer;width:28px;height:28px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:50%;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}._8I0QgG_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover)}._8I0QgG_collapsed ._8I0QgG_iconButton{width:36px;height:36px}._8I0QgG_collapsed ._8I0QgG_toggle ._8I0QgG_panelIcon{display:none}._8I0QgG_collapsed ._8I0QgG_toggle:hover ._8I0QgG_panelIcon{display:inline}._8I0QgG_collapsed ._8I0QgG_toggle:hover ._8I0QgG_railMark{display:none}._8I0QgG_railMark{justify-content:center;align-items:center;display:inline-flex}._8I0QgG_collapsed ._8I0QgG_iconButton{color:var(--dsw-alias-label-primary)}._8I0QgG_buildRevision{height:16px;color:var(--dsw-alias-label-primary-inverted);background:var(--dsw-alias-label-primary);font-family:var(--ds-font-family-code);border-radius:3px;align-items:center;padding:0 4px;font-size:8px;font-weight:500;line-height:16px;display:inline-flex}._8I0QgG_newSession{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-button-elevated-fill);height:38px;color:var(--dsw-alias-label-primary);cursor:pointer;border-radius:12px;flex:none;justify-content:center;align-items:center;gap:6px;margin:0 2px 8px;padding:8px 16px;font-size:14px;font-weight:500;line-height:22px;display:flex;overflow:hidden}._8I0QgG_newSession:hover{background:var(--dsw-alias-button-floating-hover)}._8I0QgG_collapsed ._8I0QgG_newSession{background:0 0;border-color:#0000;align-self:flex-start;gap:0;width:36px;height:36px;margin:0 0 12px;padding:0}._8I0QgG_collapsed ._8I0QgG_newSession:hover{background:var(--dsw-alias-interactive-bg-hover)}._8I0QgG_newSessionLabel{white-space:nowrap;max-width:200px;overflow:hidden}._8I0QgG_collapsed ._8I0QgG_newSessionLabel{max-width:0}._8I0QgG_regionArea{min-height:0;margin-left:-4px;margin-right:calc(-1 * var(--dsh-sidebar-inline-padding));flex-direction:column;flex:1;padding-left:4px;display:flex;overflow:hidden}._8I0QgG_collapsed ._8I0QgG_regionArea{margin-left:0;margin-right:0;padding-left:0}._8I0QgG_footArea{flex-direction:column;flex:none;display:flex}._8I0QgG_settingsArea,._8I0QgG_footerActions{flex:none;width:100%;min-width:0}._8I0QgG_footerActions{display:flex}._8I0QgG_collapsed ._8I0QgG_footArea{align-items:center}._8I0QgG_collapsed ._8I0QgG_settingsArea,._8I0QgG_collapsed ._8I0QgG_footerActions{justify-content:center;width:auto;display:flex}@media (prefers-reduced-motion:reduce){._8I0QgG_wide,._8I0QgG_fading>*,._8I0QgG_railIn ._8I0QgG_iconButton,._8I0QgG_railIn ._8I0QgG_newSession,._8I0QgG_railIn ._8I0QgG_footArea,._8I0QgG_railIn ._8I0QgG_regionArea{transition:none;animation:none}}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-sidebar/src/client/SidebarRoot.module.css.mjs
+		const css = ".vDBJIW_root{--dsh-sidebar-inline-padding:12px;height:100%;padding:6px var(--dsh-sidebar-inline-padding);box-sizing:border-box;background:var(--dsw-specific-sidebar-fill);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);flex-direction:column;font-size:14px;display:flex}.vDBJIW_root.vDBJIW_collapsed{padding:18px 10px 6px}.vDBJIW_root.vDBJIW_quietBars{--dsh-scrollbar-thumb:transparent;--dsh-scrollbar-thumb-hover:transparent}.vDBJIW_fading>*{opacity:0;transition:opacity .15s var(--ds-ease-in-out)}.vDBJIW_wide{animation:vDBJIW_wide-in .2s var(--ds-ease-in-out)}@keyframes vDBJIW_wide-in{0%{opacity:0}}.vDBJIW_railIn .vDBJIW_iconButton,.vDBJIW_railIn .vDBJIW_newSession,.vDBJIW_railIn .vDBJIW_regionArea{animation:vDBJIW_rail-in .15s var(--ds-ease-in-out) backwards}.vDBJIW_railIn .vDBJIW_footArea{animation:vDBJIW_rail-fade-in .15s var(--ds-ease-in-out) backwards}@keyframes vDBJIW_rail-in{0%{opacity:0;transform:translate(49px)}}@keyframes vDBJIW_rail-fade-in{0%{opacity:0}}.vDBJIW_logoRow{box-sizing:border-box;flex:none;justify-content:flex-end;align-items:center;gap:8px;height:60px;margin-bottom:8px;padding:8px 0 8px 4px;display:flex;overflow:hidden}.vDBJIW_collapsed .vDBJIW_logoRow{justify-content:flex-start;height:36px;margin-bottom:12px;padding:0}.vDBJIW_brand{min-width:0;color:inherit;cursor:pointer;background:0 0;border:none;flex:1;align-items:center;padding:0;display:inline-flex;overflow:hidden}.vDBJIW_brandIdentity{align-items:center;gap:8px;min-width:0;height:24px;display:inline-flex}.vDBJIW_brandMark{flex:none;justify-content:center;align-items:center;display:inline-flex}.vDBJIW_brandName{letter-spacing:.04em;align-items:center;gap:6px;min-width:0;height:24px;font-size:18px;font-weight:600;line-height:24px;display:inline-flex}.vDBJIW_fallbackBrandName{letter-spacing:0;white-space:nowrap;font-size:17px}.vDBJIW_localBuildBrand{white-space:nowrap;flex-direction:column;flex:none;justify-content:center;align-items:flex-start;gap:1px;height:24px;display:inline-flex}.vDBJIW_localBuildTitle{letter-spacing:0;font-size:12px;line-height:13px}.vDBJIW_iconButton{cursor:pointer;width:28px;height:28px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:50%;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.vDBJIW_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover)}.vDBJIW_collapsed .vDBJIW_iconButton{width:36px;height:36px}.vDBJIW_collapsed .vDBJIW_toggle .vDBJIW_panelIcon{display:none}.vDBJIW_collapsed .vDBJIW_toggle:hover .vDBJIW_panelIcon{display:inline}.vDBJIW_collapsed .vDBJIW_toggle:hover .vDBJIW_railMark{display:none}.vDBJIW_railMark{justify-content:center;align-items:center;display:inline-flex}.vDBJIW_collapsed .vDBJIW_iconButton{color:var(--dsw-alias-label-primary)}.vDBJIW_buildVersion{height:10px;color:var(--dsw-alias-label-primary-inverted);background:var(--dsw-alias-label-primary);font-family:var(--ds-font-family-code);white-space:nowrap;border-radius:2px;flex:none;align-items:center;padding:0 3px;font-size:6px;font-weight:500;line-height:10px;display:inline-flex}.vDBJIW_newSession{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-button-elevated-fill);height:38px;color:var(--dsw-alias-label-primary);cursor:pointer;border-radius:12px;flex:none;justify-content:center;align-items:center;gap:6px;margin:0 2px 8px;padding:8px 16px;font-size:14px;font-weight:500;line-height:22px;display:flex;overflow:hidden}.vDBJIW_newSession:hover{background:var(--dsw-alias-button-floating-hover)}.vDBJIW_collapsed .vDBJIW_newSession{background:0 0;border-color:#0000;align-self:flex-start;gap:0;width:36px;height:36px;margin:0 0 12px;padding:0}.vDBJIW_collapsed .vDBJIW_newSession:hover{background:var(--dsw-alias-interactive-bg-hover)}.vDBJIW_newSessionLabel{white-space:nowrap;max-width:200px;overflow:hidden}.vDBJIW_collapsed .vDBJIW_newSessionLabel{max-width:0}.vDBJIW_regionArea{min-height:0;margin-left:-4px;margin-right:calc(-1 * var(--dsh-sidebar-inline-padding));flex-direction:column;flex:1;padding-left:4px;display:flex;overflow:hidden}.vDBJIW_collapsed .vDBJIW_regionArea{margin-left:0;margin-right:0;padding-left:0}.vDBJIW_footArea{flex-direction:column;flex:none;display:flex}.vDBJIW_settingsArea,.vDBJIW_footerActions{flex:none;width:100%;min-width:0}.vDBJIW_footerActions{display:flex}.vDBJIW_collapsed .vDBJIW_footArea{align-items:center}.vDBJIW_collapsed .vDBJIW_settingsArea,.vDBJIW_collapsed .vDBJIW_footerActions{justify-content:center;width:auto;display:flex}@media (prefers-reduced-motion:reduce){.vDBJIW_wide,.vDBJIW_fading>*,.vDBJIW_railIn .vDBJIW_iconButton,.vDBJIW_railIn .vDBJIW_newSession,.vDBJIW_railIn .vDBJIW_footArea,.vDBJIW_railIn .vDBJIW_regionArea{transition:none;animation:none}}";
 		const tagId = "@deepseek-ai/dsh-client-ui-sidebar/SidebarRoot.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -33,32 +33,34 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var SidebarRoot_module_css_default = {
-			"brand": "_8I0QgG_brand",
-			"brandIdentity": "_8I0QgG_brandIdentity",
-			"brandMark": "_8I0QgG_brandMark",
-			"brandName": "_8I0QgG_brandName",
-			"buildRevision": "_8I0QgG_buildRevision",
-			"collapsed": "_8I0QgG_collapsed",
-			"fading": "_8I0QgG_fading",
-			"fallbackBrandName": "_8I0QgG_fallbackBrandName",
-			"footArea": "_8I0QgG_footArea",
-			"footerActions": "_8I0QgG_footerActions",
-			"iconButton": "_8I0QgG_iconButton",
-			"logoRow": "_8I0QgG_logoRow",
-			"newSession": "_8I0QgG_newSession",
-			"newSessionLabel": "_8I0QgG_newSessionLabel",
-			"panelIcon": "_8I0QgG_panelIcon",
-			"quietBars": "_8I0QgG_quietBars",
-			"rail-fade-in": "_8I0QgG_rail-fade-in",
-			"rail-in": "_8I0QgG_rail-in",
-			"railIn": "_8I0QgG_railIn",
-			"railMark": "_8I0QgG_railMark",
-			"regionArea": "_8I0QgG_regionArea",
-			"root": "_8I0QgG_root",
-			"settingsArea": "_8I0QgG_settingsArea",
-			"toggle": "_8I0QgG_toggle",
-			"wide": "_8I0QgG_wide",
-			"wide-in": "_8I0QgG_wide-in"
+			"brand": "vDBJIW_brand",
+			"brandIdentity": "vDBJIW_brandIdentity",
+			"brandMark": "vDBJIW_brandMark",
+			"brandName": "vDBJIW_brandName",
+			"buildVersion": "vDBJIW_buildVersion",
+			"collapsed": "vDBJIW_collapsed",
+			"fading": "vDBJIW_fading",
+			"fallbackBrandName": "vDBJIW_fallbackBrandName",
+			"footArea": "vDBJIW_footArea",
+			"footerActions": "vDBJIW_footerActions",
+			"iconButton": "vDBJIW_iconButton",
+			"localBuildBrand": "vDBJIW_localBuildBrand",
+			"localBuildTitle": "vDBJIW_localBuildTitle",
+			"logoRow": "vDBJIW_logoRow",
+			"newSession": "vDBJIW_newSession",
+			"newSessionLabel": "vDBJIW_newSessionLabel",
+			"panelIcon": "vDBJIW_panelIcon",
+			"quietBars": "vDBJIW_quietBars",
+			"rail-fade-in": "vDBJIW_rail-fade-in",
+			"rail-in": "vDBJIW_rail-in",
+			"railIn": "vDBJIW_railIn",
+			"railMark": "vDBJIW_railMark",
+			"regionArea": "vDBJIW_regionArea",
+			"root": "vDBJIW_root",
+			"settingsArea": "vDBJIW_settingsArea",
+			"toggle": "vDBJIW_toggle",
+			"wide": "vDBJIW_wide",
+			"wide-in": "vDBJIW_wide-in"
 		};
 		//#endregion
 		//#region lib/types/client/SidebarRoot.js
@@ -88,6 +90,10 @@ window.__ModuleLoader__.load({
 		* edge — on the way to the conversation, or around a portalled menu.
 		*/
 		const SCROLLBAR_LINGER_MS = 2e3;
+		/** Format complete-build metadata for the local brand badge. */
+		function localBuildVersion() {
+			return `0.1.2-alpha.1-8d534f1-dirty`;
+		}
 		/**
 		* Render the sidebar column shell.
 		* @param props - composed slot props (runtime share + injected callbacks, contract/slots.ts).
@@ -141,6 +147,7 @@ window.__ModuleLoader__.load({
 					cancelLinger();
 				};
 			}, [pointerInside]);
+			const buildVersion = localBuildVersion();
 			return (0, react_jsx_runtime.jsxs)("div", {
 				ref: column,
 				className: clsx(SidebarRoot_module_css_default.root, !wide && SidebarRoot_module_css_default.collapsed, !wide && everWide.current && SidebarRoot_module_css_default.railIn, collapsed && wide && SidebarRoot_module_css_default.fading, !pointerInside && SidebarRoot_module_css_default.quietBars),
@@ -170,13 +177,19 @@ window.__ModuleLoader__.load({
 									children: renderSlot("sidebar.brand.mark", { size: 24 }, { fallback: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.FishLogo, { size: 24 }) })
 								}), (0, react_jsx_runtime.jsx)("span", {
 									className: SidebarRoot_module_css_default.brandName,
-									children: renderSlot("sidebar.brand.name", {}, { fallback: (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)("span", {
+									children: renderSlot("sidebar.brand.name", {}, { fallback: buildVersion === void 0 ? (0, react_jsx_runtime.jsx)("span", {
 										className: SidebarRoot_module_css_default.fallbackBrandName,
-										children: "DSH Local Build"
-									}), (0, react_jsx_runtime.jsx)("span", {
-										className: SidebarRoot_module_css_default.buildRevision,
-										children: "7cfc6db"
-									})] }) })
+										children: t("brand.localBuild")
+									}) : (0, react_jsx_runtime.jsxs)("span", {
+										className: SidebarRoot_module_css_default.localBuildBrand,
+										children: [(0, react_jsx_runtime.jsx)("span", {
+											className: SidebarRoot_module_css_default.localBuildTitle,
+											children: t("brand.localBuild")
+										}), (0, react_jsx_runtime.jsx)("span", {
+											className: SidebarRoot_module_css_default.buildVersion,
+											children: buildVersion
+										})]
+									}) })
 								})]
 							})
 						}), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
@@ -264,21 +277,21 @@ window.__ModuleLoader__.load({
 		const inject = [
 			"slots",
 			"layout",
-			"sessions",
-			"workspaces",
+			"uiWorkspace",
 			"locale"
 		];
 		/** Registers the sidebar shell and its service callbacks.
 		* @param ctx - Client root context.
 		*/
 		function apply(ctx) {
+			const workspaceNavigation = ctx.get("uiWorkspace");
 			ctx.effect(() => ctx.locale.register(NS, {
 				zh,
 				en
 			}), "ui-sidebar: dictionaries");
 			const injectProps = () => ({
 				startSession: (workspaceId) => {
-					ctx.workspaces.startSession(workspaceId);
+					workspaceNavigation.startSession(workspaceId);
 				},
 				toggleSidebar: () => {
 					ctx.layout.toggleSidebar();

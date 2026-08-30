@@ -1056,24 +1056,39 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}
 			view(ctx) {
 				return {
-					registerHost: (key, provider) => this.registerHost(ctx, key, provider),
+					registerHost: (key, adapter) => this.registerHost(ctx, key, adapter),
 					configureHost: (key, resolver) => this.configureHost(ctx, key, resolver),
-					registerClient: (key, binder) => this.registerClient(ctx, key, binder),
+					registerClient: (key, adapter) => this.registerClient(ctx, key, adapter),
+					identifyHost: (context) => this.identifyHost(context),
 					getHost: (key) => this.getHost(key),
 					getClient: (key) => this.clients.get(key)?.provider,
 					subscribe: (listener) => this.changes.subscribe(ctx, listener)
 				};
 			}
 			getHost(key) {
-				const provider = this.hosts.get(key)?.provider;
-				if (provider === void 0) return void 0;
+				const adapter = this.hosts.get(key)?.provider;
+				if (adapter === void 0) return void 0;
 				const resolver = this.hostResolvers.get(key)?.provider;
-				if (resolver === void 0) return provider;
+				if (resolver === void 0) return adapter;
 				return {
-					wire: provider.wire,
-					wireTypeSymbol: provider.wireTypeSymbol,
+					wire: adapter.wire,
+					wireTypeSymbol: adapter.wireTypeSymbol,
+					identity: (context) => adapter.identity(context),
 					resolve: (id) => resolver.resolve(id)
 				};
+			}
+			identifyHost(ctx) {
+				let match;
+				for (const key of this.hosts.keys()) {
+					const identity = this.getHost(key)?.identity(ctx);
+					if (identity === void 0) continue;
+					if (match !== void 0) throw new Error(`typert: Host Context is recognized by both ${JSON.stringify(match.kind)} and ${JSON.stringify(key)}`);
+					match = {
+						kind: key,
+						identity
+					};
+				}
+				return match;
 			}
 			configureHost(ctx, key, resolver) {
 				validateSegment("Context key", key);
@@ -1100,15 +1115,15 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					};
 				}, `typert.contexts.configureHost(${JSON.stringify(key)})`);
 			}
-			registerHost(ctx, key, provider) {
+			registerHost(ctx, key, adapter) {
 				validateSegment("Context key", key);
-				validateWireName("Context wire field", provider.wire);
-				validateNonempty("Context wire type symbol", provider.wireTypeSymbol);
-				return this.registerProvider(ctx, this.hosts, "host-context", key, provider);
+				validateWireName("Context wire field", adapter.wire);
+				validateNonempty("Context wire type symbol", adapter.wireTypeSymbol);
+				return this.registerProvider(ctx, this.hosts, "host-context", key, adapter);
 			}
-			registerClient(ctx, key, binder) {
+			registerClient(ctx, key, adapter) {
 				validateSegment("Context key", key);
-				return this.registerProvider(ctx, this.clients, "client-context", key, binder);
+				return this.registerProvider(ctx, this.clients, "client-context", key, adapter);
 			}
 			registerProvider(ctx, table, kind, key, provider) {
 				if (table.has(key)) throw new Error(`typert: ${kind} provider "${key}" is already registered`);
@@ -1176,7 +1191,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			get lookups() {
 				return this.lookupStore.view(this.ctx);
 			}
-			/** Host Context providers and Client Context binders. */
+			/** Host and Client Context adapters. */
 			get contexts() {
 				return this.contextStore.view(this.ctx);
 			}

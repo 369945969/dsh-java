@@ -79,7 +79,7 @@ public class AgentStreamController {
                             log.debug("SSE chunk send failed: {}", e.toString());
                         }
                     }
-                    @Override public void onAssistantMessage(String content, String reasoning) {
+                    @Override public void onAssistantMessage(String content, String reasoning, String assistantMsgId) {
                         // 逐 token 已下发，无需再整段重复
                     }
                     @Override public void onToolCall(String callId, String name, String argumentsJson) {

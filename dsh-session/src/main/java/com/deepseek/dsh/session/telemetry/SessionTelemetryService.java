@@ -59,14 +59,13 @@ public final class SessionTelemetryService
 
     /** 脱敏：对敏感工具的参数字段替换为 [REDACTED]。 */
     private SessionEvent redact(SessionEvent e) {
-        if (e.type() == SessionEvent.Type.TOOL_CALL
-                && e.payload().toolName() != null
-                && redactTools.contains(e.payload().toolName())) {
-            return new SessionEvent(e.seq(), e.sessionId(), e.type(),
-                    SessionEvent.Payload.toolCall(e.payload().toolName(),
-                            e.payload().toolCallId(),
-                            java.util.Map.of("[redacted]", true)),
-                    e.createdAt(), e.lineage());
+        if ("tool/call".equals(e.type())) {
+            String toolName = String.valueOf(e.data().getOrDefault("name", ""));
+            if (redactTools.contains(toolName)) {
+                java.util.Map<String, Object> redacted = new java.util.LinkedHashMap<>(e.data());
+                redacted.put("arguments", java.util.Map.of("[redacted]", true));
+                return new SessionEvent(e.seq(), e.sessionId(), e.type(), redacted, e.time(), e.surfaceOp(), e.lineage());
+            }
         }
         return e;
     }

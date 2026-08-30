@@ -1,5 +1,6 @@
 package com.deepseek.dsh.app.cli;
 
+import java.io.BufferedOutputStream;
 import java.io.PrintStream;
 
 import com.deepseek.dsh.agent.TurnObserver;
@@ -20,16 +21,27 @@ import com.deepseek.dsh.agent.TurnObserver;
  */
 public final class CliTurnObserver implements TurnObserver {
 
-    private static final boolean TTY = CliColors.ON;
+    private static final boolean TTY = System.console() != null;
     private static final String DIM = TTY ? "\033[2m" : "";
+    private static final String GREEN = TTY ? "\033[32m" : "";
     private static final String RESET = TTY ? "\033[0m" : "";
 
     private final PrintStream out;
-    private boolean streamed = false;   // 本 step 是否已逐 token 输出
-    private boolean inThink = false;   // think 暗色块是否处于打开状态
+    private boolean streamed = false;
+    private boolean inThink = false;
+    private long lastFlush = 0;
+    private static final long FLUSH_INTERVAL_MS = 50;
 
     public CliTurnObserver(PrintStream out) {
-        this.out = out;
+        this.out = new PrintStream(new BufferedOutputStream(out, 8192), false);
+    }
+
+    private void maybeFlush() {
+        long now = System.currentTimeMillis();
+        if (now - lastFlush >= FLUSH_INTERVAL_MS) {
+            out.flush();
+            lastFlush = now;
+        }
     }
 
     @Override
@@ -41,7 +53,7 @@ public final class CliTurnObserver implements TurnObserver {
                 inThink = true;
             }
             out.print(reasoningDelta);
-            out.flush();
+            maybeFlush();
             streamed = true;
         }
         if (contentDelta != null && !contentDelta.isEmpty()) {
@@ -52,13 +64,13 @@ public final class CliTurnObserver implements TurnObserver {
                 inThink = false;
             }
             out.print(contentDelta);
-            out.flush();
+            maybeFlush();
             streamed = true;
         }
     }
 
     @Override
-    public void onAssistantMessage(String content, String reasoning) {
+    public void onAssistantMessage(String content, String reasoning, String assistantMsgId) {
         if (streamed) {
             // 已逐 token 输出：收尾（关闭未闭合 think 块 + 换行），不重复打印正文
             if (inThink) {
@@ -90,26 +102,36 @@ public final class CliTurnObserver implements TurnObserver {
 
     @Override
     public void onToolCall(String callId, String name, String argumentsJson) {
+        String summary = extractSummary(argumentsJson);
         out.print(DIM);
-        out.println("> " + name + "  " + collapse(argumentsJson, 200));
+        out.println("> " + name + (summary.isEmpty() ? "" : ": " + summary));
         out.print(RESET);
         out.flush();
     }
 
     @Override
     public void onToolResult(String callId, String resultText) {
-        out.print(DIM);
-        out.print("  -> ");
-        String r = resultText == null ? "" : resultText.replace("\r", "");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < r.length(); i++) {
-            char c = r.charAt(i);
-            if (c == '\n' || c == '\t' || (c >= 0x20 && c != 0x7F)) sb.append(c);
-            if (sb.length() >= 600) { sb.append("..."); break; }
-        }
-        out.println(sb.toString());
+        out.print(GREEN);
+        out.println("  ✓");
         out.print(RESET);
         out.flush();
+    }
+
+    private static final String[] SUMMARY_FIELDS = {"command", "pattern", "query", "path", "file_path", "url", "task", "directory", "glob"};
+
+    private static String extractSummary(String json) {
+        if (json == null || json.isBlank()) return "";
+        try {
+            var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+            for (String field : SUMMARY_FIELDS) {
+                var v = node.get(field);
+                if (v != null && v.isTextual()) {
+                    String s = v.asText();
+                    return s.length() > 120 ? s.substring(0, 120) + "…" : s;
+                }
+            }
+        } catch (Exception ignored) { }
+        return "";
     }
 
     /** 折叠空白、去除控制字符（ANSI 转义/二进制等会致乱码）、代理对安全截断到 max 字符，用于单行展示工具参数/结果。 */

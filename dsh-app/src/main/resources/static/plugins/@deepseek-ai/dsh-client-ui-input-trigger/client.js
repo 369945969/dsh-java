@@ -5,7 +5,7 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let _deepseek_ai_cordis = require("@deepseek-ai/cordis");
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
+		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
@@ -185,7 +185,8 @@ window.__ModuleLoader__.load({
 		* open menu, or the roster is dropped; a settlement or failure leaving every
 		* group ready-and-empty (or no groups) auto-closes; `source-failed` silently
 		* removes the group (the shell logs); `move` cycles the highlight across
-		* ready items.
+		* ready items; `hover` parks it on one ready item (pointer and keyboard
+		* share the single highlight — last input wins).
 		*
 		* @param state - Current menu state.
 		* @param ev - Menu event.
@@ -250,6 +251,20 @@ window.__ModuleLoader__.load({
 						highlight: next
 					};
 				}
+				case "hover": {
+					if (!state.open) return state;
+					const target = validHighlight({
+						source: ev.source,
+						index: ev.index
+					}, state.groups);
+					if (target === null) return state;
+					const hl = state.highlight;
+					if (hl && hl.source === target.source && hl.index === target.index) return state;
+					return {
+						...state,
+						highlight: target
+					};
+				}
 				case "close": return closed(state);
 			}
 		};
@@ -263,13 +278,20 @@ window.__ModuleLoader__.load({
 		var InputTriggerController = class {
 			deps;
 			/** Menu state store (per-session; survives session switches, dies with the scope). */
-			menu = (0, _deepseek_ai_dsh_client_runtime_client.createSnapshotStore)(MENU_CLOSED);
+			menu = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(MENU_CLOSED);
 			/**
 			* Name of the source opened through the programmatic launcher, or null for
 			* trigger-detected/closed menus. Composer chrome subscribes to this store
 			* for the launcher's expanded state without owning a second menu model.
 			*/
-			launcher = (0, _deepseek_ai_dsh_client_runtime_client.createSnapshotStore)(null);
+			launcher = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(null);
+			/**
+			* Crumbs published by each header-bearing source for the open menu, keyed
+			* by source name. A snapshot store like {@link InputTriggerController.launcher}:
+			* the answer changes with every hit, and render-side consumers subscribe
+			* instead of re-polling sources during a render.
+			*/
+			headers = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(/* @__PURE__ */ new Map());
 			/**
 			* Aggregated hot reference lexicon, grouped by trigger (plain-text-reference decision;
 			* see .agents/notes/implemented/architecture/2026-07-25-web-input-machine-and-slash-pipeline.md):
@@ -280,9 +302,11 @@ window.__ModuleLoader__.load({
 			* spawn/exit) — render-side consumers subscribe instead of re-reading a
 			* mutable answer.
 			*/
-			lexicon = (0, _deepseek_ai_dsh_client_runtime_client.createSnapshotStore)(/* @__PURE__ */ new Map());
+			lexicon = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(/* @__PURE__ */ new Map());
 			/** The authoritative hit: single truth for span CAS material (menu snapshot never carries it alone). */
 			hit = null;
+			/** Whether the open menu was reached by a drill pick; cleared with the menu. */
+			drilled = false;
 			fetch = null;
 			disposed = false;
 			/** Per-source lexicon unsubscribers (sources without the hook never enter). */
@@ -337,6 +361,7 @@ window.__ModuleLoader__.load({
 					type: "hit",
 					hit
 				});
+				this.refreshHeaders(hit, roster);
 				this.fetchCandidates(hit, roster);
 			}
 			/**
@@ -366,6 +391,7 @@ window.__ModuleLoader__.load({
 					type: "hit",
 					hit
 				});
+				this.refreshHeaders(hit, [match]);
 				this.fetchCandidates(hit, [match]);
 			}
 			/**
@@ -373,8 +399,9 @@ window.__ModuleLoader__.load({
 			* and execute claim/insert outcomes via the scoped input events.
 			* @param source - source (group) name.
 			* @param index - candidate index within the group.
+			* @param action - settling pick (default) or the candidate's drill action.
 			*/
-			pick(source, index) {
+			pick(source, index, action = "pick") {
 				const state = this.menu.getSnapshot();
 				const hit = this.hit;
 				if (this.disposed || !state.open || hit === null) return;
@@ -383,16 +410,41 @@ window.__ModuleLoader__.load({
 				if (candidate === void 0) return;
 				const src = this.deps.roster.sources(hit.trigger).find((s) => s.name === source);
 				if (src === void 0) return;
-				const outcome = src.onPick({
-					candidate,
-					session: this.project(),
-					position: hit.position,
-					via: "menu",
-					span: hit.span
+				this.settle(src, candidate, hit, action);
+			}
+			/**
+			* Pointer pick on one crumb of a source's menu header: route it through the
+			* same drill path a folder row takes, so returning to a step and descending
+			* into one share one outcome.
+			* @param source - source (group) name.
+			* @param index - crumb index within that source's published header.
+			*/
+			pickCrumb(source, index) {
+				const hit = this.hit;
+				if (this.disposed || !this.menu.getSnapshot().open || hit === null) return;
+				const crumb = this.headers.getSnapshot().get(source)?.[index];
+				if (crumb === void 0 || crumb.current === true) return;
+				const src = this.deps.roster.sources(hit.trigger).find((s) => s.name === source);
+				if (src === void 0) return;
+				this.settle(src, {
+					name: crumb.label,
+					value: crumb.value
+				}, hit, "drill");
+			}
+			/**
+			* Pointer hover from MenuView: park the shared highlight on the hovered
+			* candidate (keyboard `move` and pointer hover drive one highlight —
+			* last input wins).
+			* @param source - source (group) name.
+			* @param index - candidate index within the group.
+			*/
+			hover(source, index) {
+				if (this.disposed) return;
+				this.reduce({
+					type: "hover",
+					source,
+					index
 				});
-				this.stopFetch();
-				this.reduce({ type: "close" });
-				this.execute(outcome, hit.span);
 			}
 			/**
 			* Keyboard arbitration while the menu is open.
@@ -425,6 +477,13 @@ window.__ModuleLoader__.load({
 						if (state.highlight === null) return "pass";
 						this.pick(state.highlight.source, state.highlight.index);
 						return "pick-highlighted";
+					case "tab": {
+						if (state.highlight === null) return "pass";
+						const group = state.groups.find((g) => g.source === state.highlight?.source);
+						if ((group !== void 0 && group.status === "ready" ? group.items[state.highlight.index] : void 0)?.drill !== true) return "pass";
+						this.pick(state.highlight.source, state.highlight.index, "drill");
+						return "consumed";
+					}
 				}
 			}
 			/**
@@ -571,6 +630,12 @@ window.__ModuleLoader__.load({
 				if (source.lexicon === void 0 || source.subscribeLexicon === void 0) return;
 				this.lexiconOffs.set(source, source.subscribeLexicon(projection, () => {
 					this.refreshLexicon();
+					const hit = this.hit;
+					if (hit === null || !this.menu.getSnapshot().open || hit.trigger !== source.trigger) return;
+					Promise.resolve().then(() => {
+						if (this.disposed || this.hit !== hit || !this.menu.getSnapshot().open) return;
+						this.fetchCandidates(hit, this.deps.roster.sources(hit.trigger));
+					});
 				}));
 			}
 			/** Launch the candidate fetch for one hit generation, superseding the previous one. */
@@ -584,6 +649,7 @@ window.__ModuleLoader__.load({
 					query: hit.query,
 					quoted: hit.quoted,
 					position: hit.position,
+					drilled: this.drilled,
 					signal: controller.signal
 				}).then((items) => {
 					if (controller.signal.aborted) return;
@@ -607,6 +673,57 @@ window.__ModuleLoader__.load({
 				this.fetch?.abort();
 				this.fetch = null;
 			}
+			/**
+			* Run one candidate (or crumb) through its source and apply the outcome.
+			*
+			* A drill is the one pick that leaves the menu open, so it is also the one
+			* that records how the next query was reached; every other pick closes the
+			* menu, which clears that record.
+			* @param src - the owning source.
+			* @param candidate - the picked candidate, or a crumb projected as one.
+			* @param hit - the authoritative hit supplying position and span CAS.
+			* @param action - settling pick or drill.
+			*/
+			settle(src, candidate, hit, action) {
+				const outcome = src.onPick({
+					candidate,
+					session: this.project(),
+					position: hit.position,
+					via: "menu",
+					action,
+					span: hit.span
+				});
+				this.stopFetch();
+				this.reduce({ type: "close" });
+				const applied = this.execute(outcome, hit.span);
+				this.drilled = action === "drill" && applied;
+			}
+			/** Re-poll every header-bearing source in the hit roster and publish their crumbs. */
+			refreshHeaders(hit, roster) {
+				const projection = this.project();
+				const crumbs = /* @__PURE__ */ new Map();
+				for (const src of roster) {
+					if (src.header === void 0) continue;
+					let published;
+					try {
+						published = src.header(projection, {
+							query: hit.query,
+							quoted: hit.quoted,
+							drilled: this.drilled
+						});
+					} catch (error) {
+						console.error(`[ui-input-trigger] source "${src.name}" header failed:`, error);
+						continue;
+					}
+					if (published === void 0 || published.length === 0) continue;
+					crumbs.set(src.name, published);
+				}
+				this.setHeaders(crumbs);
+			}
+			setHeaders(next) {
+				if (this.headers.getSnapshot().size === 0 && next.size === 0) return;
+				this.headers.set(next);
+			}
 			clearLauncher() {
 				if (this.launcher.getSnapshot() !== null) this.launcher.set(null);
 			}
@@ -614,7 +731,10 @@ window.__ModuleLoader__.load({
 				const cur = this.menu.getSnapshot();
 				const next = menuReduce(cur, ev);
 				if (next !== cur) this.menu.set(next);
-				if (!next.open) this.clearLauncher();
+				if (next.open) return;
+				this.clearLauncher();
+				this.drilled = false;
+				this.setHeaders(/* @__PURE__ */ new Map());
 			}
 		};
 		//#endregion
@@ -713,8 +833,8 @@ window.__ModuleLoader__.load({
 			return n;
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-input-trigger/src/client/MenuView.module.css.mjs
-		const css = ".aT_eEa_menu{z-index:100;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);min-width:min(260px,100%);max-width:min(537px,100%);max-height:320px;box-shadow:var(--dsw-shadow-lv3);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 4px);left:0;overflow:hidden}.aT_eEa_viewport{flex-direction:column;min-height:0;display:flex;overflow-y:auto}.aT_eEa_item{cursor:pointer;width:100%;min-height:40px;color:var(--dsw-alias-label-primary);text-align:left;background:0 0;border:none;border-radius:10px;align-items:center;gap:8px;padding:8px 10px;font-size:14px;line-height:22px;display:flex}.aT_eEa_item:hover,.aT_eEa_item.aT_eEa_active{background:var(--dsw-alias-interactive-bg-hover)}.aT_eEa_sectionTitle{min-height:26px;color:var(--dsw-alias-label-tertiary);flex:none;padding:6px 10px 2px;font-size:12px;font-weight:500;line-height:18px}.aT_eEa_sectionTitle:not(:first-child){margin-top:4px}.aT_eEa_itemIcon{width:16px;height:16px;color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;display:inline-flex}.aT_eEa_itemName{text-overflow:ellipsis;white-space:nowrap;flex:none;max-width:40%;overflow:hidden}.aT_eEa_itemDescription{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary);flex:1;overflow:hidden}.aT_eEa_groupTitle{color:var(--dsw-alias-label-tertiary);padding:8px 10px;font-size:12px;line-height:16px}.aT_eEa_loading{min-height:40px;color:var(--dsw-alias-label-dimmed);align-items:center;padding:8px 10px;font-size:14px;line-height:22px;display:flex}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-input-trigger/src/client/MenuView.module.css.mjs
+		const css = ".LsNgfW_menu{z-index:100;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);max-height:320px;box-shadow:var(--dsw-shadow-lv3);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 4px);left:0;right:0;overflow:hidden}.LsNgfW_viewport{flex-direction:column;min-height:0;display:flex;overflow-y:auto}.LsNgfW_item{cursor:pointer;width:100%;min-height:40px;color:var(--dsw-alias-label-primary);text-align:left;background:0 0;border:none;border-radius:10px;align-items:center;gap:8px;padding:8px 10px;font-size:14px;line-height:22px;display:flex}.LsNgfW_item.LsNgfW_active{background:var(--dsw-alias-interactive-bg-hover)}.LsNgfW_sectionTitle{min-height:26px;color:var(--dsw-alias-label-tertiary);flex:none;padding:6px 10px 2px;font-size:12px;font-weight:500;line-height:18px}.LsNgfW_sectionTitle:not(:first-child){margin-top:4px}.LsNgfW_itemIcon{width:16px;height:16px;color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;display:inline-flex}.LsNgfW_itemName{text-overflow:ellipsis;white-space:nowrap;flex:none;max-width:40%;overflow:hidden}.LsNgfW_itemDescription{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary);flex:1;overflow:hidden}.LsNgfW_trailing{flex:none;align-items:center;gap:4px;margin-left:auto;display:inline-flex}.LsNgfW_drillHintText{color:var(--dsw-alias-label-caption);white-space:nowrap;font-size:11px;line-height:18px;display:none}.LsNgfW_drillHint{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-caption);border-radius:4px;padding:0 5px;font-family:inherit;font-size:11px;line-height:18px;display:none}.LsNgfW_item.LsNgfW_active .LsNgfW_drillHintText,.LsNgfW_item.LsNgfW_active .LsNgfW_drillHint{display:inline-flex}.LsNgfW_drill{width:20px;height:20px;color:var(--dsw-alias-label-caption);border-radius:4px;flex:none;place-items:center;display:inline-grid}.LsNgfW_drill:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.LsNgfW_groupTitle{color:var(--dsw-alias-label-tertiary);padding:8px 10px;font-size:12px;line-height:16px}.LsNgfW_skeletonRow{box-sizing:border-box;align-items:center;min-height:40px;padding:8px 10px;display:flex}.LsNgfW_skeletonBar{background:var(--dsw-alias-bg-skeleton);border-radius:4px;height:20px;animation:2s cubic-bezier(.36,0,.64,1) infinite LsNgfW_dsh-menu-skeleton}@keyframes LsNgfW_dsh-menu-skeleton{0%{opacity:1}40%{opacity:.6}80%,to{opacity:1}}.LsNgfW_crumbs{border-bottom:1px solid var(--dsw-alias-border-inverted);flex-wrap:wrap;flex:none;align-items:center;gap:2px;margin-bottom:2px;padding:4px 6px 6px;display:flex}.LsNgfW_crumb{max-width:40%;color:var(--dsw-alias-label-tertiary);cursor:pointer;text-overflow:ellipsis;white-space:nowrap;background:0 0;border:none;border-radius:6px;flex:0 auto;padding:2px 6px;font-family:inherit;font-size:12px;line-height:18px;overflow:hidden}.LsNgfW_crumb:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.LsNgfW_crumbCurrent,.LsNgfW_crumbCurrent:hover{color:var(--dsw-alias-label-primary);cursor:default;background:0 0}.LsNgfW_crumbSeparator{color:var(--dsw-alias-label-caption);flex:none;display:inline-flex}";
 		const tagId = "@deepseek-ai/dsh-client-ui-input-trigger/MenuView.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -724,16 +844,26 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var MenuView_module_css_default = {
-			"active": "aT_eEa_active",
-			"groupTitle": "aT_eEa_groupTitle",
-			"item": "aT_eEa_item",
-			"itemDescription": "aT_eEa_itemDescription",
-			"itemIcon": "aT_eEa_itemIcon",
-			"itemName": "aT_eEa_itemName",
-			"loading": "aT_eEa_loading",
-			"menu": "aT_eEa_menu",
-			"sectionTitle": "aT_eEa_sectionTitle",
-			"viewport": "aT_eEa_viewport"
+			"active": "LsNgfW_active",
+			"crumb": "LsNgfW_crumb",
+			"crumbCurrent": "LsNgfW_crumbCurrent",
+			"crumbSeparator": "LsNgfW_crumbSeparator",
+			"crumbs": "LsNgfW_crumbs",
+			"drill": "LsNgfW_drill",
+			"drillHint": "LsNgfW_drillHint",
+			"drillHintText": "LsNgfW_drillHintText",
+			"dsh-menu-skeleton": "LsNgfW_dsh-menu-skeleton",
+			"groupTitle": "LsNgfW_groupTitle",
+			"item": "LsNgfW_item",
+			"itemDescription": "LsNgfW_itemDescription",
+			"itemIcon": "LsNgfW_itemIcon",
+			"itemName": "LsNgfW_itemName",
+			"menu": "LsNgfW_menu",
+			"sectionTitle": "LsNgfW_sectionTitle",
+			"skeletonBar": "LsNgfW_skeletonBar",
+			"skeletonRow": "LsNgfW_skeletonRow",
+			"trailing": "LsNgfW_trailing",
+			"viewport": "LsNgfW_viewport"
 		};
 		//#endregion
 		//#region lib/types/client/MenuView.js
@@ -741,10 +871,11 @@ window.__ModuleLoader__.load({
 		* Trigger candidate menu: renders the InputTriggerService menu store into the
 		* conversation.input.overlay anchor. Closed state renders null (the overlay
 		* slot stays mounted); groups render in roster order under localized title
-		* rows, pending groups as a loading row; pointer picks route back through
+		* rows, pending groups as two skeleton rows; pointer picks route back through
 		* the service (combobox pattern — focus never leaves the textarea, so rows
 		* are mousedown-handled and the highlight is exposed via
-		* aria-activedescendant on the listbox).
+		* aria-activedescendant on the listbox). A source publishing crumbs gets a
+		* breadcrumb header pinned above the scrolling list.
 		*/
 		/** Design cap on the list height (figma SLASH 39:26572 MenuDropdown). */
 		const MAX_HEIGHT = 320;
@@ -757,8 +888,9 @@ window.__ModuleLoader__.load({
 		* @param props - injected face (the menu store and the pick route); `t` rides the standard locale seat.
 		* @returns the dropdown while open; null while closed.
 		*/
-		function MenuView({ menu, onPick, onDismiss, t }) {
+		function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t }) {
 			const state = (0, react.useSyncExternalStore)((fn) => menu.subscribe(fn), () => menu.getSnapshot());
+			const crumbs = (0, react.useSyncExternalStore)((fn) => headers.subscribe(fn), () => headers.getSnapshot());
 			const listRef = (0, react.useRef)(null);
 			const maxHeight = (0, _deepseek_ai_dsh_client_ui_primitives.useAnchoredMaxHeight)(listRef, MAX_HEIGHT, state);
 			const highlight = state.open ? state.highlight : null;
@@ -780,24 +912,59 @@ window.__ModuleLoader__.load({
 				};
 			}, [state.open, onDismiss]);
 			if (!state.open) return null;
-			return (0, react_jsx_runtime.jsx)("div", {
+			return (0, react_jsx_runtime.jsxs)("div", {
 				ref: listRef,
 				className: MenuView_module_css_default.menu,
 				style: { maxHeight },
-				role: "listbox",
-				"aria-label": t("suggestions.aria"),
-				"aria-activedescendant": highlight !== null ? optionId(highlight.source, highlight.index) : void 0,
-				children: (0, react_jsx_runtime.jsx)("div", {
+				"data-trigger-menu": "",
+				children: [state.groups.map((group) => {
+					const trail = crumbs.get(group.source);
+					return trail === void 0 ? null : (0, react_jsx_runtime.jsx)("nav", {
+						className: MenuView_module_css_default.crumbs,
+						"aria-label": t("crumbs.aria"),
+						children: trail.map((crumb, index) => (0, react_jsx_runtime.jsxs)(react.Fragment, { children: [index > 0 && (0, react_jsx_runtime.jsx)("span", {
+							className: MenuView_module_css_default.crumbSeparator,
+							"aria-hidden": true,
+							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {})
+						}), (0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							className: clsx(MenuView_module_css_default.crumb, crumb.current === true && MenuView_module_css_default.crumbCurrent),
+							"aria-current": crumb.current === true ? "location" : void 0,
+							disabled: crumb.current === true,
+							onMouseDown: (ev) => {
+								ev.preventDefault();
+								onCrumb(group.source, index);
+							},
+							children: crumb.label
+						})] }, `${String(index)}-${crumb.value}`))
+					}, group.source);
+				}), (0, react_jsx_runtime.jsx)("div", {
 					className: MenuView_module_css_default.viewport,
+					role: "listbox",
+					"aria-label": t("suggestions.aria"),
+					"aria-activedescendant": highlight !== null ? optionId(highlight.source, highlight.index) : void 0,
 					children: state.groups.map((group) => group.status === "ready" && group.items.length === 0 ? null : (0, react_jsx_runtime.jsxs)(react.Fragment, { children: [group.showGroupTitle === false || group.items.some((item) => item.section !== void 0) ? null : (0, react_jsx_runtime.jsx)("div", {
 						className: MenuView_module_css_default.groupTitle,
 						role: "presentation",
 						"data-source": group.source,
 						children: t(group.source)
-					}), group.status === "pending" ? (0, react_jsx_runtime.jsx)("div", {
-						className: MenuView_module_css_default.loading,
+					}), group.status === "pending" ? (0, react_jsx_runtime.jsxs)("div", {
+						role: "status",
+						"aria-label": t("loading"),
 						"data-source": group.source,
-						children: t("loading")
+						children: [(0, react_jsx_runtime.jsx)("div", {
+							className: MenuView_module_css_default.skeletonRow,
+							children: (0, react_jsx_runtime.jsx)("span", {
+								className: MenuView_module_css_default.skeletonBar,
+								style: { width: "32%" }
+							})
+						}), (0, react_jsx_runtime.jsx)("div", {
+							className: MenuView_module_css_default.skeletonRow,
+							children: (0, react_jsx_runtime.jsx)("span", {
+								className: MenuView_module_css_default.skeletonBar,
+								style: { width: "48%" }
+							})
+						})]
 					}) : group.items.map((item, index) => {
 						const active = highlight !== null && highlight.source === group.source && highlight.index === index;
 						return (0, react_jsx_runtime.jsxs)(react.Fragment, { children: [item.section !== void 0 && item.section !== group.items[index - 1]?.section ? (0, react_jsx_runtime.jsx)("div", {
@@ -814,11 +981,17 @@ window.__ModuleLoader__.load({
 								ev.preventDefault();
 								onPick(group.source, index);
 							},
+							onMouseMove: active ? void 0 : () => {
+								onHover(group.source, index);
+							},
 							children: [
 								item.icon !== void 0 && (0, react_jsx_runtime.jsx)("span", {
 									className: MenuView_module_css_default.itemIcon,
 									"aria-hidden": true,
-									children: item.icon
+									children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.ReferenceIcon, {
+										kind: item.icon,
+										size: 16
+									})
 								}),
 								(0, react_jsx_runtime.jsx)("span", {
 									className: MenuView_module_css_default.itemName,
@@ -827,11 +1000,37 @@ window.__ModuleLoader__.load({
 								item.description !== void 0 && (0, react_jsx_runtime.jsx)("span", {
 									className: MenuView_module_css_default.itemDescription,
 									children: item.description
+								}),
+								item.drill === true && (0, react_jsx_runtime.jsxs)("span", {
+									className: MenuView_module_css_default.trailing,
+									children: [
+										(0, react_jsx_runtime.jsx)("span", {
+											className: MenuView_module_css_default.drillHintText,
+											"aria-hidden": true,
+											children: t("drill.hint")
+										}),
+										(0, react_jsx_runtime.jsx)("kbd", {
+											className: MenuView_module_css_default.drillHint,
+											"aria-hidden": true,
+											children: t("drill.key")
+										}),
+										(0, react_jsx_runtime.jsx)("span", {
+											role: "button",
+											"aria-label": t("drill.aria"),
+											className: MenuView_module_css_default.drill,
+											onMouseDown: (ev) => {
+												ev.preventDefault();
+												ev.stopPropagation();
+												onPick(group.source, index, "drill");
+											},
+											children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {})
+										})
+									]
 								})
 							]
 						})] }, optionId(group.source, index));
 					})] }, group.source))
-				})
+				})]
 			});
 		}
 		//#endregion
@@ -839,14 +1038,18 @@ window.__ModuleLoader__.load({
 		/**
 		* `slash.menu` namespace dictionaries: group titles keyed by source name
 		* (the lookup chain returns the key itself, so an unknown source shows its
-		* raw name), the pending row, and the listbox aria label.
+		* raw name), the pending row, and the listbox and header aria labels.
 		*/
 		/** Simplified Chinese dictionary (the key-set source of truth). */
 		const zh = {
-			"command": "命令",
+			"command": "指令",
 			"skill": "技能",
 			"subagent": "子智能体",
 			"loading": "正在加载…",
+			"drill.aria": "进入目录",
+			"drill.hint": "进入目录",
+			"drill.key": "Tab",
+			"crumbs.aria": "目录导航",
 			"suggestions.aria": "触发候选建议"
 		};
 		/** English dictionary, checked complete against the zh key set. */
@@ -855,6 +1058,10 @@ window.__ModuleLoader__.load({
 			"skill": "Skills",
 			"subagent": "Subagents",
 			"loading": "Loading…",
+			"drill.aria": "Browse folder",
+			"drill.hint": "Browse folder",
+			"drill.key": "Tab",
+			"crumbs.aria": "Folder navigation",
 			"suggestions.aria": "Trigger suggestions"
 		};
 		//#endregion
@@ -892,8 +1099,15 @@ window.__ModuleLoader__.load({
 						const controller = inputTriggers.sessionOf(actx);
 						return {
 							menu: controller.menu,
-							onPick: (source, index) => {
-								controller.pick(source, index);
+							headers: controller.headers,
+							onPick: (source, index, action) => {
+								controller.pick(source, index, action);
+							},
+							onCrumb: (source, index) => {
+								controller.pickCrumb(source, index);
+							},
+							onHover: (source, index) => {
+								controller.hover(source, index);
 							},
 							onDismiss: () => {
 								controller.dismiss();

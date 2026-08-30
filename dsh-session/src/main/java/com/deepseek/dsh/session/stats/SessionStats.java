@@ -32,14 +32,14 @@ public record SessionStats(
         long first = 0, last = 0;
         for (SessionEvent e : log.snapshot()) {
             switch (e.type()) {
-                case TURN_START -> turns++;
-                case STEP_START -> steps++;
-                case USER_MESSAGE -> user++;
-                case ASSISTANT_MESSAGE -> assistant++;
-                case TOOL_CALL -> tools++;
+                case "turn/start" -> turns++;
+                case "step/start" -> steps++;
+                case "user/message" -> user++;
+                case "assistant/message" -> assistant++;
+                case "tool/call" -> tools++;
                 default -> {}
             }
-            long ts = e.createdAt() != null ? e.createdAt().getEpochSecond() : 0;
+            long ts = e.time() > 0 ? e.time() / 1000 : 0;
             if (first == 0) first = ts;
             last = ts;
         }

@@ -1,10 +1,8 @@
 package com.deepseek.dsh.session.sqlite;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
+import java.io.IOException;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,155 +10,154 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.deepseek.dsh.core.brand.SessionId;
-import com.deepseek.dsh.session.log.SessionEvent;
 import com.deepseek.dsh.session.persistence.SessionStore;
+import com.deepseek.dsh.session.log.SessionEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * SQLite 会话持久化 —— 对应原 Harness 的 {@code session-persistence-sqlite}。
- *
- * <p>用 SQLite 表存储事件，并建立 FTS5 全文索引以支持语义/全文会话查询。
- * 与 JSONL 相比，SQLite 支持高效检索与增量查询。
- *
- * <p>设计模式：仓储（Repository）—— 事件存储的可插拔后端。
+ * SQLite 持久化后端 —— 将 wire 格式 SessionEvent 存入 SQLite，
+ * data 字段以 JSON 文本存储，type 为 wire 事件类型字符串。
  */
-public final class SqliteSessionStore implements SessionStore, AutoCloseable {
+public class SqliteSessionStore implements SessionStore, AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(SqliteSessionStore.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final java.sql.Connection connection;
 
-    private final Connection connection;
-
-    public SqliteSessionStore(String dbPath) throws java.io.IOException {
+    public SqliteSessionStore(java.nio.file.Path dbPath) throws IOException {
         try {
-            this.connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+            String url = "jdbc:sqlite:" + dbPath.toString();
+            connection = java.sql.DriverManager.getConnection(url);
+            initSchema();
         } catch (java.sql.SQLException e) {
-            throw new java.io.IOException("无法打开 SQLite: " + e.getMessage(), e);
+            throw new IOException("Failed to open SQLite: " + e.getMessage(), e);
         }
-        initSchema();
     }
 
-    private void initSchema() throws java.io.IOException {
-        try (Statement st = connection.createStatement()) {
-            // 事件表
-            st.executeUpdate("""
+    private void initSchema() throws java.sql.SQLException {
+        try (var stmt = connection.createStatement()) {
+            stmt.execute("""
                     CREATE TABLE IF NOT EXISTS events (
-                        seq INTEGER,
+                        seq INTEGER NOT NULL,
                         session_id TEXT NOT NULL,
                         type TEXT NOT NULL,
-                        text TEXT,
-                        tool_name TEXT,
-                        tool_call_id TEXT,
-                        created_at TEXT,
+                        data_json TEXT NOT NULL DEFAULT '{}',
+                        time INTEGER NOT NULL DEFAULT 0,
+                        surface_op TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL,
                         PRIMARY KEY (session_id, seq)
                     )
                     """);
-            // FTS5 全文索引（对文本内容建虚拟表）
-            st.executeUpdate("""
-                    CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
-                        session_id, text, content_type, tokenize='unicode61'
+            stmt.execute("""
+                    CREATE TABLE IF NOT EXISTS events_fts (
+                        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id TEXT NOT NULL,
+                        text TEXT NOT NULL,
+                        content_type TEXT NOT NULL
                     )
                     """);
             log.debug("SQLite session table initialized");
-        } catch (java.sql.SQLException e) {
-            throw new java.io.IOException("Failed to initialize SQLite table: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public void append(SessionEvent event) throws java.io.IOException {
-        String text = event.payload().text();
-        String toolName = event.payload().toolName();
-        String toolCallId = event.payload().toolCallId();
+    @SuppressWarnings("unchecked")
+    public void append(SessionEvent event) throws IOException {
         try {
+            String dataJson = MAPPER.writeValueAsString(event.data());
             try (PreparedStatement ps = connection.prepareStatement(
-                    "INSERT INTO events (seq, session_id, type, text, tool_name, tool_call_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                    "INSERT INTO events (seq, session_id, type, data_json, time, surface_op, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
                 ps.setLong(1, event.seq());
                 ps.setString(2, event.sessionId().value());
-                ps.setString(3, event.type().name());
-                ps.setString(4, text);
-                ps.setString(5, toolName);
-                ps.setString(6, toolCallId);
-                ps.setString(7, event.createdAt().toString());
+                ps.setString(3, event.type());
+                ps.setString(4, dataJson);
+                ps.setLong(5, event.time());
+                ps.setString(6, event.surfaceOp());
+                ps.setString(7, java.time.Instant.now().toString());
                 ps.executeUpdate();
             }
-            // 写入 FTS 索引（仅对有文本的事件）
+            String text = extractText(event);
             if (text != null && !text.isBlank()) {
                 try (PreparedStatement ps = connection.prepareStatement(
                         "INSERT INTO events_fts (session_id, text, content_type) VALUES (?, ?, ?)")) {
                     ps.setString(1, event.sessionId().value());
                     ps.setString(2, text);
-                    ps.setString(3, event.type().name());
+                    ps.setString(3, event.type());
                     ps.executeUpdate();
                 }
             }
-        } catch (java.sql.SQLException e) {
-            throw new java.io.IOException("写入事件失败: " + e.getMessage(), e);
+        } catch (Exception e) {
+            throw new IOException("写入事件失败: " + e.getMessage(), e);
         }
     }
 
     @Override
-    public List<SessionEvent> load(SessionId sessionId) throws java.io.IOException {
+    @SuppressWarnings("unchecked")
+    public List<SessionEvent> load(SessionId sessionId) throws IOException {
         List<SessionEvent> out = new ArrayList<>();
         try {
             try (PreparedStatement ps = connection.prepareStatement(
-                    "SELECT seq, type, text, tool_name, tool_call_id, created_at FROM events WHERE session_id = ? ORDER BY seq")) {
+                    "SELECT seq, type, data_json, time, surface_op, created_at FROM events WHERE session_id = ? ORDER BY seq")) {
                 ps.setString(1, sessionId.value());
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         long seq = rs.getLong("seq");
-                        SessionEvent.Type type = SessionEvent.Type.valueOf(rs.getString("type"));
-                        String text = rs.getString("text");
-                        String toolName = rs.getString("tool_name");
-                        String toolCallId = rs.getString("tool_call_id");
-                        String createdAt = rs.getString("created_at");
-                        SessionEvent.Payload payload = new SessionEvent.Payload(
-                                text, java.util.Map.of(), toolName, toolCallId, null);
-                        out.add(new SessionEvent(seq, sessionId, type, payload,
-                                java.time.Instant.parse(createdAt), SessionEvent.Lineage.root()));
+                        String type = rs.getString("type");
+                        String dataJson = rs.getString("data_json");
+                        long time = rs.getLong("time");
+                        String surfaceOp = rs.getString("surface_op");
+                        java.util.Map<String, Object> data = dataJson != null
+                                ? MAPPER.readValue(dataJson, java.util.Map.class)
+                                : java.util.Map.of();
+                        out.add(new SessionEvent(seq, sessionId, type, data, time, surfaceOp));
                     }
                 }
             }
-        } catch (java.sql.SQLException e) {
-            throw new java.io.IOException("加载会话失败: " + e.getMessage(), e);
+        } catch (Exception e) {
+            throw new IOException("加载事件失败: " + e.getMessage(), e);
         }
         return out;
     }
 
-    /**
-     * FTS 全文检索 —— 查询包含关键词的事件。
-     *
-     * @param query    FTS5 查询表达式（如 'error OR timeout'）
-     * @param limit    最多返回条数
-     * @return 匹配的 (sessionId, text, type) 三元组列表
-     */
-    public List<SearchHit> search(String query, int limit) throws java.io.IOException {
-        List<SearchHit> hits = new ArrayList<>();
+    @Override
+    public List<SessionId> listAll() throws IOException {
+        List<SessionId> ids = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement(
-                "SELECT session_id, text, content_type FROM events_fts WHERE events_fts MATCH ? ORDER BY rank LIMIT ?")) {
-            ps.setString(1, query);
-            ps.setInt(2, limit);
+                "SELECT DISTINCT session_id FROM events")) {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    hits.add(new SearchHit(
-                            rs.getString("session_id"),
-                            rs.getString("text"),
-                            rs.getString("content_type")));
+                    ids.add(SessionId.of(rs.getString("session_id")));
                 }
             }
         } catch (java.sql.SQLException e) {
-            throw new java.io.IOException("FTS 检索失败: " + e.getMessage(), e);
+            throw new IOException("列出会话失败: " + e.getMessage(), e);
         }
-        return hits;
+        return ids;
     }
 
-    /** 搜索命中结果。 */
-    public record SearchHit(String sessionId, String text, String contentType) {}
+    @SuppressWarnings("unchecked")
+    private static String extractText(SessionEvent e) {
+        if ("user/message".equals(e.type()) || "assistant/message".equals(e.type())) {
+            Object content = e.data().get("content");
+            if (content instanceof List<?> parts) {
+                StringBuilder sb = new StringBuilder();
+                for (Object part : parts) {
+                    if (part instanceof java.util.Map<?, ?> p && "text".equals(p.get("type")) && p.get("text") instanceof String t) {
+                        sb.append(t);
+                    }
+                }
+                return sb.toString();
+            }
+        }
+        return null;
+    }
 
     @Override
-    public void close() throws java.io.IOException {
+    public void close() {
         try {
-            connection.close();
+            if (connection != null) connection.close();
         } catch (java.sql.SQLException e) {
-            throw new java.io.IOException("关闭 SQLite 失败: " + e.getMessage(), e);
+            log.warn("Failed to close SQLite: {}", e.getMessage());
         }
     }
 }

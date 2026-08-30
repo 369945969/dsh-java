@@ -4,25 +4,19 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		//#region ../../../node_modules/.pnpm/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
-		function r(e) {
-			var t, f, n = "";
-			if ("string" == typeof e || "number" == typeof e) n += e;
-			else if ("object" == typeof e) if (Array.isArray(e)) {
-				var o = e.length;
-				for (t = 0; t < o; t++) e[t] && (f = r(e[t])) && (n && (n += " "), n += f);
-			} else for (f in e) e[f] && (n && (n += " "), n += f);
-			return n;
-		}
-		function clsx() {
-			for (var e, t, f = 0, n = "", o = arguments.length; f < o; f++) (e = arguments[f]) && (t = r(e)) && (n && (n += " "), n += t);
-			return n;
-		}
-		//#endregion
 		//#region lib/types/client/contract/slots.js
+		function settlePendingComposer(settle, failureMessage) {
+			try {
+				settle();
+				return Promise.resolve();
+			} catch (error) {
+				return Promise.reject(error instanceof Error ? error : new Error(failureMessage, { cause: error }));
+			}
+		}
 		/**
 		* Narrow a request to a renderable plan review, or return undefined to leave it
 		* to the generic question flow.
@@ -60,59 +54,158 @@ window.__ModuleLoader__.load({
 				...decline === void 0 ? {} : { decline }
 			};
 		}
-		/**
-		* Question domain face over the carrier: render identity and questions
-		* transparently forwarded; answer/cancel own the wire encoding (the success
-		* fields and the cancelled error) and turn a rejected carrier receipt into a
-		* thrown error. Components mint one per carrier via useMemo (never inside a
-		* select — a per-dispatch mint would churn identity and break memoization).
-		*/
+		let nextQuestionKey = 0;
+		/** Create a wire-preserved user-question rejection. */
+		function questionError(message, code) {
+			const error = new Error(message);
+			error.name = "UserQuestionError";
+			error.code = code;
+			return error;
+		}
+		/** One answerable Client presentation of a pending Host waterfall. */
 		var PendingQuestion = class {
-			wait;
+			sessionId;
+			/** Presentation discriminator used by Session pending-interaction consumers. */
+			kind;
+			/** Opaque render identity and request key for the Session-scoped draft store. */
+			key;
+			/** The request's question list. */
+			questions;
+			/** Result returned by the Remote Event listener to the Host waterfall. */
+			result;
+			#resolve;
+			#reject;
+			#signal;
+			#onAbort;
+			#delegated = Symbol("pending question delegated");
+			#settled = false;
 			/**
-			* @param wait - the runtime carrier for one pending question request.
+			* @param sessionId - Agent/Session identity owning the scoped request.
+			* @param questions - complete question batch.
+			* @param signal - Host request and delivery lifetime.
 			*/
-			constructor(wait) {
-				this.wait = wait;
-			}
-			/** Opaque render identity (React key / draft remount axis), forwarded from the carrier. */
-			get key() {
-				return this.wait.key;
-			}
-			/** The request's question list, forwarded from the carrier payload. */
-			get questions() {
-				return this.wait.payload.questions;
+			constructor(sessionId, questions, signal) {
+				this.sessionId = sessionId;
+				nextQuestionKey += 1;
+				this.key = `question:${String(nextQuestionKey)}`;
+				this.questions = questions;
+				this.kind = planReviewOf(questions) === void 0 ? "question" : "plan-review";
+				const completion = Promise.withResolvers();
+				this.result = completion.promise;
+				this.#resolve = completion.resolve;
+				this.#reject = completion.reject;
+				this.#signal = signal;
+				if (signal === void 0) {
+					this.#onAbort = void 0;
+					return;
+				}
+				const onAbort = () => {
+					this.abort(questionError("ask_user_question was aborted before the user answered", "ASK_ABORTED"));
+				};
+				this.#onAbort = onAbort;
+				signal.addEventListener("abort", onAbort, { once: true });
+				if (signal.aborted) onAbort();
 			}
 			/**
-			* Deliver the whole answer batch; a rejected carrier receipt throws.
+			* Resolve the Host waterfall with the whole answer batch.
 			* @param answer - complete structured answer batch.
 			*/
-			async answer(answer) {
-				const receipt = await this.wait.respond({
-					ok: true,
-					value: {
-						sessionId: this.wait.sessionId,
-						answer
-					}
-				});
-				if (!receipt.accepted) throw new Error(`question response rejected: ${receipt.reason}`);
+			answer(answer) {
+				return settlePendingComposer(() => {
+					this.finish(() => {
+						this.#resolve(answer);
+					});
+				}, "pending question settlement failed");
 			}
-			/** Reject the whole wait (the host resolves the tool call as cancelled); a rejected receipt throws. */
-			async cancel() {
-				const receipt = await this.wait.respond({
-					ok: false,
-					error: {
-						code: "cancelled",
-						message: "the user closed this question request",
-						details: {}
-					}
+			/** Delegate an unanswered request to the next waterfall listener. */
+			delegate() {
+				if (this.#settled) return;
+				this.finish(() => {
+					this.#reject(this.#delegated);
 				});
-				if (!receipt.accepted) throw new Error(`question cancellation rejected: ${receipt.reason}`);
+			}
+			/**
+			* Test whether a rejection requests waterfall delegation.
+			* @param reason - rejection received from {@link PendingQuestion.result}.
+			* @returns whether {@link PendingQuestion.delegate} produced it.
+			*/
+			isDelegation(reason) {
+				return reason === this.#delegated;
+			}
+			/** Reject the Host waterfall because the user closed the question. */
+			cancel() {
+				return settlePendingComposer(() => {
+					this.finish(() => {
+						this.#reject(questionError("the user cancelled ask_user_question", "ASK_CANCELLED"));
+					});
+				}, "pending question cancellation failed");
+			}
+			/**
+			* End an unanswered presentation when its transport, scope, or plugin lifetime ends.
+			* @param reason - rejection exposed to the waiting Remote Event listener.
+			*/
+			abort(reason) {
+				if (this.#settled) return;
+				this.finish(() => {
+					this.#reject(reason);
+				});
+			}
+			finish(settle) {
+				if (this.#settled) throw new Error(`pending question ${this.key} is already settled`);
+				this.#settled = true;
+				if (this.#signal !== void 0 && this.#onAbort !== void 0) this.#signal.removeEventListener("abort", this.#onAbort);
+				settle();
 			}
 		};
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css.mjs
-		const css$1 = ".-mgpXG_frame{padding:6px calc(var(--dsh-composer-side-clearance) + 16px) 10px;justify-content:center;display:flex}.-mgpXG_card{width:100%;max-width:var(--dsh-chat-content-width);border:1px solid var(--dsw-alias-state-warn-secondary);background:var(--dsw-specific-input-major);max-height:min(60vh,520px);box-shadow:var(--dsw-shadow-lv2);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:20px;flex-direction:column;display:flex;overflow:hidden}.-mgpXG_card,.-mgpXG_card *{box-sizing:border-box}.-mgpXG_strip{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);flex-shrink:0;align-items:center;gap:8px;padding:10px 16px;font-size:13px;line-height:18px;display:flex}.-mgpXG_dot{background:var(--dsw-alias-state-warn-primary);border-radius:50%;width:8px;height:8px}.-mgpXG_body{overscroll-behavior:contain;flex:auto;min-height:0;padding:12px 16px 4px;font-size:14px;line-height:22px;overflow-y:auto}.-mgpXG_footer{flex-shrink:0;justify-content:space-between;align-items:center;gap:12px;padding:8px 16px 12px;display:flex}.-mgpXG_feedback{min-height:16px;color:var(--dsw-alias-state-error-primary);font-size:11px;line-height:16px}.-mgpXG_actions{flex-shrink:0;align-items:center;gap:8px;display:flex}.-mgpXG_discuss{color:var(--dsw-alias-label-secondary);gap:6px}.-mgpXG_discuss:hover:not(:disabled){color:var(--dsw-alias-label-primary)}@media (width<=720px){.-mgpXG_card{border-radius:16px}.-mgpXG_body{padding:10px 12px 4px}.-mgpXG_footer{align-items:flex-end;padding:8px 12px 10px}}";
+		//#region lib/types/client/draft-store.js
+		/**
+		* Session-scoped draft state for the generic question composer. The Slot
+		* registry owns store instances; this module exports only the factory so a
+		* plugin reload cannot reuse a module-global handle.
+		*/
+		const emptyProgress = () => ({
+			index: 0,
+			drafts: []
+		});
+		/**
+		* Declare the question composer's transient Session store.
+		* @returns a non-persisted store handle whose instance is owned by the Slot registry.
+		*/
+		function createQuestionDraftStore() {
+			return (0, _deepseek_ai_dsh_client_store.defineStore)({
+				init: () => ({ progress: emptyProgress() }),
+				actions: {
+					replace: (draft, requestKey, progress) => {
+						draft.requestKey = requestKey;
+						draft.progress = progress;
+					},
+					clear: (draft, requestKey) => {
+						if (draft.requestKey !== requestKey) return;
+						delete draft.requestKey;
+						draft.progress = emptyProgress();
+					}
+				}
+			});
+		}
+		//#endregion
+		//#region ../../../node_modules/.pnpm/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
+		function r(e) {
+			var t, f, n = "";
+			if ("string" == typeof e || "number" == typeof e) n += e;
+			else if ("object" == typeof e) if (Array.isArray(e)) {
+				var o = e.length;
+				for (t = 0; t < o; t++) e[t] && (f = r(e[t])) && (n && (n += " "), n += f);
+			} else for (f in e) e[f] && (n && (n += " "), n += f);
+			return n;
+		}
+		function clsx() {
+			for (var e, t, f = 0, n = "", o = arguments.length; f < o; f++) (e = arguments[f]) && (t = r(e)) && (n && (n += " "), n += t);
+			return n;
+		}
+		//#endregion
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css.mjs
+		const css$1 = ".kI3P8a_frame{padding:6px calc(var(--dsh-composer-side-clearance) + 16px) 10px;justify-content:center;display:flex}.kI3P8a_card{width:100%;max-width:var(--dsh-chat-content-width);border:1px solid var(--dsw-alias-state-warn-secondary);background:var(--dsw-specific-input-major);max-height:min(60vh,520px);box-shadow:var(--dsw-shadow-lv2);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:20px;flex-direction:column;display:flex;overflow:hidden}.kI3P8a_card,.kI3P8a_card *{box-sizing:border-box}.kI3P8a_strip{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);flex-shrink:0;align-items:center;gap:8px;padding:10px 16px;font-size:13px;line-height:18px;display:flex}.kI3P8a_dot{background:var(--dsw-alias-state-warn-primary);border-radius:50%;width:8px;height:8px}.kI3P8a_body{overscroll-behavior:contain;flex:auto;min-height:0;padding:12px 16px 4px;font-size:14px;line-height:22px;overflow-y:auto}.kI3P8a_footer{flex-shrink:0;justify-content:space-between;align-items:center;gap:12px;padding:8px 16px 12px;display:flex}.kI3P8a_feedback{min-height:16px;color:var(--dsw-alias-state-error-primary);font-size:11px;line-height:16px}.kI3P8a_actions{flex-shrink:0;align-items:center;gap:8px;display:flex}.kI3P8a_discuss{color:var(--dsw-alias-label-secondary);gap:6px}.kI3P8a_discuss:hover:not(:disabled){color:var(--dsw-alias-label-primary)}@media (width<=720px){.kI3P8a_card{border-radius:16px}.kI3P8a_body{padding:10px 12px 4px}.kI3P8a_footer{align-items:flex-end;padding:8px 12px 10px}}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-user-questions/PlanReviewPanel.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -122,15 +215,15 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var PlanReviewPanel_module_css_default = {
-			"actions": "-mgpXG_actions",
-			"body": "-mgpXG_body",
-			"card": "-mgpXG_card",
-			"discuss": "-mgpXG_discuss",
-			"dot": "-mgpXG_dot",
-			"feedback": "-mgpXG_feedback",
-			"footer": "-mgpXG_footer",
-			"frame": "-mgpXG_frame",
-			"strip": "-mgpXG_strip"
+			"actions": "kI3P8a_actions",
+			"body": "kI3P8a_body",
+			"card": "kI3P8a_card",
+			"discuss": "kI3P8a_discuss",
+			"dot": "kI3P8a_dot",
+			"feedback": "kI3P8a_feedback",
+			"footer": "kI3P8a_footer",
+			"frame": "kI3P8a_frame",
+			"strip": "kI3P8a_strip"
 		};
 		//#endregion
 		//#region lib/types/client/PlanReviewPanel.js
@@ -151,6 +244,13 @@ window.__ModuleLoader__.load({
 		* @returns The plan-review takeover for this request.
 		*/
 		function PlanReviewPanel({ pending, review, t }) {
+			const markdownLabels = (0, react.useMemo)(() => ({
+				code: {
+					copyLabel: t("copy"),
+					copiedLabel: t("copied")
+				},
+				footnotes: t("markdown.footnotes")
+			}), [t]);
 			const [busy, setBusy] = (0, react.useState)(false);
 			const [error, setError] = (0, react.useState)(null);
 			const settle = (send) => {
@@ -182,7 +282,10 @@ window.__ModuleLoader__.load({
 						(0, react_jsx_runtime.jsx)("div", {
 							className: PlanReviewPanel_module_css_default.body,
 							"data-plan-review-scroll": true,
-							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, { text: review.plan })
+							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {
+								text: review.plan,
+								labels: markdownLabels
+							})
 						}),
 						(0, react_jsx_runtime.jsxs)("div", {
 							className: PlanReviewPanel_module_css_default.footer,
@@ -229,8 +332,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-user-questions/src/client/QuestionComposer.module.css.mjs
-		const css = ".qON8_W_frame{padding:6px calc(var(--dsh-composer-side-clearance) + 16px) 10px;justify-content:center;display:flex}.qON8_W_card{width:100%;max-width:var(--dsh-chat-content-width);border:1px solid var(--dsw-alias-border-l2-darkmode-thin);background:var(--dsw-specific-input-major);max-height:min(60vh,520px);box-shadow:var(--dsw-shadow-lv2);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:20px;flex-direction:column;padding:0 0 10px;display:flex;overflow:hidden}.qON8_W_card,.qON8_W_card *{box-sizing:border-box}.qON8_W_cardMinimized{max-height:none}.qON8_W_cardMinimized .qON8_W_header{padding-bottom:14px}.qON8_W_headerActions{flex-shrink:0;align-items:center;gap:4px;display:flex}.qON8_W_header{flex-shrink:0;justify-content:space-between;align-items:flex-start;gap:16px;padding:20px 16px 0 24px;display:flex}.qON8_W_headingBlock{min-width:0}.qON8_W_eyebrow{color:var(--dsw-alias-label-tertiary);margin-bottom:5px;font-size:11px;line-height:16px}.qON8_W_title{margin:0;font-size:16px;font-weight:500;line-height:22px}.qON8_W_detail{margin:0 2px 8px}.qON8_W_footerActions{flex-shrink:0;align-items:center;gap:12px;display:flex}.qON8_W_pager{flex-shrink:0;align-items:center;gap:6px;display:flex}.qON8_W_progress{color:var(--dsw-alias-label-secondary);white-space:nowrap;word-spacing:-2px;padding:0 4px;font-size:14px;font-weight:500;line-height:24px}.qON8_W_iconButton{width:24px;height:24px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px;place-items:center;padding:0;display:grid}.qON8_W_iconButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.qON8_W_iconButton:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.qON8_W_body{overscroll-behavior:contain;flex-direction:column;flex:auto;min-height:0;display:flex;overflow-y:auto}.qON8_W_options{flex-direction:column;gap:1px;margin:8px 0 0;padding:4px 12px;display:flex}.qON8_W_option{width:100%;min-height:40px;color:inherit;text-align:left;cursor:pointer;background:0 0;border:1px solid #0000;border-radius:12px;flex-shrink:0;align-items:flex-start;gap:8px;padding:8px 12px 8px 8px;transition:background-color .12s,border-color .12s;display:flex}.qON8_W_option:hover:not(:disabled),.qON8_W_optionSelected{background:var(--dsw-alias-interactive-bg-hover)}.qON8_W_optionSelected{border-color:var(--dsw-alias-border-l2)}.qON8_W_option:disabled{cursor:default}.qON8_W_number{background:var(--dsw-alias-bg-overlay);width:20px;height:20px;color:var(--dsw-alias-label-secondary);border-radius:6px;flex:0 0 20px;place-items:center;margin-top:2px;font-size:12px;font-weight:500;line-height:18px;display:grid}.qON8_W_checkbox{flex:0 0 20px;place-items:center;width:20px;height:20px;margin-top:2px;display:grid}.qON8_W_checkbox:before{content:\"\";border:1px solid var(--dsw-alias-border-l4);border-radius:4px;grid-area:1/1;width:14px;height:14px;transition:background-color .12s,border-color .12s}.qON8_W_checkbox>svg{grid-area:1/1}.qON8_W_checkboxChecked{color:var(--dsw-alias-label-primary-foreground)}.qON8_W_checkboxChecked:before{border-color:var(--dsw-alias-label-primary);background:var(--dsw-alias-label-primary)}.qON8_W_optionCopy{flex:1;min-width:0}.qON8_W_optionLine{flex-wrap:wrap;align-items:baseline;gap:2px 6px;display:flex}.qON8_W_optionLabel{font-size:14px;font-weight:500;line-height:24px}.qON8_W_badge{background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-button-info-fill);border-radius:6px;padding:0 4px;font-size:11px;font-weight:600;line-height:18px}.qON8_W_description{color:var(--dsw-alias-label-tertiary);font-size:14px;font-weight:400;line-height:24px}.qON8_W_customRow{border:1px solid #0000;border-radius:12px;flex-shrink:0;align-items:flex-start;gap:8px;width:100%;min-height:40px;padding:8px 12px 8px 8px;transition:background-color .12s,border-color .12s;display:flex}.qON8_W_customRow:hover,.qON8_W_customRow:focus-within,.qON8_W_customRowActive{background:var(--dsw-alias-interactive-bg-hover)}.qON8_W_customRow:focus-within,.qON8_W_customRowActive{border-color:var(--dsw-alias-border-l2)}.qON8_W_field{--dsh-answer-field-padding:0;min-width:0;display:grid}.qON8_W_field>*{min-width:0;padding:var(--dsh-answer-field-padding);font:inherit;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;grid-area:1/1;font-size:14px;line-height:24px}.qON8_W_fieldMirror{box-sizing:content-box;visibility:hidden;max-height:144px;overflow:hidden}.qON8_W_fieldInput{resize:none;color:var(--dsw-alias-label-primary);caret-color:var(--dsw-alias-state-business-primary);background:0 0;border:none;outline:none;overflow-y:auto}.qON8_W_fieldInput::placeholder{color:var(--dsw-alias-label-caption)}.qON8_W_customInline{flex:1}.qON8_W_customBlock{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-module-platform);--dsh-answer-field-padding:8px 12px;border-radius:10px;flex-shrink:0;min-height:64px;margin:0 12px}.qON8_W_customBlock:focus-within{border-color:var(--dsw-alias-state-business-primary)}.qON8_W_footer{flex-shrink:0;justify-content:space-between;align-items:center;gap:12px;margin-top:12px;padding:0 10px 0 18px;display:flex}.qON8_W_feedback{min-height:16px;color:var(--dsw-alias-state-error-primary);text-align:right;flex:1;font-size:11px;line-height:16px}@media (width<=720px){.qON8_W_card{border-radius:16px}.qON8_W_header{padding:10px 12px 0 18px}.qON8_W_options{padding:4px 8px}.qON8_W_title{font-size:15px;line-height:21px}.qON8_W_option,.qON8_W_customRow{padding:8px 6px}.qON8_W_footer{align-items:flex-end;padding:0 10px}.qON8_W_footerActions{flex-shrink:0}}@media (prefers-reduced-motion:reduce){.qON8_W_option,.qON8_W_customRow{transition:none}}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-user-questions/src/client/QuestionComposer.module.css.mjs
+		const css = ".C3QU5q_frame{padding:6px calc(var(--dsh-composer-side-clearance) + 16px) 10px;justify-content:center;display:flex}.C3QU5q_card{width:100%;max-width:var(--dsh-chat-content-width);border:1px solid var(--dsw-alias-border-l2-darkmode-thin);background:var(--dsw-specific-input-major);max-height:min(60vh,520px);box-shadow:var(--dsw-shadow-lv2);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:20px;flex-direction:column;padding:0 0 10px;display:flex;overflow:hidden}.C3QU5q_card,.C3QU5q_card *{box-sizing:border-box}.C3QU5q_cardMinimized{max-height:none}.C3QU5q_cardMinimized .C3QU5q_header{padding-bottom:14px}.C3QU5q_headerActions{flex-shrink:0;align-items:center;gap:4px;display:flex}.C3QU5q_header{flex-shrink:0;justify-content:space-between;align-items:flex-start;gap:16px;padding:20px 16px 0 24px;display:flex}.C3QU5q_headingBlock{min-width:0}.C3QU5q_eyebrow{color:var(--dsw-alias-label-tertiary);margin-bottom:5px;font-size:11px;line-height:16px}.C3QU5q_title{margin:0;font-size:16px;font-weight:500;line-height:22px}.C3QU5q_detail{margin:0 2px 8px}.C3QU5q_footerActions{flex-shrink:0;align-items:center;gap:12px;display:flex}.C3QU5q_pager{flex-shrink:0;align-items:center;gap:6px;display:flex}.C3QU5q_progress{color:var(--dsw-alias-label-secondary);white-space:nowrap;word-spacing:-2px;padding:0 4px;font-size:14px;font-weight:500;line-height:24px}.C3QU5q_iconButton{width:24px;height:24px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px;place-items:center;padding:0;display:grid}.C3QU5q_iconButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.C3QU5q_iconButton:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.C3QU5q_body{overscroll-behavior:contain;flex-direction:column;flex:auto;min-height:0;display:flex;overflow-y:auto}.C3QU5q_options{flex-direction:column;gap:1px;margin:8px 0 0;padding:4px 12px;display:flex}.C3QU5q_option{width:100%;min-height:40px;color:inherit;text-align:left;cursor:pointer;background:0 0;border:1px solid #0000;border-radius:12px;flex-shrink:0;align-items:flex-start;gap:8px;padding:8px 12px 8px 8px;transition:background-color .12s,border-color .12s;display:flex}.C3QU5q_option:hover:not(:disabled),.C3QU5q_optionSelected{background:var(--dsw-alias-interactive-bg-hover)}.C3QU5q_optionSelected{border-color:var(--dsw-alias-border-l2)}.C3QU5q_option:disabled{cursor:default}.C3QU5q_number{background:var(--dsw-alias-bg-overlay);width:20px;height:20px;color:var(--dsw-alias-label-secondary);border-radius:6px;flex:0 0 20px;place-items:center;margin-top:2px;font-size:12px;font-weight:500;line-height:18px;display:grid}.C3QU5q_checkbox{flex:0 0 20px;place-items:center;width:20px;height:20px;margin-top:2px;display:grid}.C3QU5q_checkbox:before{content:\"\";border:1px solid var(--dsw-alias-border-l4);border-radius:4px;grid-area:1/1;width:14px;height:14px;transition:background-color .12s,border-color .12s}.C3QU5q_checkbox>svg{grid-area:1/1}.C3QU5q_checkboxChecked{color:var(--dsw-alias-label-primary-foreground)}.C3QU5q_checkboxChecked:before{border-color:var(--dsw-alias-label-primary);background:var(--dsw-alias-label-primary)}.C3QU5q_optionCopy{flex:1;min-width:0}.C3QU5q_optionLine{flex-wrap:wrap;align-items:baseline;gap:2px 6px;display:flex}.C3QU5q_optionLabel{font-size:14px;font-weight:500;line-height:24px}.C3QU5q_badge{background:var(--dsw-specific-sidebar-nav-item-active-accent);color:var(--dsw-alias-button-info-fill);border-radius:6px;padding:0 4px;font-size:11px;font-weight:600;line-height:18px}.C3QU5q_description{color:var(--dsw-alias-label-tertiary);font-size:14px;font-weight:400;line-height:24px}.C3QU5q_customRow{border:1px solid #0000;border-radius:12px;flex-shrink:0;align-items:flex-start;gap:8px;width:100%;min-height:40px;padding:8px 12px 8px 8px;transition:background-color .12s,border-color .12s;display:flex}.C3QU5q_customRow:hover,.C3QU5q_customRow:focus-within,.C3QU5q_customRowActive{background:var(--dsw-alias-interactive-bg-hover)}.C3QU5q_customRow:focus-within,.C3QU5q_customRowActive{border-color:var(--dsw-alias-border-l2)}.C3QU5q_field{--dsh-answer-field-padding:0;min-width:0;display:grid}.C3QU5q_field>*{min-width:0;padding:var(--dsh-answer-field-padding);font:inherit;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;grid-area:1/1;font-size:14px;line-height:24px}.C3QU5q_fieldMirror{box-sizing:content-box;visibility:hidden;max-height:144px;overflow:hidden}.C3QU5q_fieldInput{resize:none;color:var(--dsw-alias-label-primary);caret-color:var(--dsw-alias-state-business-primary);background:0 0;border:none;outline:none;overflow-y:auto}.C3QU5q_fieldInput::placeholder{color:var(--dsw-alias-label-caption)}.C3QU5q_customInline{flex:1}.C3QU5q_customBlock{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-module-platform);--dsh-answer-field-padding:8px 12px;border-radius:10px;flex-shrink:0;min-height:64px;margin:0 12px}.C3QU5q_customBlock:focus-within{border-color:var(--dsw-alias-state-business-primary)}.C3QU5q_footer{flex-shrink:0;justify-content:space-between;align-items:center;gap:12px;margin-top:12px;padding:0 10px 0 18px;display:flex}.C3QU5q_feedback{min-height:16px;color:var(--dsw-alias-state-error-primary);text-align:right;flex:1;font-size:11px;line-height:16px}@media (width<=720px){.C3QU5q_card{border-radius:16px}.C3QU5q_header{padding:10px 12px 0 18px}.C3QU5q_options{padding:4px 8px}.C3QU5q_title{font-size:15px;line-height:21px}.C3QU5q_option,.C3QU5q_customRow{padding:8px 6px}.C3QU5q_footer{align-items:flex-end;padding:0 10px}.C3QU5q_footerActions{flex-shrink:0}}@media (prefers-reduced-motion:reduce){.C3QU5q_option,.C3QU5q_customRow{transition:none}}";
 		const tagId = "@deepseek-ai/dsh-client-ui-user-questions/QuestionComposer.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -240,40 +343,40 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var QuestionComposer_module_css_default = {
-			"badge": "qON8_W_badge",
-			"body": "qON8_W_body",
-			"card": "qON8_W_card",
-			"cardMinimized": "qON8_W_cardMinimized",
-			"checkbox": "qON8_W_checkbox",
-			"checkboxChecked": "qON8_W_checkboxChecked",
-			"customBlock": "qON8_W_customBlock",
-			"customInline": "qON8_W_customInline",
-			"customRow": "qON8_W_customRow",
-			"customRowActive": "qON8_W_customRowActive",
-			"description": "qON8_W_description",
-			"detail": "qON8_W_detail",
-			"eyebrow": "qON8_W_eyebrow",
-			"feedback": "qON8_W_feedback",
-			"field": "qON8_W_field",
-			"fieldInput": "qON8_W_fieldInput",
-			"fieldMirror": "qON8_W_fieldMirror",
-			"footer": "qON8_W_footer",
-			"footerActions": "qON8_W_footerActions",
-			"frame": "qON8_W_frame",
-			"header": "qON8_W_header",
-			"headerActions": "qON8_W_headerActions",
-			"headingBlock": "qON8_W_headingBlock",
-			"iconButton": "qON8_W_iconButton",
-			"number": "qON8_W_number",
-			"option": "qON8_W_option",
-			"optionCopy": "qON8_W_optionCopy",
-			"optionLabel": "qON8_W_optionLabel",
-			"optionLine": "qON8_W_optionLine",
-			"optionSelected": "qON8_W_optionSelected",
-			"options": "qON8_W_options",
-			"pager": "qON8_W_pager",
-			"progress": "qON8_W_progress",
-			"title": "qON8_W_title"
+			"badge": "C3QU5q_badge",
+			"body": "C3QU5q_body",
+			"card": "C3QU5q_card",
+			"cardMinimized": "C3QU5q_cardMinimized",
+			"checkbox": "C3QU5q_checkbox",
+			"checkboxChecked": "C3QU5q_checkboxChecked",
+			"customBlock": "C3QU5q_customBlock",
+			"customInline": "C3QU5q_customInline",
+			"customRow": "C3QU5q_customRow",
+			"customRowActive": "C3QU5q_customRowActive",
+			"description": "C3QU5q_description",
+			"detail": "C3QU5q_detail",
+			"eyebrow": "C3QU5q_eyebrow",
+			"feedback": "C3QU5q_feedback",
+			"field": "C3QU5q_field",
+			"fieldInput": "C3QU5q_fieldInput",
+			"fieldMirror": "C3QU5q_fieldMirror",
+			"footer": "C3QU5q_footer",
+			"footerActions": "C3QU5q_footerActions",
+			"frame": "C3QU5q_frame",
+			"header": "C3QU5q_header",
+			"headerActions": "C3QU5q_headerActions",
+			"headingBlock": "C3QU5q_headingBlock",
+			"iconButton": "C3QU5q_iconButton",
+			"number": "C3QU5q_number",
+			"option": "C3QU5q_option",
+			"optionCopy": "C3QU5q_optionCopy",
+			"optionLabel": "C3QU5q_optionLabel",
+			"optionLine": "C3QU5q_optionLine",
+			"optionSelected": "C3QU5q_optionSelected",
+			"options": "C3QU5q_options",
+			"pager": "C3QU5q_pager",
+			"progress": "C3QU5q_progress",
+			"title": "C3QU5q_title"
 		};
 		//#endregion
 		//#region lib/types/client/QuestionComposer.js
@@ -309,7 +412,7 @@ window.__ModuleLoader__.load({
 		* Mirror and textarea MUST share font, line-height, padding and wrapping rules
 		* or the two heights diverge.
 		*
-		* @param props - field shape, draft text, and the field's event handlers.
+		* @param props - visual variant, draft text, and the field's event handlers.
 		* @returns The mirrored auto-growing field.
 		*/
 		function AnswerField(props) {
@@ -333,38 +436,51 @@ window.__ModuleLoader__.load({
 			});
 		}
 		/**
-		* Composer takeover boundary; the carrier key keys local drafts, so a
-		* same-request replay (same key, new carrier object) preserves them.
+		* Composer takeover router. Generic-question drafts live in this entry's
+		* Session-scoped Slot store, keyed by the pending carrier, so a strict Session
+		* entry remount restores the same request without exposing it to another one.
 		*
-		* One takeover, two shapes: a request that declares a presentation intent this
-		* package renders takes that shape (a plan review is one decision over one
+		* One takeover, two presentations: a request that declares a presentation intent this
+		* package renders uses that presentation (a plan review is one decision over one
 		* plan, not a question set), and every other request takes the generic flow.
 		* The routing lives here, at the one entry that owns the composer seat, so
-		* neither shape can claim a request the other is already rendering.
+		* neither presentation can claim a request the other is already rendering.
 		*
 		* @param props - the selector-matched pending question carrier plus the framework standard kit.
 		* @returns The question flow, or the intent's own surface, for this request.
 		*/
 		function QuestionComposer(props) {
-			const question = (0, react.useMemo)(() => new PendingQuestion(props.matched), [props.matched]);
+			const question = props.matched;
 			const review = (0, react.useMemo)(() => planReviewOf(question.questions), [question]);
 			return review === void 0 ? (0, react_jsx_runtime.jsx)(QuestionFlow, {
 				pending: question,
-				t: props.t
+				t: props.t,
+				useStore: props.useStore,
+				actions: props.actions
 			}, question.key) : (0, react_jsx_runtime.jsx)(PlanReviewPanel, {
 				pending: question,
 				review,
 				t: props.t
 			}, question.key);
 		}
-		function QuestionFlow({ pending, t }) {
+		function QuestionFlow({ pending, t, useStore, actions }) {
 			const questions = pending.questions;
-			const [index, setIndex] = (0, react.useState)(0);
-			const [drafts, setDrafts] = (0, react.useState)(() => questions.map(() => ({
-				selected: [],
-				custom: "",
-				skipped: false
-			})));
+			const markdownLabels = (0, react.useMemo)(() => ({
+				code: {
+					copyLabel: t("copy"),
+					copiedLabel: t("copied")
+				},
+				footnotes: t("markdown.footnotes")
+			}), [t]);
+			const initialProgress = (0, react.useMemo)(() => ({
+				index: 0,
+				drafts: questions.map(() => ({
+					selected: [],
+					custom: "",
+					skipped: false
+				}))
+			}), [questions]);
+			const { index, drafts } = useStore((state) => state.requestKey === pending.key && state.progress.drafts.length === questions.length ? state.progress : void 0) ?? initialProgress;
 			const [busy, setBusy] = (0, react.useState)(null);
 			const [error, setError] = (0, react.useState)(null);
 			const [minimized, setMinimized] = (0, react.useState)(false);
@@ -372,16 +488,24 @@ window.__ModuleLoader__.load({
 			const question = questions[index];
 			const draft = drafts[index];
 			const hasOptions = (question.options?.length ?? 0) > 0;
+			const replaceProgress = (nextIndex, nextDrafts) => {
+				actions.replace(pending.key, {
+					index: nextIndex,
+					drafts: nextDrafts
+				});
+			};
 			const cancelFlow = () => {
 				setBusy("cancel");
 				setError(null);
-				pending.cancel().catch((cause) => {
+				pending.cancel().then(() => {
+					actions.clear(pending.key);
+				}).catch((cause) => {
 					setBusy(null);
 					setError({ text: cause instanceof Error ? cause.message : String(cause) });
 				});
 			};
-			const updateDraft = (update) => {
-				setDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? update(item) : item));
+			const updateDraft = (update, nextIndex = index) => {
+				replaceProgress(nextIndex, drafts.map((item, itemIndex) => itemIndex === index ? update(item) : item));
 				setError(null);
 			};
 			const choose = (label) => {
@@ -399,15 +523,14 @@ window.__ModuleLoader__.load({
 						custom: "",
 						skipped: false
 					};
-				});
-				if (question.multiSelect !== true && index < questions.length - 1) setIndex((current) => current + 1);
+				}, question.multiSelect !== true && index < questions.length - 1 ? index + 1 : index);
 			};
 			const answered = (item) => item.selected.length > 0 || item.custom.trim() !== "";
 			const completed = (item) => answered(item) || item.skipped;
 			const submitDrafts = (values) => {
 				const missing = values.findIndex((item) => !completed(item));
 				if (missing >= 0) {
-					setIndex(missing);
+					replaceProgress(missing, values);
 					setError({ key: "error.incomplete" });
 					return;
 				}
@@ -426,7 +549,9 @@ window.__ModuleLoader__.load({
 				}) };
 				setBusy("answer");
 				setError(null);
-				pending.answer(answer).catch((cause) => {
+				pending.answer(answer).then(() => {
+					actions.clear(pending.key);
+				}).catch((cause) => {
 					setBusy(null);
 					setError({ text: cause instanceof Error ? cause.message : String(cause) });
 				});
@@ -437,7 +562,7 @@ window.__ModuleLoader__.load({
 					return;
 				}
 				if (index < questions.length - 1) {
-					setIndex((current) => current + 1);
+					replaceProgress(index + 1, drafts);
 					setError(null);
 					return;
 				}
@@ -463,12 +588,9 @@ window.__ModuleLoader__.load({
 					custom: "",
 					skipped: true
 				} : item);
-				setDrafts(nextDrafts);
+				replaceProgress(index < questions.length - 1 ? index + 1 : index, nextDrafts);
 				setError(null);
-				if (index < questions.length - 1) {
-					setIndex((current) => current + 1);
-					return;
-				}
+				if (index < questions.length - 1) return;
 				submitDrafts(nextDrafts);
 			};
 			return (0, react_jsx_runtime.jsx)("div", {
@@ -517,7 +639,10 @@ window.__ModuleLoader__.load({
 						"data-question-scroll": true,
 						children: [question.detail !== void 0 && (0, react_jsx_runtime.jsx)("div", {
 							className: QuestionComposer_module_css_default.detail,
-							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, { text: question.detail })
+							children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.MarkdownText, {
+								text: question.detail,
+								labels: markdownLabels
+							})
 						}), (0, react_jsx_runtime.jsxs)("div", {
 							className: QuestionComposer_module_css_default.options,
 							role: question.multiSelect === true ? "group" : "radiogroup",
@@ -610,7 +735,7 @@ window.__ModuleLoader__.load({
 										"aria-label": t("nav.prev"),
 										disabled: index === 0 || busy !== null,
 										onClick: () => {
-											setIndex(index - 1);
+											replaceProgress(index - 1, drafts);
 											setError(null);
 										},
 										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronLeftOutline14, {})
@@ -629,7 +754,7 @@ window.__ModuleLoader__.load({
 										"aria-label": t("nav.next"),
 										disabled: index === questions.length - 1 || busy !== null,
 										onClick: () => {
-											setIndex(index + 1);
+											replaceProgress(index + 1, drafts);
 											setError(null);
 										},
 										children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconChevronRightOutline14, {})
@@ -703,11 +828,35 @@ window.__ModuleLoader__.load({
 		//#region lib/types/client/index.js
 		/** Dictionary namespace owned by this plugin. */
 		const NS = "question";
-		/** Required services: the slot registry and the question composer's copy. */
-		const inject = ["slots", "locale"];
-		/** Chain routing: claim the composer while a question wait is pending (pure — owner props only). */
-		function selectQuestion({ interactions }) {
-			return interactions.find((i) => i.kind === "question") ?? null;
+		/** Required services: Agent scopes, Remote Events, Session UI, Slot registry, and copy. */
+		const inject = [
+			"sessions",
+			"remote",
+			"uiSession",
+			"slots",
+			"locale"
+		];
+		/** Present one request until the user answers, cancels, or its lifetime ends. */
+		async function answerQuestion(ctx, owner, request, next, registerPendingInteraction) {
+			const sessionId = ctx.sessions.scopeOf(owner);
+			if (sessionId === void 0) return next();
+			const pending = new PendingQuestion(sessionId, request.questions, request.signal);
+			const completed = Promise.withResolvers();
+			const remove = registerPendingInteraction(pending, async () => {
+				pending.delegate();
+				await completed.promise;
+			});
+			try {
+				try {
+					return await pending.result;
+				} catch (error) {
+					if (pending.isDelegation(error)) return await next();
+					throw error;
+				}
+			} finally {
+				remove();
+				completed.resolve();
+			}
 		}
 		/**
 		* Client plugin body: register the `question` dictionaries and the question
@@ -720,14 +869,19 @@ window.__ModuleLoader__.load({
 				zh,
 				en
 			}), "ui-user-questions: dictionaries");
+			const questionDraftStore = createQuestionDraftStore();
+			const registerPendingInteraction = ctx.uiSession.registerPendingInteraction((pending) => pending.kind === "plan-review" ? 2 : 1);
 			ctx.slots.inject("conversation.composer", () => ctx.slots.register({
 				name: "conversation.composer",
-				select: selectQuestion,
-				locale: NS
+				select: ({ pendingInteraction }) => pendingInteraction instanceof PendingQuestion ? pendingInteraction : null,
+				locale: NS,
+				store: questionDraftStore
 			}, QuestionComposer));
+			ctx.remote.$on("user-questions/request", function(request, next) {
+				return answerQuestion(ctx, this, request, next, registerPendingInteraction);
+			});
 		}
 		//#endregion
-		exports.PendingQuestion = PendingQuestion;
 		exports.apply = apply;
 		exports.inject = inject;
 		return module.exports;

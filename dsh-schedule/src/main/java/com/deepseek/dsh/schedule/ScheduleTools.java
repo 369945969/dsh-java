@@ -169,7 +169,7 @@ public final class ScheduleTools {
                     long every = ((Number) arguments.get("every_seconds")).longValue();
                     record = ScheduleDomain.createEveryScheduleRecord(id, prompt, every, now);
                 }
-                session.append(SessionEvent.Type.COMMAND,
+                session.append(ScheduleChangeCodec.EVENT_TYPE,
                         ScheduleChangeCodec.encode(new ScheduleChange.Create(record)));
                 return json(view(record, System.currentTimeMillis()));
             } catch (ScheduleException e) {
@@ -253,7 +253,7 @@ public final class ScheduleTools {
                     result.put("deleted", false);
                     result.put("code", "schedule_not_found");
                 } else {
-                    session.append(SessionEvent.Type.COMMAND,
+                    session.append(ScheduleChangeCodec.EVENT_TYPE,
                             ScheduleChangeCodec.encode(new ScheduleChange.Delete(id)));
                     result.put("deleted", true);
                 }

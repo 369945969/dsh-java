@@ -20,7 +20,7 @@ class ScheduleRuntimeTest {
     private static SessionLog sessionWith(ScheduleChange... changes) {
         SessionLog session = new SessionLog(SessionId.of("ses-rt"));
         for (ScheduleChange c : changes) {
-            session.append(com.deepseek.dsh.session.log.SessionEvent.Type.COMMAND,
+            session.append(ScheduleChangeCodec.EVENT_TYPE,
                     ScheduleChangeCodec.encode(c));
         }
         return session;
@@ -136,7 +136,7 @@ class ScheduleRuntimeTest {
         ScheduleRecord.At past = new ScheduleRecord.At(
                 ScheduleId.of("s1"), "wake", "2026-08-26T11:00:00.000Z");
         SessionLog session = sessionWith(new ScheduleChange.Create(past));
-        session.append(com.deepseek.dsh.session.log.SessionEvent.Type.COMMAND,
+        session.append(ScheduleChangeCodec.EVENT_TYPE,
                 ScheduleChangeCodec.encode(ScheduleChange.Dispatch.oneShot(ScheduleId.of("s1"))));
         ScheduleRuntime rt = new ScheduleRuntime(session);
         assertTrue(rt.readFolded().active().isEmpty());

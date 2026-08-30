@@ -38,8 +38,19 @@ free_port() {
   sleep 0.3
 }
 
-echo "[start] 启动 Web 服务端: port=$PORT model=${DSH_MODEL:-deepseek-chat}" >&2
+echo "[start] 启动 Web 服务端: port=$PORT" >&2
 free_port "$PORT"
-exec java -Dserver.port="$PORT" \
+
+# 捕获 Java 输出，提取 token URL 后打印到 stderr
+java -Dserver.port="$PORT" \
   -cp "$ROOT/dsh-app/target/classes:$(cat "$CP_FILE")" \
-  com.deepseek.dsh.app.boot.DshApplication
+  com.deepseek.dsh.app.boot.DshApplication 2>&1 | while IFS= read -r line; do
+  echo "$line" >&2
+  if echo "$line" | grep -q "authentication URL:"; then
+    echo "" >&2
+    echo "================================================" >&2
+    echo "$line" | sed 's/.*authentication URL: //' >&2
+    echo "================================================" >&2
+    echo "" >&2
+  fi
+done

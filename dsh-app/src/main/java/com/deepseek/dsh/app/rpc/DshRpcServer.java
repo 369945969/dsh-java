@@ -18,6 +18,7 @@ import com.deepseek.dsh.core.brand.ScopeKey;
 import com.deepseek.dsh.core.brand.SessionId;
 import com.deepseek.dsh.core.context.Context;
 import com.deepseek.dsh.core.util.PluginRunner;
+import com.deepseek.dsh.llm.config.ModelConfig;
 import com.deepseek.dsh.llm.meter.TokenMeterService;
 import com.deepseek.dsh.sdk.protocol.JsonRpcDispatcher;
 import com.deepseek.dsh.session.Sessions;
@@ -31,6 +32,7 @@ import com.deepseek.dsh.skill.SkillDefinition;
 import com.deepseek.dsh.skill.SkillRenderer;
 import com.deepseek.dsh.skill.SkillService;
 import com.deepseek.dsh.teams.DefaultTeamsProvider;
+import com.deepseek.dsh.web.TurnOrchestrator;
 
 /**
  * RPC 服务端入口 —— 对应原 Harness 的 {@code dsh-jsonrpc-agent}（stdio 运行时）。
@@ -53,11 +55,13 @@ public final class DshRpcServer {
     private final JsonRpcDispatcher dispatcher = new JsonRpcDispatcher();
     private final Context context;
     private final Agent agent;
+    private final TurnOrchestrator orchestrator;
     private final ConcurrentMap<String, SessionId> sessions = new ConcurrentHashMap<>();
 
     public DshRpcServer(Context context, Agent agent) {
         this.context = context;
         this.agent = agent;
+        this.orchestrator = new TurnOrchestrator(context, agent, null);
         registerMethods();
     }
 
@@ -77,6 +81,7 @@ public final class DshRpcServer {
             r.put("model", System.getenv().getOrDefault("DSH_MODEL", "deepseek-chat"));
             r.put("cwd", System.getProperty("user.dir"));
             r.put("protocolVersion", "2025-01-stdio-jsonrpc");
+            r.put("version", "0.1.2-alpha.1");
             return r;
         });
 
@@ -103,7 +108,21 @@ public final class DshRpcServer {
             String sid = params.path("sessionId").asText();
             String message = params.path("message").asText();
             SessionId sessionId = sessions.computeIfAbsent(sid, SessionId::of);
-            String reply = agent.run(sessionId, ScopeKey.random(), context, message);
+            String model = context.get(ModelConfig.class).map(ModelConfig::model).orElse("deepseek-chat");
+            Sessions svc = context.require(Sessions.class);
+            var sink = new RpcEventSink(svc);
+            int turn = orchestrator.nextTurn(sid);
+            orchestrator.prepareTurn(sid, message, turn, model, sink);
+            orchestrator.runAgent(sid, message, turn, model, sink);
+            String reply = "";
+            SessionLog slog = svc.getOrCreate(sessionId);
+            var msgs = slog.deriveMessages().messages();
+            for (int i = msgs.size() - 1; i >= 0; i--) {
+                if (msgs.get(i).role() == ChatMessage.Role.ASSISTANT) {
+                    reply = msgs.get(i).content() != null ? msgs.get(i).content() : "";
+                    break;
+                }
+            }
             long totalTokens = context.get(TokenMeterService.class)
                     .map(TokenMeterService::totalTokens).orElse(0L);
             ObjectNode r = ctx.mapper().createObjectNode();
@@ -139,27 +158,30 @@ public final class DshRpcServer {
             return r;
         });
 
-        // session/fork —— fork 出保留父会话记忆的子会话（回放父事件）
+        // session.page —— 0.1.2 别名，返回 records（打包格式）+ hasMore
+        dispatcher.register("session.page", (params, ctx) -> {
+            String sid = params.path("sessionId").asText();
+            if (sid.isEmpty()) sid = params.path("address").path("sessionId").asText("");
+            SessionId sessionId = sessions.getOrDefault(sid, SessionId.of(sid));
+            ObjectNode r = ctx.mapper().createObjectNode();
+            Sessions sessions = context.require(Sessions.class);
+            SessionLog log = sessions.getOrCreate(sessionId);
+            r.putPOJO("records", log.events());
+            r.put("hasMore", false);
+            return r;
+        });
+
+        // session/fork —— fork 出保留父会话记忆的子会话（回放父事件 + 注入 forked-from）
         dispatcher.register("session/fork", (params, ctx) -> {
             String parentSid = params.path("sessionId").asText();
-            SessionId parentId = sessions.get(parentSid);
             ObjectNode r = ctx.mapper().createObjectNode();
-            if (parentId == null) {
-                r.put("error", "Parent session not found: " + parentSid);
-                return r;
-            }
             Sessions svc = context.require(Sessions.class);
-            SessionLog parent = svc.getOrCreate(parentId);
-            SessionLog child = svc.create();
-            int n = 0;
-            for (SessionEvent e : parent.snapshot()) {
-                child.append(e.type(), e.payload(), e.lineage());
-                n++;
-            }
+            var sink = new com.deepseek.dsh.app.rpc.RpcEventSink(svc);
+            SessionLog child = orchestrator.forkSession(parentSid, sink);
             sessions.put(child.sessionId().value(), child.sessionId());
             r.put("childSessionId", child.sessionId().value());
             r.put("parentSessionId", parentSid);
-            r.put("replayedEvents", n);
+            r.put("replayedEvents", child.size());
             return r;
         });
 

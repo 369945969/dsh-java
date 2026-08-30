@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.deepseek.dsh.agent.Agent;
+import com.deepseek.dsh.web.TurnOrchestrator;
 import com.deepseek.dsh.app.bundle.BaseBundle;
 import com.deepseek.dsh.compaction.CompactionService;
 import com.deepseek.dsh.compaction.BasicCompactionProvider;
@@ -28,6 +29,7 @@ import com.deepseek.dsh.llm.config.ModelProfileStore;
 import com.deepseek.dsh.llm.meter.TokenMeterService;
 import com.deepseek.dsh.session.Sessions;
 import com.deepseek.dsh.session.log.ChatMessage;
+import com.deepseek.dsh.session.log.SessionEvent;
 import com.deepseek.dsh.session.log.SessionLog;
 
 /**
@@ -49,25 +51,27 @@ public final class DshRepl {
 
     private static final Logger log = LoggerFactory.getLogger(DshRepl.class);
 
-    private static final boolean COLOR = CliColors.ON;
-    private static final String CYAN = COLOR ? "\033[36m" : "";
-    private static final String GREEN = COLOR ? "\033[32m" : "";
-    private static final String YELLOW = COLOR ? "\033[33m" : "";
-    private static final String DIM = COLOR ? "\033[2m" : "";
-    private static final String BOLD = COLOR ? "\033[1m" : "";
-    private static final String RESET = COLOR ? "\033[0m" : "";
+    private static final String CYAN = "\033[36m";
+    private static final String GREEN = "\033[32m";
+    private static final String YELLOW = "\033[33m";
+    private static final String DIM = "\033[2m";
+    private static final String BOLD = "\033[1m";
+    private static final String RESET = "\033[0m";
     private static final String PROMPT = DIM + "> " + RESET;
 
     private static BufferedReader stdinReader;
-    private static boolean diagFirst = true;
 
     private final Context context;
     private final Agent agent;
+    private final TurnOrchestrator orchestrator;
+    private final Sessions sessions;
     private SessionId sessionId;
 
     public DshRepl(Context context, Agent agent) {
         this.context = context;
         this.agent = agent;
+        this.sessions = context.get(Sessions.class).orElse(null);
+        this.orchestrator = new TurnOrchestrator(context, agent, null);
         this.sessionId = SessionId.of(UUID.randomUUID().toString());
     }
 
@@ -82,7 +86,7 @@ public final class DshRepl {
             String trimmed = line.trim();
 
             // 斜杠命令
-            if (trimmed.startsWith("/") || trimmed.equals("?")) {
+            if (trimmed.startsWith("/") || trimmed.equals("?") || trimmed.equals("？")) {
                 if (handleCommand(trimmed)) break;
                 continue;
             }
@@ -98,39 +102,25 @@ public final class DshRepl {
     }
 
     private static String readUserLine() {
-        // 总是用 stdinReader（InputStreamReader + 控制台字符集）读：Java Console.readLine() 在
-        // Windows 对中文 IME 不可靠（UTF-8/65001 控制台会乱码成 "pppp"）；按控制台字符集（zh_CN=GBK）
-        // 读 System.in 字节则正确。控制台本身仍提供行编辑/回显。
-        if (stdinReader == null) {
-            stdinReader = new BufferedReader(new InputStreamReader(System.in, consoleCharset()));
-        }
-        System.out.print(PROMPT);
+        Console console = System.console();
         String line;
-        try {
-            line = stdinReader.readLine();
-        } catch (IOException e) {
-            line = null;
-        }
-        if (diagFirst && line != null) {
-            diagFirst = false;
-            StringBuilder cps = new StringBuilder();
-            line.codePoints().limit(24).forEach(cp -> cps.append(Integer.toHexString(cp)).append(' '));
-            Console console = System.console();
-            System.err.println("[diag] console=" + (console != null)
-                + " consoleCharset=" + (console != null ? console.charset() : "n/a")
-                + " default=" + Charset.defaultCharset()
-                + " native=" + System.getProperty("native.encoding")
-                + " file=" + System.getProperty("file.encoding")
-                + " stdin=" + System.getProperty("stdin.encoding")
-                + " | line.len=" + line.length() + " cps=" + cps);
+        if (console != null) {
+            line = console.readLine(PROMPT);
+        } else {
+            System.out.print(PROMPT);
+            if (stdinReader == null) {
+                stdinReader = new BufferedReader(new InputStreamReader(System.in, consoleCharset()));
+            }
+            try {
+                line = stdinReader.readLine();
+            } catch (IOException e) {
+                line = null;
+            }
         }
         return line;
     }
 
     private static Charset consoleCharset() {
-        if (System.console() == null) {
-            return Charset.defaultCharset();
-        }
         String ne = System.getProperty("native.encoding");
         if (ne != null) {
             try {
@@ -155,6 +145,9 @@ public final class DshRepl {
                 sessionId = SessionId.of(UUID.randomUUID().toString());
                 System.out.println(DIM + "New session: " + sessionId.value() + RESET);
             }
+            case "/sessions", "/list" -> handleSessionsCommand();
+            case "/session", "/switch" -> handleSwitchCommand(args);
+            case "/fork" -> handleForkCommand();
             case "/tokens" -> {
                 long total = context.get(TokenMeterService.class)
                         .map(TokenMeterService::totalTokens).orElse(0L);
@@ -162,10 +155,79 @@ public final class DshRepl {
             }
             case "/model" -> handleModelCommand(args);
             case "/compact" -> handleCompactCommand(args);
-            case "/help", "?" -> printHelp();
+            case "/help", "?", "？" -> printHelp();
             default -> System.out.println(YELLOW + "  Unknown command: " + name + " (type /help)" + RESET);
         }
         return false;
+    }
+
+    /** /sessions — 列出全部会话（活跃 + 持久化）。 */
+    private void handleSessionsCommand() {
+        if (sessions == null) {
+            System.out.println(YELLOW + "  Sessions service not registered" + RESET);
+            return;
+        }
+        List<SessionId> ids = sessions.list();
+        if (ids.isEmpty()) {
+            System.out.println(DIM + "  (no sessions)" + RESET);
+            return;
+        }
+        System.out.println(CYAN + "  Sessions:" + RESET);
+        for (SessionId id : ids) {
+            SessionLog sl = sessions.getOrCreate(id);
+            String title = TurnOrchestrator.generateTitle(sl);
+            boolean isCurrent = id.equals(sessionId);
+            String marker = isCurrent ? GREEN + " ● " + RESET : DIM + " ○ " + RESET;
+            String shortId = id.value().substring(0, Math.min(12, id.value().length()));
+            int turns = (int) sl.deriveMessages().messages().stream()
+                    .filter(m -> m.role() != null && "USER".equals(m.role().name())).count();
+            System.out.println("  " + marker + BOLD + shortId + RESET + DIM + "  " + title + "  (" + turns + " turns)" + RESET);
+        }
+        System.out.println(DIM + "  Use /session <id> to switch" + RESET);
+    }
+
+    /** /session <id> — 切换到指定会话。 */
+    private void handleSwitchCommand(String args) {
+        if (args.isEmpty()) {
+            System.out.println(YELLOW + "  Usage: /session <id>" + RESET);
+            return;
+        }
+        if (sessions == null) {
+            System.out.println(YELLOW + "  Sessions service not registered" + RESET);
+            return;
+        }
+        String prefix = args.trim();
+        SessionId found = null;
+        for (SessionId id : sessions.list()) {
+            if (id.value().startsWith(prefix)) { found = id; break; }
+        }
+        if (found == null) {
+            System.out.println(YELLOW + "  Session not found: " + prefix + RESET);
+            return;
+        }
+        sessionId = found;
+        SessionLog sl = sessions.getOrCreate(found);
+        String title = TurnOrchestrator.generateTitle(sl);
+        System.out.println(GREEN + "  Switched to: " + title + RESET);
+        System.out.println(DIM + "  Session: " + found.value() + RESET);
+    }
+
+    /** /fork — 分叉当前会话（复制全部事件到新会话）。 */
+    private void handleForkCommand() {
+        if (sessions == null) {
+            System.out.println(YELLOW + "  Sessions service not registered" + RESET);
+            return;
+        }
+        try {
+            var sink = new CliEventSink(sessions, System.out);
+            SessionLog child = orchestrator.forkSession(sessionId.value(), sink);
+            sessionId = child.sessionId();
+            String title = TurnOrchestrator.generateTitle(child);
+            System.out.println(GREEN + "  Forked to: " + title + RESET);
+            System.out.println(DIM + "  Session: " + child.sessionId().value() + RESET);
+        } catch (Exception e) {
+            System.out.println(YELLOW + "  Fork failed: " + e.getMessage() + RESET);
+        }
     }
 
     /** /model — 列出或切换模型。 */
@@ -252,6 +314,9 @@ public final class DshRepl {
         System.out.println(CYAN + BOLD + "  Commands:" + RESET);
         printCmd("/help", "?", "Show this help");
         printCmd("/model", "[id]", "List or switch AI model");
+        printCmd("/sessions", "/list", "List all sessions");
+        printCmd("/session", "<id>", "Switch to a session");
+        printCmd("/fork", "", "Fork current session");
         printCmd("/compact", "", "Compact context (keep recent + summary)");
         printCmd("/new", "", "Start a new session");
         printCmd("/tokens", "", "Show cumulative token usage");
@@ -268,7 +333,12 @@ public final class DshRepl {
      * 运行一个回合：用 {@link CliTurnObserver} 逐 step 流式输出。
      */
     void runTurnStreamed(String userMessage) throws Exception {
-        agent.runObserved(sessionId, ScopeKey.random(), context, userMessage, new CliTurnObserver(System.out));
+        String sid = sessionId.value();
+        int turn = orchestrator.nextTurn(sid);
+        String model = context.get(ModelConfig.class).map(ModelConfig::model).orElse("deepseek-chat");
+        var sink = new CliEventSink(sessions, System.out);
+        orchestrator.prepareTurn(sid, userMessage, turn, model, sink);
+        orchestrator.runAgent(sid, userMessage, turn, model, sink);
     }
 
     /** 入口：装配插件树并启动交互循环。 */

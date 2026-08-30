@@ -1,5 +1,6 @@
 package com.deepseek.dsh.web.api;
 
+import com.deepseek.dsh.web.TurnOrchestrator;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +33,7 @@ import com.deepseek.dsh.session.log.SessionLog;
 import com.deepseek.dsh.session.log.SessionEvent;
 import com.deepseek.dsh.web.server.AgentContextHolder;
 import com.deepseek.dsh.web.server.ApiproxyDownlinkRegistry;
+import com.deepseek.dsh.web.server.RemoteMuxRegistry;
 import com.deepseek.dsh.web.server.WorkspaceRegistry;
 
 /**
@@ -60,6 +62,7 @@ public class ApiproxyController {
     private final AgentContextHolder holder;
     private final ApiproxyDownlinkRegistry downlink;
     private final WorkspaceRegistry workspaces;
+    private final RemoteMuxRegistry remoteMux;
     private final AtomicLong seq = new AtomicLong(0);
     /** 路由 → 模型档案 ID。每个档案的 route 持久化于 ModelProfile.route；settings.mutate 显式建立，ensureRoutes 在启动时重建此映射。 */
     private final ConcurrentMap<String, String> routeToProfileId = new ConcurrentHashMap<>();
@@ -81,19 +84,94 @@ public class ApiproxyController {
 
     /** 系统 agent 预设名单（id/显示名/说明）。用户预设存于 ~/.dsh/presets/*.yml。 */
     private static final String[][] SYSTEM_PRESETS = {
-            {"standard", "标准", "默认 agent，配备全部工具"},
-            {"code", "代码", "专注代码读写与执行"},
-            {"headless", "无界面", "headless 自动化模式"},
+            {"standard", "标准模式", "功能完整的编码 Agent，支持文件编辑、Shell、文件与网页检索、Skills、计划、目标、子代理和工作流。"},
+            {"ptc", "PTC 模式", "具备标准模式的全部能力，并通过 PTC 模式 SDK 呈现工具，让模型用一个 TypeScript 程序组合多步操作。"},
+            {"minimal", "极简模式", "仅提供持久 bash 与 str_replace_editor 的双工具编码 Agent。"},
+            {"cordis", "创造模式", "用于创建自定义 Agent preset：具备标准模式的全部能力，并提供运行时检查、插件实验和 preset 创作指导。"},
     };
 
-    public ApiproxyController(AgentContextHolder holder, ApiproxyDownlinkRegistry downlink, WorkspaceRegistry workspaces) {
+    public ApiproxyController(AgentContextHolder holder, ApiproxyDownlinkRegistry downlink, WorkspaceRegistry workspaces, RemoteMuxRegistry remoteMux) {
         this.holder = holder;
         this.downlink = downlink;
         this.workspaces = workspaces;
+        this.remoteMux = remoteMux;
+        remoteMux.setSnapshotProvider(this::buildFollowSnapshot);
+        remoteMux.setControlBaselineProvider(this::buildControlBaseline);
     }
 
-    @PostMapping("/{method:^(?!events\\.).[A-Za-z0-9.]+$}")
+    private Map<String, Object> buildControlBaseline() {
+        String model = currentModelName();
+        Map<String, Object> selection = Map.of("provider", "openai-compatible", "model", model);
+        Map<String, Object> modelSelection = Map.of("lastUsed", selection, "next", selection);
+        Map<String, Object> projections = new java.util.LinkedHashMap<>();
+        try {
+            Context ctx = holder.context();
+            Sessions sessions = ctx.require(Sessions.class);
+            for (SessionId id : sessions.list()) {
+                SessionLog sl = sessions.getOrCreate(id);
+                String title = customTitles.getOrDefault(id.value(), generateTitle(sl));
+                Map<String, Object> values = new LinkedHashMap<>();
+                values.put("title", title);
+                values.put("modelSelection", modelSelection);
+                values.put("agentPreset", "standard");
+                projections.put(id.value(), Map.of("asOfSeq", sl.lastSeq(), "values", values));
+            }
+        } catch (Exception e) {
+            log.debug("buildControlBaseline: {}", e.toString());
+        }
+        return Map.of("queues", Map.of(), "jobs", Map.of(), "projections", projections);
+    }
+
+    private RemoteMuxRegistry.FollowSnapshot buildFollowSnapshot(String sessionId) {
+        try {
+            Map<String, Object> histResult = sessionHistory(Map.of("sessionId", sessionId));
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> events = (List<Map<String, Object>>) histResult.get("events");
+            long maxSeq = -1;
+            for (var entry : events) {
+                if (entry.get("event") instanceof Map<?, ?> e && e.get("seq") instanceof Number n) {
+                    if (n.longValue() > maxSeq) maxSeq = n.longValue();
+                }
+            }
+            List<Map<String, Object>> records = new ArrayList<>();
+            for (var entry : events) {
+                if (entry.get("event") instanceof Map<?, ?> e) {
+                    Map<String, Object> rec = new LinkedHashMap<>();
+                    rec.put("type", "event");
+                    rec.put("event", e);
+                    records.add(rec);
+                }
+            }
+            String title = "新会话";
+            for (var entry : events) {
+                if (entry.get("event") instanceof Map<?, ?> e && "user/message".equals(e.get("type"))
+                        && e.get("data") instanceof Map<?, ?> d && d.get("content") instanceof List<?> parts
+                        && !parts.isEmpty() && parts.get(0) instanceof Map<?, ?> p && "text".equals(p.get("type"))
+                        && p.get("text") instanceof String t && !t.isBlank()) {
+                    title = t.length() > 40 ? t.substring(0, 40) + "…" : t;
+                    break;
+                }
+            }
+            String model = currentModelName();
+            Map<String, Object> selection = Map.of("provider", "openai-compatible", "model", model);
+            Map<String, Object> modelSelection = Map.of("lastUsed", selection, "next", selection);
+            Map<String, Object> values = new LinkedHashMap<>();
+            values.put("title", title);
+            values.put("modelSelection", modelSelection);
+            values.put("agentPreset", defaultPreset);
+            return new RemoteMuxRegistry.FollowSnapshot(
+                    records, maxSeq, false,
+                    Map.of("asOfSeq", maxSeq, "values", values),
+                    Map.of("version", 0, "id", sessionId, "createdAt", System.currentTimeMillis()));
+        } catch (Exception e) {
+            log.debug("buildFollowSnapshot: {}", e.toString());
+            return null;
+        }
+    }
+
+    @PostMapping("/{method:^(?!events\\.|remote\\.).[A-Za-z0-9.]+$}")
     public Map<String, Object> dispatch(@PathVariable String method, @RequestBody Map<String, Object> request) {        String rpcId = echoRpcId(request);
+        unwrapArgs(request);
         Object payload = request.get("payload");
         @SuppressWarnings("unchecked")
         Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
@@ -108,13 +186,14 @@ public class ApiproxyController {
                 case "session.cancel" -> response(rpcId, ok(sessionCancel(payload)));
                 case "session.fork" -> response(rpcId, ok(sessionFork(payload)));
                 case "session.rename" -> response(rpcId, ok(sessionRename(payload)));
-                case "session.models" -> response(rpcId, ok(sessionModels()));
+                case "session.models", "session.modelCatalog" -> response(rpcId, ok(modelCatalog()));
                 case "session.selectModel" -> response(rpcId, ok(sessionSelectModel(payload)));
                 case "settings.describe" -> response(rpcId, ok(settingsDescribe()));
                 case "settings.openDocument" -> response(rpcId, ok(openSettingsDocument()));
                 case "settings.mutate", "settings.update", "settings.replace" -> response(rpcId, ok(settingsWrite(payload)));
                 case "llm.providers" -> response(rpcId, ok(llmProviders()));
-                case "llm.models" -> response(rpcId, ok(Map.of("groups", List.of(), "failures", List.of())));
+                case "llm.configurableProviders" -> response(rpcId, ok(llmConfigurableProviders()));
+                case "llm.models" -> response(rpcId, ok(sessionModels()));
                 case "llm.discoverModels" -> response(rpcId, ok(Map.of("models", List.of())));
                 case "credentials.describe" -> response(rpcId, ok(credentialDescribe(payload)));
                 case "credentials.set" -> response(rpcId, ok(credentialSet(payload)));
@@ -142,6 +221,52 @@ public class ApiproxyController {
             log.warn("apiproxy {} failed: {}", method, e.toString());
             return response(rpcId, err("internal", e.getMessage()));
         }
+    }
+
+    /**
+     * 0.1.2 Remote 风格路由 {@code POST /api/<channel>/<endpoint>}：
+     * harness 把 apiproxy 的一元方法迁到各域 Remote（channel = namespace，
+     * endpoint = method），路径从点分改为两段。内部仍走 dispatch switch。
+     */
+    @PostMapping("/{channel:^(?!remote$)[A-Za-z0-9._-]+}/{endpoint}")
+    public Map<String, Object> dispatchRemote(
+            @PathVariable String channel, @PathVariable String endpoint,
+            @RequestBody Map<String, Object> request) {
+        String method = channel + "." + endpoint;
+        if ("session.page".equals(method)) return response(echoRpcId(request), ok(sessionPage(request.get("payload"))));
+        if ("directoryPicker.pick".equals(method)) method = "host.pickDirectory";
+        if ("directoryPicker.list".equals(method)) method = "host.listDirectory";
+        if ("directoryPicker.createDirectory".equals(method)) method = "host.createDirectory";
+        if ("llm.listProviders".equals(method)) method = "llm.providers";
+        if ("llm.listConfigurableProviders".equals(method)) method = "llm.configurableProviders";
+        if ("llm.listModels".equals(method)) method = "llm.models";
+        if ("agentPresets.list".equals(method)) method = "agentPreset.list";
+        if ("agentPresets.read".equals(method)) method = "agentPreset.read";
+        if ("agentPresets.copy".equals(method)) method = "agentPreset.copy";
+        if ("agentPresets.select".equals(method)) method = "agentPreset.select";
+        if ("agentPresets.deletePreset".equals(method)) method = "agentPreset.remove";
+        if ("agentPresets.openDocument".equals(method)) method = "agentPreset.openDocument";
+        if ("skills.list".equals(method)) method = "skill.list";
+        unwrapArgs(request);
+        return dispatch(method, request);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void unwrapArgs(Map<String, Object> request) {
+        Object payload = request.get("payload");
+        if (payload instanceof Map<?, ?> pm && pm.get("args") instanceof Map<?, ?> args) {
+            Object reqField = args.get("request");
+            if (reqField instanceof Map<?, ?> req) {
+                request.put("payload", new LinkedHashMap<>((Map<String, Object>) req));
+            } else {
+                request.put("payload", new LinkedHashMap<>((Map<String, Object>) args));
+            }
+        }
+    }
+
+    @PostMapping("/$events/result")
+    public Map<String, Object> eventsResult(@RequestBody Map<String, Object> request) {
+        return response(echoRpcId(request), ok(Map.of()));
     }
 
     /** Session log export: GET /api/session.export?sessionId=… → ZIP download (session .jsonl). */
@@ -192,9 +317,11 @@ public class ApiproxyController {
     @PostMapping("/messageFeedback/{method}")
     public Map<String, Object> messageFeedback(@PathVariable String method, @RequestBody Map<String, Object> request) {
         String rpcId = echoRpcId(request);
+        unwrapArgs(request);
         Object payload = request.get("payload");
         @SuppressWarnings("unchecked")
         Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        log.debug("apiproxy messageFeedback/{} payload={}", method, p);
         return handleMessageFeedback(method, p, rpcId);
     }
 
@@ -204,8 +331,11 @@ public class ApiproxyController {
         if (feedbackOpt.isEmpty()) return response(rpcId, err("internal", "message feedback service not registered"));
         var feedback = feedbackOpt.get();
         try {
+            // 该 Remote 方法的业务结果本身是 {ok,value}|{ok,error} 联合（对应 TS 端的
+            // MessageFeedback{List|Put|Delete}Result），因此必须整体嵌套进 RPC 载体的
+            // value 字段（双层包裹），前端 controller 才能以 carried.value 读到它。
             return switch (method) {
-                case "list" -> response(rpcId, ok(Map.of("items",
+                case "list" -> feedbackOk(rpcId, ok(Map.of("items",
                         safeFeedbackItems(feedback, String.valueOf(p.getOrDefault("sessionId", ""))))));
                 case "put" -> {
                     var item = feedback.put(
@@ -214,22 +344,45 @@ public class ApiproxyController {
                             com.deepseek.dsh.feedback.FeedbackRating.of(String.valueOf(p.getOrDefault("rating", ""))),
                             p.get("note") == null ? null : String.valueOf(p.get("note")),
                             p.get("ifVersion") == null ? null : String.valueOf(p.get("ifVersion")));
-                    yield response(rpcId, ok(feedbackItem(item)));
+                    yield feedbackOk(rpcId, ok(feedbackItem(item)));
                 }
                 case "delete" -> {
                     feedback.delete(
                             SessionId.of(String.valueOf(p.getOrDefault("sessionId", ""))),
                             String.valueOf(p.getOrDefault("messageId", "")),
                             p.get("ifVersion") == null ? null : String.valueOf(p.get("ifVersion")));
-                    yield response(rpcId, ok(Map.of("absent", true)));
+                    yield feedbackOk(rpcId, ok(Map.of("absent", true)));
                 }
                 default -> response(rpcId, err("internal", "unknown messageFeedback method: " + method));
             };
         } catch (com.deepseek.dsh.feedback.FeedbackException fe) {
-            return response(rpcId, err(feedbackWireCode(fe.code()), fe.getMessage()));
+            // 业务失败同样作为业务结果放入载体 value（carrier still ok:true），以便前端
+            // 读到 version-conflict 的 current 并就地协商，而不是降级为通用传输失败。
+            return feedbackOk(rpcId, feedbackReject(fe));
         } catch (RuntimeException re) {
             return response(rpcId, err("internal", re.getMessage()));
         }
+    }
+
+    /** 把 messageFeedback 的业务结果整体塞进 RPC 载体的 value（双层包裹）。 */
+    private static Map<String, Object> feedbackOk(String rpcId, Map<String, Object> businessResult) {
+        return response(rpcId, ok(businessResult));
+    }
+
+    /** 构造 messageFeedback 的业务失败结果 {ok:false,error}，version-conflict 携带 current。 */
+    private static Map<String, Object> feedbackReject(com.deepseek.dsh.feedback.FeedbackException fe) {
+        Map<String, Object> error = new java.util.LinkedHashMap<>();
+        error.put("code", feedbackWireCode(fe.code()));
+        error.put("message", fe.getMessage());
+        error.put("details", Map.of());
+        if (fe.code() == com.deepseek.dsh.feedback.FeedbackException.Code.VERSION_CONFLICT
+                && fe.conflictingCurrent() != null) {
+            error.put("current", feedbackItem(fe.conflictingCurrent()));
+        }
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("ok", false);
+        result.put("error", error);
+        return result;
     }
 
     /** Java 后端无 Cordis Loader，但把 ~40 个已装配模块作为插件清单项返回，使前端 Plugins 页能列出它们。 */
@@ -261,7 +414,7 @@ public class ApiproxyController {
 
     private Map<String, Object> hostDescribe() {
         Map<String, Object> v = new LinkedHashMap<>();
-        v.put("version", "0.1.1-rc.2");
+        v.put("version", "0.1.2-alpha.1");
         v.put("cwd", System.getProperty("user.dir"));
         v.put("attachedSessions", 0);
         v.put("home", System.getProperty("user.home") + "/.dsh");
@@ -298,8 +451,22 @@ public class ApiproxyController {
                 Map.of("sessionId", sid.value(), "blank", true, "cwd", cwd)));
         if (workspaceId != null) {
             Map<String, Object> wv = workspaces.attachSession(workspaceId, sid.value());
-            if (wv != null) downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed", Map.of("workspace", wv)));
+            if (wv != null) remoteMux.broadcastWorkspaceFrame(Map.of("type", "upsert", "workspace", wv));
         }
+        String model = currentModelName();
+        Map<String, Object> selection = Map.of("provider", "openai-compatible", "model", model);
+        remoteMux.broadcastControlFrame(Map.of(
+                "type", "projection",
+                "sessionId", sid.value(),
+                "key", "modelSelection",
+                "value", Map.of("lastUsed", selection, "next", selection),
+                "seq", -1));
+        remoteMux.broadcastControlFrame(Map.of(
+                "type", "projection",
+                "sessionId", sid.value(),
+                "key", "agentPreset",
+                "value", defaultPreset,
+                "seq", -1));
         downlink.sendMuxFrame(uuid(), muxFrame("session/subscribed",
                 Map.of("sessionId", sid.value(), "lastSeq", seq.get() - 1)));
         Map<String, Object> v = new LinkedHashMap<>();
@@ -317,8 +484,8 @@ public class ApiproxyController {
             throw new RuntimeException("workspace-invalid-path: " + path + " is not a directory");
         }
         Map<String, Object> result = workspaces.ensure(path);
-        downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed",
-                Map.of("workspace", result.get("workspace"))));
+        Map<String, Object> wsView = (Map<String, Object>) result.get("workspace");
+        remoteMux.broadcastWorkspaceFrame(Map.of("type", "upsert", "workspace", wsView));
         return result;
     }
 
@@ -327,33 +494,25 @@ public class ApiproxyController {
         Sessions sessions = ctx.require(Sessions.class);
         List<Map<String, Object>> items = new ArrayList<>();
         for (SessionId id : sessions.list()) {
-            var opt = sessions.get(id);
-            if (opt.isEmpty()) continue;
-            SessionLog sl = opt.get();
+            SessionLog sl = sessions.getOrCreate(id);
             Map<String, Object> s = new LinkedHashMap<>();
             s.put("sessionId", id.value());
-            s.put("title", customTitles.getOrDefault(id.value(), generateTitle(sl)));
-            s.put("updatedAt", System.currentTimeMillis());
-            s.put("running", false);
+            String title = customTitles.getOrDefault(id.value(), generateTitle(sl));
+            long lastSeq = sl.lastSeq();
+            long lastTime = sl.events().isEmpty() ? 0 : sl.events().get(sl.events().size() - 1).time();
+            s.put("projections", Map.of("asOfSeq", lastSeq, "values", Map.of("title", title, "blank", sl.size() == 0)));
+            s.put("updatedAt", lastTime > 0 ? lastTime : System.currentTimeMillis());
+            s.put("running", runningTurns.containsKey(id.value()));
             s.put("blank", sl.size() == 0);
-            s.put("cwd", System.getProperty("user.dir"));
+            String wsPath = workspaces.findSessionWorkspacePath(id.value());
+            s.put("cwd", wsPath != null ? wsPath : System.getProperty("user.dir"));
             items.add(s);
         }
         return Map.of("items", items);
     }
 
-    /** 会话标题：取首条用户消息前 40 字符（无 LLM，对应 BasicSessionTitleProvider 策略）。 */
     private static String generateTitle(SessionLog sl) {
-        try {
-            for (var m : sl.deriveMessages().messages()) {
-                if (m.role() != null && "USER".equals(m.role().name())) {
-                    String t = m.content() == null ? "" : m.content().trim();
-                    if (!t.isEmpty()) return t.length() > 40 ? t.substring(0, 40) + "…" : t;
-                    break;
-                }
-            }
-        } catch (Exception ignored) { /* 日志未就绪时回退 */ }
-        return "新会话";
+        return TurnOrchestrator.generateTitle(sl);
     }
 
     @SuppressWarnings("unchecked")
@@ -361,8 +520,12 @@ public class ApiproxyController {
         Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
         String sid = strOf(p.get("sessionId"));
         String title = strOf(p.get("title"));
-        if (!sid.isEmpty() && !title.isEmpty()) customTitles.put(sid, title);
-        return Map.of("title", title, "seq", 0);
+        title = title.replaceAll("\\s*\\(\\d+\\)$", "").replaceAll("\\s*（\\d+）$", "");
+        if (!sid.isEmpty() && !title.isEmpty()) {
+            customTitles.put(sid, title);
+            sendSessionProjection(sid, "title", title);
+        }
+        return Map.of("title", title);
     }
 
     /** session.cancel({sessionId})：中断正在运行的 agent turn 线程，使对话框「停止生成」生效。 */
@@ -380,17 +543,24 @@ public class ApiproxyController {
         Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
         String parentSid = String.valueOf(p.getOrDefault("sessionId", ""));
         try {
-            Context ctx = holder.context();
-            Sessions sessions = ctx.require(Sessions.class);
-            SessionLog parent = sessions.get(SessionId.of(parentSid)).orElse(null);
-            if (parent == null) return Map.of("sessionId", UUID.randomUUID().toString());
-            SessionLog child = sessions.create();
-            for (SessionEvent e : parent.snapshot()) {
-                sessions.persist(child.append(e.type(), e.payload()));
+            SessionLog child = orchestrator().forkSession(parentSid, this::sendSessionEvent);
+            // 将子会话挂到父会话所在的工作区
+            String parentWsId = workspaces.findSessionWorkspace(parentSid);
+            String childCwd = System.getProperty("user.dir");
+            if (parentWsId != null) {
+                Map<String, Object> attached = workspaces.attachSession(parentWsId, child.sessionId().value());
+                String wsPath = workspaces.findSessionWorkspacePath(child.sessionId().value());
+                if (wsPath != null) childCwd = wsPath;
+                remoteMux.broadcastWorkspaceFrame(Map.of("type", "upsert", "workspace", attached));
             }
-            downlink.sendHostFrame(uuid(), hostFrame("host/session-added",
-                    Map.of("sessionId", child.sessionId().value(), "blank", child.size() == 0,
-                            "cwd", System.getProperty("user.dir"))));
+            String childTitle = TurnOrchestrator.generateTitle(child);
+            long childSeq = child.lastSeq();
+            remoteMux.broadcastControlFrame(Map.of(
+                    "type", "projection",
+                    "sessionId", child.sessionId().value(),
+                    "key", "title",
+                    "value", childTitle,
+                    "seq", childSeq));
             return Map.of("sessionId", child.sessionId().value());
         } catch (Exception e) {
             log.warn("session.fork failed: {}", e.toString());
@@ -435,6 +605,38 @@ public class ApiproxyController {
         return Map.of("current", sel, "routable", true, "groups", List.of(group), "failures", List.of());
     }
 
+    private Map<String, Object> modelCatalog() {
+        String model = currentModelName();
+        Map<String, Object> defaultSel = new LinkedHashMap<>();
+        defaultSel.put("provider", "openai-compatible");
+        defaultSel.put("model", model);
+        List<Map<String, Object>> models = new ArrayList<>();
+        ModelProfile ap = activeProfile();
+        if (ap != null && ap.models() != null) {
+            for (Map<String, Object> mm : ap.models()) {
+                Object idObj = mm.getOrDefault("id", mm.get("name"));
+                String id = idObj == null ? "" : String.valueOf(idObj);
+                if (id.isEmpty() || "null".equals(id)) continue;
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("id", id);
+                Object nameObj = mm.get("name");
+                entry.put("name", nameObj == null || String.valueOf(nameObj).isEmpty() ? id : String.valueOf(nameObj));
+                models.add(entry);
+            }
+        }
+        if (models.isEmpty()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", model); m.put("name", model);
+            models.add(m);
+        }
+        Map<String, Object> group = new LinkedHashMap<>();
+        group.put("id", "openai-compatible");
+        group.put("name", "OpenAI Compatible");
+        group.put("models", models);
+        return Map.of("default", defaultSel, "routableProviders", List.of("openai-compatible"),
+                "groups", List.of(group), "failures", List.of());
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> sessionSelectModel(Object payload) {
         Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
@@ -452,6 +654,10 @@ public class ApiproxyController {
         return Map.of("selected", Map.of("provider", "openai-compatible", "model", model));
     }
 
+    private TurnOrchestrator orchestrator() {
+        return new TurnOrchestrator(holder.context(), holder.agent(), workspaces);
+    }
+
     // ---- session.prompt → agent → frames ----
 
     private Map<String, Object> sessionPrompt(Object payload) {
@@ -459,20 +665,8 @@ public class ApiproxyController {
         Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
         String sessionId = String.valueOf(p.getOrDefault("sessionId", UUID.randomUUID().toString()));
         String text = extractPromptText(p);
-        // turn 取会话日志中已有用户消息数（0 基）：跨多轮递增且与 history 重放一致，避免 ConversationNodeAssembler 节点 id（turn:step）冲突。
-        int turn = nextTurn(sessionId);
-        String userMsgId = "u-" + UUID.randomUUID().toString().substring(0, 8);
-
-        // turn/start + user/message；step 由观察者按「每次模型回复」递增（step/start↔step/end 包住每个 step）。
-        sendSessionEvent(sessionId, "turn/start", Map.of("turn", turn));
-        sendSessionEvent(sessionId, "user/message", Map.of(
-                "id", userMsgId,
-                "content", List.of(Map.of("type", "text", "text", text)),
-                "source", Map.of("kind", "user")));
-        // 推送标题投影（首条用户消息前 40 字符），使侧边栏显示问答标题而非 cwd basename。
-        sendSessionProjection(sessionId, "title", text.length() > 40 ? text.substring(0, 40) + "…" : text);
-        try { downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
-                Map.of("sessionId", sessionId, "running", true))); } catch (Exception e) { log.debug("runTurn host/session-status(running): {}", e.toString()); }
+        TurnOrchestrator orch = orchestrator();
+        int turn = orch.nextTurn(sessionId);
 
         // 未分组会话自动按「年-月-日-时」分配工作区，便于按时间批量查询
         if (workspaces.findSessionWorkspace(sessionId) == null) {
@@ -488,125 +682,22 @@ public class ApiproxyController {
             }
         }
 
-        Thread turnThread = Thread.startVirtualThread(() -> runTurn(sessionId, text, turn));
+        String model = sessionModelSelection.getOrDefault(sessionId, currentModelName());
+        orch.prepareTurn(sessionId, text, turn, model, this::sendSessionEvent);
+        sendSessionProjection(sessionId, "title", text.length() > 40 ? text.substring(0, 40) + "…" : text);
+        remoteMux.broadcastEmit("api-session/status", new Object[]{sessionId, true});
+        try { downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
+                Map.of("sessionId", sessionId, "running", true))); } catch (Exception e) { log.debug("runTurn host/session-status(running): {}", e.toString()); }
+
+        Thread turnThread = Thread.startVirtualThread(() -> {
+            orch.runAgent(sessionId, text, turn, model, this::sendSessionEvent);
+            runningTurns.remove(sessionId);
+            remoteMux.broadcastEmit("api-session/status", new Object[]{sessionId, false});
+            try { downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
+                    Map.of("sessionId", sessionId, "running", false))); } catch (Exception e) { log.debug("runTurn host/session-status(done): {}", e.toString()); }
+        });
         runningTurns.put(sessionId, turnThread);
         return Map.of("accepted", true);
-    }
-
-    private int nextTurn(String sessionId) {
-        try {
-            Context ctx = holder.context();
-            Sessions sessions = ctx.require(Sessions.class);
-            SessionLog slog = sessions.get(SessionId.of(sessionId)).orElse(null);
-            if (slog != null) {
-                int count = 0;
-                for (var m : slog.deriveMessages().messages()) {
-                    if (m.role() != null && "USER".equals(m.role().name())) count++;
-                }
-                return count;
-            }
-        } catch (Exception ignored) { /* 桥接未就绪时退回 0 */ }
-        return 0;
-    }
-
-    private void runTurn(String sessionId, String text, int turn) {
-        String model = sessionModelSelection.getOrDefault(sessionId, currentModelName());
-        // 当前 step 索引：-1 表示尚无模型回复。每次 onAssistantMessage 先收尾上一 step（step/end），
-        // 再自增并开新 step（step/start），保证 step/start↔step/end 严格嵌套、节点 id（turn:step）唯一，避免「more than one start Match」。
-        int[] step = {-1};
-        boolean cancelled = false;
-        // 设置会话工作区 cwd（供 bash 等工具默认使用）
-        String wsPath = workspaces.findSessionWorkspacePath(sessionId);
-        if (wsPath != null) {
-            java.nio.file.Path wsDir = java.nio.file.Path.of(wsPath);
-            if (!java.nio.file.Files.isDirectory(wsDir)) {
-                // 工作区目录不存在 → 在程序执行目录下创建工作区名称的文件夹作为工作目录
-                String wsName = wsDir.getFileName() != null ? wsDir.getFileName().toString() : "workspace";
-                wsDir = java.nio.file.Path.of(System.getProperty("user.dir"), wsName);
-                try { java.nio.file.Files.createDirectories(wsDir); } catch (Exception e) { log.debug("create workspace dir failed: {}", e.toString()); }
-            }
-            com.deepseek.dsh.core.context.SessionCwd.set(wsDir.toString());
-        }
-        try {
-            Context ctx = holder.context();
-            Agent agent = holder.agent();
-            agent.runObserved(SessionId.of(sessionId), ScopeKey.random(), ctx, text, new com.deepseek.dsh.agent.TurnObserver() {
-                @Override public void onAssistantMessage(String content, String reasoning) {
-                    if ((content == null || content.isEmpty()) && (reasoning == null || reasoning.isEmpty())) return;
-                    if (step[0] >= 0) sendSessionEvent(sessionId, "step/end", Map.of("turn", turn, "step", step[0]));
-                    step[0]++;
-                    sendSessionEvent(sessionId, "step/start", Map.of("turn", turn, "step", step[0]));
-                    if (reasoning != null && !reasoning.isEmpty()) {
-                        sendSessionEvent(sessionId, "assistant/chunk", Map.of(
-                                "chunk", Map.of("type", "reasoning-delta", "index", 0, "text", reasoning),
-                                "turn", turn, "step", step[0]));
-                    }
-                    if (content != null && !content.isEmpty()) {
-                        sendSessionEvent(sessionId, "assistant/chunk", Map.of(
-                                "chunk", Map.of("type", "text-delta", "index", 0, "text", content),
-                                "turn", turn, "step", step[0]));
-                        sendSessionEvent(sessionId, "assistant/message", Map.of(
-                                "message", Map.of(
-                                        "id", "a-" + uuid().substring(0, 8),
-                                        "content", List.of(textPart(content)),
-                                        "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", model)),
-                                "turn", turn, "step", step[0]));
-                    }
-                }
-                @Override public void onToolCall(String callId, String name, String argumentsJson) {
-                    sendSessionEvent(sessionId, "tool/call", Map.of(
-                            "callId", callId, "name", name, "arguments", argumentsJson,
-                            "turn", turn, "step", step[0]));
-                }
-                @Override public void onToolResult(String callId, String resultText) {
-                    Map<String, Object> toolResultBlock = new LinkedHashMap<>();
-                    toolResultBlock.put("type", "tool-result");
-                    toolResultBlock.put("toolCallId", callId);
-                    toolResultBlock.put("content", List.of(textPart(resultText)));
-                    toolResultBlock.put("isError", false);
-                    Map<String, Object> msg = new LinkedHashMap<>();
-                    msg.put("content", List.of(toolResultBlock));
-                    msg.put("source", Map.of("callId", callId));
-                    sendSessionEvent(sessionId, "tool/result", Map.of(
-                            "message", msg,
-                            "turn", turn, "step", step[0]));
-                }
-            });
-        } catch (Exception e) {
-            log.warn("agent turn {}: {}", Thread.currentThread().isInterrupted() ? "cancelled" : "failed", e.toString());
-            // 把 agent/模型失败的原因作为 assistant 消息推入聊天流，让用户在聊天框看到具体错误
-            // （如 LLM stream error 403 / Model.AccessDenied），而不是静默「无回复」。
-            if (!cancelledSessions.contains(sessionId)) {
-                if (step[0] < 0) { step[0] = 0; sendSessionEvent(sessionId, "step/start", Map.of("turn", turn, "step", step[0])); }
-                String detail = e.getMessage();
-                Throwable cause = e.getCause();
-                if (cause != null && cause.getMessage() != null) detail += " — " + cause.getMessage();
-                String errMsg = "模型调用失败：" + detail;
-                sendSessionEvent(sessionId, "assistant/chunk", Map.of(
-                        "chunk", Map.of("type", "text-delta", "index", 0, "text", errMsg),
-                        "turn", turn, "step", step[0]));
-                sendSessionEvent(sessionId, "assistant/message", Map.of(
-                        "message", Map.of(
-                                "id", "a-err-" + uuid().substring(0, 8),
-                                "content", List.of(textPart(errMsg)),
-                                "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", model)),
-                        "turn", turn, "step", step[0]));
-                // 记入 session log，使 session.history 回放也含该错误（UI 刷新/重连后仍可见，不只走实时 mux）
-                try {
-                    SessionLog slog = holder.context().require(Sessions.class).get(SessionId.of(sessionId)).orElse(null);
-                    if (slog != null) slog.append(SessionEvent.Type.ASSISTANT_MESSAGE, SessionEvent.Payload.text(errMsg));
-                } catch (Exception ignored) { /* session log 不可用时仅实时 mux 推送 */ }
-            }
-        } finally {
-            runningTurns.remove(sessionId);
-            com.deepseek.dsh.core.context.SessionCwd.clear();
-        }
-        cancelled = cancelledSessions.remove(sessionId);
-        if (step[0] >= 0) sendSessionEvent(sessionId, "step/end", Map.of("turn", turn, "step", step[0]));
-        sendSessionEvent(sessionId, "turn/end", Map.of("turn", turn,
-                "reason", Map.of("kind", cancelled ? "aborted" : "complete")));
-        try { downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
-                Map.of("sessionId", sessionId, "running", false))); } catch (Exception e) { log.debug("runTurn host/session-status(done): {}", e.toString()); }
     }
 
     /** session.history：把 dsh-java 投影消息映射为 harness 事件信封（user/message + turn/assistant-message），供 UI 重放历史。 */
@@ -615,91 +706,22 @@ public class ApiproxyController {
         Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
         String sessionId = String.valueOf(p.getOrDefault("sessionId", ""));
         List<Map<String, Object>> events = new ArrayList<>();
-        long t = System.currentTimeMillis();
-        long[] idc = {0}; // 消息 id 局部计数；事件 seq 用全局 mux seq（与实时流同源）
-        int[] turn = {0};
         try {
             Context ctx = holder.context();
             Sessions sessions = ctx.require(Sessions.class);
-                SessionLog slog = sessions.get(SessionId.of(sessionId)).orElse(null);
-                if (slog != null) {
-                    int[] step = {0};
-                    boolean[] turnOpen = {false};
-                    // 遍历原始事件重放完整轨迹：用户/助手消息 + 思维链(reasoning) + 工具调用/结果，
-                    // 使刷新页面后思维链与工具调用仍可见（与实时流帧同构）。
-                    for (SessionEvent e : slog.events()) {
-                        switch (e.type()) {
-                            case USER_MESSAGE -> {
-                                if (turnOpen[0]) {
-                                    events.add(historyEntry(envelope("step/end", seq.getAndIncrement(), t++, Map.of("turn", turn[0] - 1, "step", step[0]))));
-                                    events.add(historyEntry(envelope("turn/end", seq.getAndIncrement(), t++, Map.of("turn", turn[0] - 1, "reason", Map.of("kind", "complete")))));
-                                }
-                                int tn = turn[0]++;
-                                step[0] = 0;
-                                turnOpen[0] = true;
-                                events.add(historyEntry(envelope("turn/start", seq.getAndIncrement(), t++, Map.of("turn", tn))));
-                                events.add(historyEntry(envelope("step/start", seq.getAndIncrement(), t++, Map.of("turn", tn, "step", step[0]))));
-                                String uc = e.payload().text() == null ? "" : e.payload().text();
-                                events.add(historyEntry(envelope("user/message", seq.getAndIncrement(), t++, Map.of(
-                                        "id", "u-" + idc[0]++, "content", List.of(textPart(uc)), "source", Map.of("kind", "user")))));
-                            }
-                            case ASSISTANT_MESSAGE -> {
-                                if (turnOpen[0]) {
-                                    int tn = turn[0] - 1;
-                                    String content = e.payload().text() == null ? "" : e.payload().text();
-                                    String reasoning = e.payload().reasoning();
-                                    if (reasoning != null && !reasoning.isBlank()) {
-                                        events.add(historyEntry(envelope("assistant/chunk", seq.getAndIncrement(), t++, Map.of(
-                                                "chunk", Map.of("type", "reasoning-delta", "index", 0, "text", reasoning),
-                                                "turn", tn, "step", step[0]))));
-                                    }
-                                    if (!content.isBlank()) {
-                                        events.add(historyEntry(envelope("assistant/message", seq.getAndIncrement(), t++, Map.of(
-                                                "message", Map.of(
-                                                        "id", "a-" + idc[0]++,
-                                                        "content", List.of(textPart(content)),
-                                                        "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", currentModelName())),
-                                                "turn", tn, "step", step[0]))));
-                                    }
-                                }
-                            }
-                            case TOOL_CALL -> {
-                                if (turnOpen[0]) {
-                                    int tn = turn[0] - 1;
-                                    events.add(historyEntry(envelope("tool/call", seq.getAndIncrement(), t++, Map.of(
-                                            "callId", e.payload().toolCallId() == null ? "" : e.payload().toolCallId(),
-                                            "name", e.payload().toolName() == null ? "" : e.payload().toolName(),
-                                            "arguments", toolArgsJson(e.payload().structured()),
-                                            "turn", tn, "step", step[0]))));
-                                }
-                            }
-                            case TOOL_RESULT -> {
-                                if (turnOpen[0]) {
-                                    int tn = turn[0] - 1;
-                                    Map<String, Object> toolResultBlock = new LinkedHashMap<>();
-                                    toolResultBlock.put("type", "tool-result");
-                                    toolResultBlock.put("toolCallId", e.payload().toolCallId() == null ? "" : e.payload().toolCallId());
-                                    toolResultBlock.put("content", List.of(textPart(e.payload().text())));
-                                    toolResultBlock.put("isError", false);
-                                    Map<String, Object> msg = new LinkedHashMap<>();
-                                    msg.put("content", List.of(toolResultBlock));
-                                    msg.put("source", Map.of("callId", e.payload().toolCallId() == null ? "" : e.payload().toolCallId()));
-                                    events.add(historyEntry(envelope("tool/result", seq.getAndIncrement(), t++, Map.of(
-                                            "message", msg, "turn", tn, "step", step[0]))));
-                                }
-                            }
-                            default -> {}
-                        }
-                    }
-                    if (turnOpen[0]) {
-                        events.add(historyEntry(envelope("step/end", seq.getAndIncrement(), t++, Map.of("turn", turn[0] - 1, "step", step[0]))));
-                        events.add(historyEntry(envelope("turn/end", seq.getAndIncrement(), t++, Map.of("turn", turn[0] - 1, "reason", Map.of("kind", "complete")))));
-                    }
-                }
+            SessionLog slog = sessions.getOrCreate(SessionId.of(sessionId));
+            for (SessionEvent e : slog.events()) {
+                Map<String, Object> event = new LinkedHashMap<>();
+                event.put("type", e.type());
+                event.put("seq", e.seq());
+                event.put("time", e.time());
+                event.put("data", e.data());
+                if (e.surfaceOp() != null && !e.surfaceOp().isEmpty()) event.put("surfaceOp", e.surfaceOp());
+                events.add(Map.of("type", "event", "event", event));
+            }
         } catch (Exception e) {
             log.warn("session.history failed: {}", e.toString());
         }
-        // projections block：标题取首条 user/message 的文本，asOfSeq 取末事件 seq。
         String histTitle = "新会话";
         long lastSeq = -1;
         for (var entry : events) {
@@ -716,6 +738,138 @@ public class ApiproxyController {
         }
         return Map.of("events", events, "hasMore", false,
                 "projections", Map.of("asOfSeq", lastSeq, "values", Map.of("title", histTitle)));
+    }
+
+    /**
+     * session.page：0.1.2 的 SessionPage 线格式 ——
+     * {@code {records: SessionHistoryRecord[], hasMore: boolean}}，
+     * 其中 records 是打包的 chunkrow/* 行（连续 ≥3 个同类 chunk 压一行）
+     * 加上其他事件原样透传。复用 {@link #sessionHistory} 的事件构建逻辑。
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> sessionPage(Object rawPayload) {
+        Map<String, Object> payload = rawPayload instanceof Map ? (Map<String, Object>) rawPayload : Map.of();
+        String sessionId = extractSessionIdFromArgs(payload);
+        Map<String, Object> histResult = sessionHistory(Map.of("sessionId", sessionId));
+        List<Map<String, Object>> events = (List<Map<String, Object>>) histResult.get("events");
+        List<Map<String, Object>> records = new ArrayList<>();
+        for (var entry : events) {
+            if (entry.get("event") instanceof Map<?, ?> e) {
+                Map<String, Object> rec = new LinkedHashMap<>();
+                rec.put("type", "event");
+                Map<String, Object> ev = new LinkedHashMap<>((Map<String, Object>) e);
+                rec.put("event", ev);
+                records.add(rec);
+            }
+        }
+        return Map.of("records", records, "hasMore", false);
+    }
+
+    /** 从 0.1.2 RPC 的 args.address.sessionId 提取会话 ID（兼容旧直传格式）。 */
+    @SuppressWarnings("unchecked")
+    private static String extractSessionIdFromArgs(Map<String, Object> payload) {
+        Object args = payload.get("args");
+        if (args instanceof Map<?, ?> a) {
+            Object address = a.get("address");
+            if (address instanceof Map<?, ?> addr && addr.get("sessionId") instanceof String sid) return sid;
+            if (a.get("sessionId") instanceof String sid) return sid;
+        }
+        if (payload.get("sessionId") instanceof String sid) return sid;
+        return "";
+    }
+
+    private static final int MIN_RUN = 3;
+
+    /**
+     * 把事件列表打包成 SessionHistoryRecord[]：
+     * 连续 ≥MIN_RUN 个同类（text-delta/reasoning-delta/tool-call-delta）同块
+     * assistant/chunk 压成一个 chunkrow/* 行；其余事件原样透传。
+     */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> packChunkRuns(List<Map<String, Object>> entries) {
+        List<Map<String, Object>> records = new ArrayList<>();
+        List<Map<String, Object>> run = new ArrayList<>();
+        String runKind = null;
+
+        for (Map<String, Object> entry : entries) {
+            Object eventObj = entry.get("event");
+            if (!(eventObj instanceof Map<?, ?> em)) { records.add(entry); continue; }
+            Map<String, Object> event = (Map<String, Object>) em;
+            String eventType = String.valueOf(event.get("type"));
+            if (!"assistant/chunk".equals(eventType)) {
+                flushRun(records, run, runKind);
+                runKind = null;
+                records.add(Map.of("type", "event", "event", event));
+                continue;
+            }
+            Map<String, Object> data = (Map<String, Object>) event.get("data");
+            if (data == null) { flushRun(records, run, runKind); runKind = null; records.add(Map.of("type", "event", "event", event)); continue; }
+            Map<String, Object> chunk = (Map<String, Object>) data.get("chunk");
+            if (chunk == null) { flushRun(records, run, runKind); runKind = null; records.add(Map.of("type", "event", "event", event)); continue; }
+            String kind = String.valueOf(chunk.get("type"));
+            if (kind.equals(runKind) && !run.isEmpty()) {
+                run.add(entry);
+            } else {
+                flushRun(records, run, runKind);
+                run.clear();
+                run.add(entry);
+                runKind = kind;
+            }
+        }
+        flushRun(records, run, runKind);
+        return records;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void flushRun(List<Map<String, Object>> records, List<Map<String, Object>> run, String kind) {
+        if (run.isEmpty() || kind == null) return;
+        if (run.size() < MIN_RUN) {
+            for (var entry : run) {
+                Object event = entry.get("event");
+                records.add(Map.of("type", "event", "event", event));
+            }
+            return;
+        }
+        Map<String, Object> first = (Map<String, Object>) run.get(0).get("event");
+        long seq0 = ((Number) first.get("seq")).longValue();
+        long time0 = ((Number) first.get("time")).longValue();
+        Map<String, Object> firstData = (Map<String, Object>) first.get("data");
+        Map<String, Object> firstChunk = (Map<String, Object>) firstData.get("chunk");
+        int turn = ((Number) firstData.get("turn")).intValue();
+        int step = ((Number) firstData.get("step")).intValue();
+        int index = firstChunk.get("index") instanceof Number n ? n.intValue() : 0;
+
+        List<String> texts = new ArrayList<>();
+        List<Long> dt = new ArrayList<>();
+        long prevTime = time0;
+        for (var entry : run) {
+            Map<String, Object> ev = (Map<String, Object>) entry.get("event");
+            Map<String, Object> d = (Map<String, Object>) ev.get("data");
+            Map<String, Object> c = (Map<String, Object>) d.get("chunk");
+            texts.add(String.valueOf(c.get("text")));
+            long t = ((Number) ev.get("time")).longValue();
+            dt.add(t - prevTime);
+            prevTime = t;
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("turn", turn);
+        data.put("step", step);
+        data.put("index", index);
+        data.put("dt", dt);
+        data.put("texts", texts);
+
+        String rowType = switch (kind) {
+            case "text-delta" -> "chunkrow/text-chunks";
+            case "reasoning-delta" -> "chunkrow/reasoning-chunks";
+            case "tool-call-delta" -> "chunkrow/tool-call-chunks";
+            default -> null;
+        };
+        if (rowType == null) {
+            for (var entry : run) records.add(Map.of("type", "event", "event", entry.get("event")));
+            return;
+        }
+        records.add(Map.of("type", "chunks", "event", Map.of(
+                "type", rowType, "seq", seq0, "time", time0, "data", data)));
     }
 
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON_MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -758,6 +912,9 @@ public class ApiproxyController {
             }
             return sb.toString();
         }
+        if (content instanceof String s) return s;
+        Object message = p.get("message");
+        if (message instanceof String ms) return ms;
         return "";
     }
 
@@ -821,6 +978,7 @@ public class ApiproxyController {
             java.io.File[] children = dir.listFiles();
             if (children != null) {
                 for (java.io.File c : children) {
+                    if (!c.isDirectory()) continue;
                     Map<String, Object> e = new LinkedHashMap<>();
                     e.put("name", c.getName());
                     e.put("path", c.getAbsolutePath());
@@ -1109,7 +1267,7 @@ public class ApiproxyController {
         return m;
     }
 
-    private Map<String, Object> llmProviders() {
+    private List<Map<String, Object>> llmProviders() {
         ensureRoutes();
         ModelProfileStore s = storeOrNone();
         String activeId = s == null ? null : s.activeId();
@@ -1118,10 +1276,41 @@ public class ApiproxyController {
             for (ModelProfile p : s.profiles()) {
                 String route = p.route();
                 if (route == null || route.isBlank()) continue;
-                providers.add(providerEntry(route, p.displayName(), p.id().equals(activeId), true));
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", route);
+                m.put("name", p.displayName());
+                providers.add(m);
             }
         }
-        return Map.of("providers", providers);
+        return providers;
+    }
+
+    private List<Map<String, Object>> llmConfigurableProviders() {
+        List<Map<String, Object>> dir = new ArrayList<>();
+        ModelProfileStore s = storeOrNone();
+        if (s != null) {
+            for (ModelProfile p : s.profiles()) {
+                String route = p.route();
+                if (route == null || route.isBlank()) continue;
+                dir.add(configurableEntry(route, p.displayName(), "llm-pi-ai", List.of("providers", route)));
+            }
+        }
+        dir.add(configurableEntry("deepseek-official", "DeepSeek", "llm-pi-ai", List.of("providers", "deepseek-official")));
+        dir.add(configurableEntry("openai-compatible", "OpenAI Compatible", "llm-pi-ai", List.of("providers", "openai-compatible")));
+        dir.add(configurableEntry("openai", "OpenAI", "llm-pi-ai", List.of("providers", "openai")));
+        dir.add(configurableEntry("anthropic", "Anthropic", "llm-pi-ai", List.of("providers", "anthropic")));
+        dir.add(configurableEntry("google", "Google", "llm-pi-ai", List.of("providers", "google")));
+        return dir;
+    }
+
+    private static Map<String, Object> configurableEntry(String provider, String displayName, String settingsNs, List<String> settingsPath) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("provider", provider);
+        m.put("displayName", displayName);
+        m.put("settingsNs", settingsNs);
+        m.put("settingsPath", settingsPath);
+        m.put("declared", true);
+        return m;
     }
 
     private static Map<String, Object> providerEntry(String route, String displayName, boolean active, boolean declared) {
@@ -1287,23 +1476,23 @@ public class ApiproxyController {
     private Map<String, Object> workspaceArchiveSession(Object payload) {
         String sid = strField(payload, "sessionId");
         List<String> archived = sid.isEmpty() ? workspaces.archivedSessionIds() : workspaces.archiveSession(sid);
-        downlink.sendHostFrame(uuid(), hostFrame("host/archived-sessions-changed", Map.of("archivedSessionIds", archived)));
+        remoteMux.broadcastWorkspaceFrame(Map.of("type", "archived", "archivedSessionIds", archived));
         return Map.of("archivedSessionIds", archived);
     }
 
     private Map<String, Object> workspaceDelete(Object payload) {
         String id = strField(payload, "workspaceId");
         workspaces.delete(id);
-        downlink.sendHostFrame(uuid(), hostFrame("host/workspace-removed", Map.of("workspaceId", id)));
+        remoteMux.broadcastWorkspaceFrame(Map.of("type", "remove", "workspaceId", id));
         return Map.of("deleted", true);
     }
 
     private Map<String, Object> workspaceRename(Object payload) {
         String id = strField(payload, "workspaceId");
         String title = strField(payload, "title");
-        Map<String, Object> wv = workspaces.rename(id, title);
-        if (wv != null) downlink.sendHostFrame(uuid(), hostFrame("host/workspace-changed", Map.of("workspace", wv)));
-        return Map.of("workspace", wv != null ? wv : Map.of());
+        Map<String, Object> result = workspaces.rename(id, title);
+        if (result != null) remoteMux.broadcastWorkspaceFrame(Map.of("type", "upsert", "workspace", result));
+        return Map.of("workspace", result != null ? result : Map.of());
     }
 
     private Map<String, Object> workspaceInsertBefore() {
@@ -1355,16 +1544,25 @@ public class ApiproxyController {
                 : defaultPreset;
         List<Map<String, Object>> presets = new ArrayList<>();
         for (String[] s : SYSTEM_PRESETS) {
-            presets.add(Map.of(
-                    "id", s[0], "trust", "system", "isDefault", currentDefault.equals(s[0]),
-                    "name", s[1], "description", s[2]));
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("id", s[0]);
+            entry.put("trust", "system");
+            entry.put("isDefault", currentDefault.equals(s[0]));
+            entry.put("name", s[1]);
+            entry.put("description", s[2]);
+            presets.add(entry);
         }
         java.io.File dir = presetsDir();
         java.io.File[] files = dir.listFiles(f -> f.getName().endsWith(".yml"));
         if (files != null) {
             for (java.io.File f : files) {
                 String id = f.getName().substring(0, f.getName().length() - 4);
-                presets.add(Map.of("id", id, "trust", "user", "isDefault", false, "name", id));
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("id", id);
+                entry.put("trust", "user");
+                entry.put("isDefault", false);
+                entry.put("name", id);
+                presets.add(entry);
             }
         }
         return Map.of("presets", presets, "authorable", true, "hasDocument", true);
@@ -1372,11 +1570,13 @@ public class ApiproxyController {
 
     private Map<String, Object> agentPresetRead(Object payload) {
         String id = strField(payload, "agentPreset");
-        return Map.of("agentPreset", id, "trust", isSystemPreset(id) ? "system" : "user",
-                "content", presetComposition(id));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("agentPreset", id);
+        result.put("trust", isSystemPreset(id) ? "system" : "user");
+        result.put("content", presetComposition(id));
+        return result;
     }
 
-    /** 单 agent 架构：select 全局切换 agent 的系统提示（原版按会话重组需 per-session agent 重构；这里至少让选择的预设即时影响下一回合）。 */
     private Map<String, Object> agentPresetSelect(Object payload) {
         String id = strField(payload, "agentPreset");
         defaultPreset = id;
@@ -1385,7 +1585,9 @@ public class ApiproxyController {
         } catch (Exception e) {
             log.warn("switch preset system prompt failed: {}", e.toString());
         }
-        return Map.of("agentPreset", id);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("agentPreset", id);
+        return result;
     }
 
     private Map<String, Object> agentPresetCopy(Object payload) {
@@ -1439,35 +1641,25 @@ public class ApiproxyController {
                 return "";
             }
         }
-        return switch (id) {
-            case "code" -> "# code preset\ntools: [bash, read, write, edit, glob, grep, terminal]\nsystem_prompt: 你是 DeepSeek Harness 代码助手——专注代码读写、编辑、执行与调试。\n";
-            case "headless" -> "# headless preset\ntools: [bash, read, write, edit, glob, grep, job, todo_write]\nsystem_prompt: 你是 DeepSeek Harness headless 助手——执行自动化任务，无界面交互。\n";
-            default -> "# standard preset\ntools: [bash, read, write, edit, glob, grep, terminal, web_search, web_fetch, job, todo_write, goal, workflow, ralph, skill]\nsystem_prompt: 你是 DeepSeek Harness，强大的软件工程助手。\n";
-        };
+        try (var is = ApiproxyController.class.getResourceAsStream("/presets/" + id + "/agent.cordis.yml")) {
+            if (is != null) return new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.warn("Failed to read preset composition {}: {}", id, e.toString());
+        }
+        return "";
     }
 
     /** 预设对应的系统提示：系统预设用内置文本，用户预设从其 yaml 的 system_prompt 行提取，回退默认。 */
     private static String presetSystemPrompt(String id) {
-        if (isSystemPreset(id)) {
-            return switch (id) {
-                case "code" -> "你是 DeepSeek Harness 代码助手——专注代码读写、编辑、执行与调试，优先使用 bash/read/write/edit/grep/terminal 工具。";
-                case "headless" -> "你是 DeepSeek Harness headless 助手——执行自动化任务，无界面交互，优先使用 bash/read/write/job/todo_write 工具。";
-                default -> DEFAULT_SYSTEM_PROMPT;
-            };
-        }
-        String yaml = presetComposition(id);
-        for (String line : yaml.split("\\R")) {
-            if (line.startsWith("system_prompt:")) {
-                return line.substring("system_prompt:".length()).trim();
-            }
-        }
-        return DEFAULT_SYSTEM_PROMPT;
+        return switch (id) {
+            case "minimal" -> "You are a helpful software engineer assistant.";
+            case "ptc" -> "You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.\n\nYou operate in PTC mode: write TypeScript programs against the provided SDK to compose multi-step tool operations into a single call.";
+            case "cordis" -> "You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.\n\nYou can read and modify the harness you run on. Its composition is Cordis: every capability is a plugin row in a `cordis.yml`, and an agent preset is one such file mounted for a single session.";
+            default -> "You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.";
+        };
     }
 
-    private static final String DEFAULT_SYSTEM_PROMPT = """
-            你是 DeepSeek Harness（dsh）—— 一个强大的软件工程助手。
-            你可以使用以下工具完成编程任务：bash、terminal、read/write/edit/glob/grep、web_search/web_fetch、job、todo_write、goal、workflow/ralph、skill、team。
-            请优先使用工具获取信息，给出简洁、准确的回答。面对复杂任务时可设定目标或进入计划模式。""";
+    private static final String DEFAULT_SYSTEM_PROMPT = "You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.";
 
     private static String strField(Object payload, String key) {
         return payload instanceof Map<?, ?> m ? strOf(m.get(key)) : "";
@@ -1477,19 +1669,58 @@ public class ApiproxyController {
 
     /** 推一个 session/event mux 帧（event envelope = {type, seq, time, data}）。 */
     private void sendSessionEvent(String sessionId, String eventType, Map<String, Object> data) {
+        sendSessionEvent(sessionId, eventType, data, true);
+    }
+
+    private void sendSessionEvent(String sessionId, String eventType, Map<String, Object> data, boolean broadcast) {
+        String surfaceOp = isSurfaceMessageEvent(eventType) ? "append" : null;
+        SessionLog slog;
+        try {
+            slog = holder.context().require(Sessions.class).getOrCreate(SessionId.of(sessionId));
+        } catch (Exception e) {
+            slog = null;
+        }
+        SessionEvent appended = null;
+        if (slog != null) {
+            try {
+                appended = slog.append(eventType, data, surfaceOp);
+                holder.context().require(Sessions.class).persist(appended);
+            } catch (Exception e) {
+                log.debug("sendSessionEvent append ({}): {}", eventType, e.toString());
+            }
+        }
+        long eventSeq = appended != null ? appended.seq() : System.currentTimeMillis();
+        long eventTime = appended != null ? appended.time() : System.currentTimeMillis();
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("type", eventType);
-        event.put("seq", seq.getAndIncrement());
-        event.put("time", System.currentTimeMillis());
+        event.put("seq", eventSeq);
+        event.put("time", eventTime);
         event.put("data", data);
-        if (isSurfaceMessageEvent(eventType)) event.put("surfaceOp", "append");
+        if (surfaceOp != null) event.put("surfaceOp", surfaceOp);
+        Map<String, Object> payload = Map.of("sessionId", sessionId, "event", event);
         try {
-            downlink.sendMuxFrame(uuid(), muxFrame("session/event",
-                    Map.of("sessionId", sessionId, "event", event)));
+            downlink.sendMuxFrame(uuid(), muxFrame("session/event", payload));
         } catch (Exception e) {
-            // mux WS 断开（如刷新）不应中断 agent 回合——事件已记入会话日志，重连后可重放
             log.debug("sendSessionEvent ({}): downlink disconnected: {}", eventType, e.toString());
         }
+        if (broadcast) remoteMux.broadcastFollowEvent(sessionId, event);
+    }
+
+
+    @SuppressWarnings("unchecked")
+    private static String extractTextFromContent(Object content) {
+        if (content == null) return "";
+        if (content instanceof String s) return s;
+        if (content instanceof List<?> parts) {
+            StringBuilder sb = new StringBuilder();
+            for (Object part : parts) {
+                if (part instanceof Map<?, ?> p && "text".equals(p.get("type")) && p.get("text") instanceof String t) {
+                    sb.append(t);
+                }
+            }
+            return sb.toString();
+        }
+        return "";
     }
 
     /** surface 消息事件须带 surfaceOp:'append'，否则前端 isAppendSurfaceEvent 判否、消息节点不匹配 → 不渲染（用户消息不显示的根因）。 */
@@ -1499,17 +1730,28 @@ public class ApiproxyController {
 
     /** 推一个 session/projection mux 帧（如 title），更新前端侧边栏的投影值。 */
     private void sendSessionProjection(String sessionId, String key, Object value) {
+        long projSeq = 0;
+        try {
+            SessionLog sl = holder.context().require(Sessions.class).getOrCreate(SessionId.of(sessionId));
+            projSeq = sl.lastSeq();
+        } catch (Exception ignored) {}
         Map<String, Object> f = new LinkedHashMap<>();
         f.put("type", "session/projection");
         f.put("sessionId", sessionId);
         f.put("key", key);
         f.put("value", value);
-        f.put("seq", seq.getAndIncrement());
+        f.put("seq", projSeq);
         try {
             downlink.sendMuxFrame(uuid(), f);
         } catch (Exception e) {
             log.debug("sendSessionProjection ({}): downlink disconnected: {}", key, e.toString());
         }
+        remoteMux.broadcastControlFrame(Map.of(
+                "type", "projection",
+                "sessionId", sessionId,
+                "key", key,
+                "value", value,
+                "seq", projSeq));
     }
 
     private static Map<String, Object> muxFrame(String type, Map<String, Object> fields) {

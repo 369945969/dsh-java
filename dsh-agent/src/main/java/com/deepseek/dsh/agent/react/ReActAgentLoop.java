@@ -3,23 +3,18 @@ package com.deepseek.dsh.agent.react;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.deepseek.dsh.agent.Agent;
 import com.deepseek.dsh.agent.TurnObserver;
-import com.deepseek.dsh.agent.loop.LoopHierarchy;
-import com.deepseek.dsh.agent.state.ContinueDecision;
-import com.deepseek.dsh.agent.state.StepResult;
 import com.deepseek.dsh.core.brand.ScopeKey;
 import com.deepseek.dsh.core.brand.SessionId;
 import com.deepseek.dsh.core.context.Context;
-import com.deepseek.dsh.interaction.approval.ApprovalRequest;
-import com.deepseek.dsh.interaction.approval.ApprovalResult;
-import com.deepseek.dsh.interaction.approval.ApprovalService;
-import com.deepseek.dsh.interaction.permission.PermissionPreset;
-import com.deepseek.dsh.interaction.permission.PermissionService;
+import com.deepseek.dsh.llm.adapter.LlmChunk;
 import com.deepseek.dsh.llm.adapter.LlmModel;
 import com.deepseek.dsh.llm.adapter.LlmRequest;
 import com.deepseek.dsh.llm.adapter.LlmResponse;
@@ -32,302 +27,185 @@ import com.deepseek.dsh.tools.pipeline.ToolExecutionRequest;
 import com.deepseek.dsh.tools.pipeline.ToolExecutionResult;
 import com.deepseek.dsh.tools.pipeline.ToolPipeline;
 import com.deepseek.dsh.tools.registry.ToolContext;
-import com.deepseek.dsh.tools.registry.Tools;
 
 /**
- * ReAct 循环 —— 推理（Reasoning）+ 行动（Acting）循环引擎。
+ * ReAct Agent Loop —— 模型→工具→模型循环，直到模型停止或达上限。
  *
- * <p>借鉴 AgentScope 的 ReAct loop 概念，结合原 Harness 的 turn/step 生命周期。
- * 采用<strong>模板方法</strong>定义循环骨架：{@link #runTurn} 编排 turn，
- * {@link #runStep} 编排单个 step（模型请求 → 工具执行 → 结果记录），
- * 子类可覆写各钩子定制行为。
- *
- * <p>循环不变式：<b>"模型可见 ⟺ 已记录"</b> —— 所有发送给模型的消息
- * 都从 {@link SessionLog} 投影得到。
- *
- * <p>设计模式：
- * <ul>
- *   <li>模板方法（{@link #runTurn} / {@link #runStep}）—— 定义循环骨架。</li>
- *   <li>状态机（{@link ContinueDecision}）—— 决定是否继续下一步。</li>
- *   <li>策略（注入的 {@link LlmModel} / {@link Tools}）—— 可替换的推理与行动。</li>
- * </ul>
+ * <p>所有事件通过 {@link TurnObserver} 回调上报，由上层负责持久化和广播。
+ * 本类不再直接 append SessionLog —— turn/start、user/message、assistant/message、
+ * tool/call、tool/result 等事件由观察者（ApiproxyController.sendSessionEvent）处理。
  */
 public class ReActAgentLoop implements Agent {
 
     private static final Logger log = LoggerFactory.getLogger(ReActAgentLoop.class);
-
-    private final String name;
-    private volatile String systemPrompt;
     private final LlmModel model;
-    private final Tools tools;
     private final ToolPipeline pipeline;
-
-    /** 当前 turn 的观察者（线程局部，并发安全）；由 {@link #runObserved} 设置。 */
+    private final com.deepseek.dsh.tools.registry.ToolRegistry toolRegistry;
     private final ThreadLocal<TurnObserver> observer = new ThreadLocal<>();
+    private volatile String systemPrompt = "You are a coding agent powered by the glm-5.2 model.";
 
-    public ReActAgentLoop(String name, String systemPrompt, LlmModel model, Tools tools) {
-        this(name, systemPrompt, model, tools, new ToolPipeline(tools));
-    }
-
-    /**
-     * 带预构建工具管线的构造器 —— 允许装配方注入中间件（如外溢策略、
-     * 重复调用提醒、超时策略）。{@code tools} 仍用于装配工具 schema。
-     */
-    public ReActAgentLoop(String name, String systemPrompt, LlmModel model,
-                           Tools tools, ToolPipeline pipeline) {
-        this.name = name;
-        this.systemPrompt = systemPrompt;
+    public ReActAgentLoop(LlmModel model, ToolPipeline pipeline, com.deepseek.dsh.tools.registry.ToolRegistry toolRegistry) {
         this.model = model;
-        this.tools = tools;
         this.pipeline = pipeline;
+        this.toolRegistry = toolRegistry;
     }
+
+    @Override public String name() { return "DeepSeek-Harness"; }
+    @Override public String systemPrompt() { return systemPrompt; }
+    @Override public void setSystemPrompt(String sp) { this.systemPrompt = sp; }
+    @Override public String composeSystemPrompt(Context ctx) { return composedSystemPrompt(ctx); }
 
     @Override
-    public String name() {
-        return name;
+    public String run(SessionId sessionId, ScopeKey scopeKey, Context ctx, String userMessage) throws Exception {
+        return runObserved(sessionId, scopeKey, ctx, userMessage, null);
     }
 
-    /**
-     * 带 {@link TurnObserver} 运行一个 turn：设置线程局部观察者后委托 {@link #run}，
-     * 循环内触发 onAssistantMessage/onToolCall/onToolResult。结束后清除观察者。
-     */
     @Override
     public String runObserved(SessionId sessionId, ScopeKey scopeKey, Context ctx,
                                String userMessage, TurnObserver obs) throws Exception {
         observer.set(obs);
         try {
-            return run(sessionId, scopeKey, ctx, userMessage);
+            Sessions sessions = ctx.require(Sessions.class);
+            SessionLog sessionLog = sessions.getOrCreate(sessionId);
+            int turn = countUserMessages(sessionLog);
+
+            if (obs != null) {
+                obs.onTurnStart(turn);
+                obs.onUserMessage(userMessage, "u-" + UUID.randomUUID().toString().substring(0, 8));
+            }
+
+            int maxSteps = LoopHierarchy.DEFAULT_MAX_STEPS;
+            String lastContent = "";
+            for (int stepNo = 0; stepNo < maxSteps; stepNo++) {
+                StepResult step = runStep(sessionId, scopeKey, ctx, sessionLog, turn, stepNo);
+                ctx.get(TokenMeterService.class).ifPresent(m -> m.record(step.response()));
+
+                ContinueDecision decision = decideContinue(step.response());
+                lastContent = step.response().content();
+
+                if (decision != ContinueDecision.CONTINUE) {
+                    if (obs != null) obs.onTurnEnd(turn, "stop".equalsIgnoreCase(step.response().finishReason()) ? "complete" : step.response().finishReason());
+                    return lastContent;
+                }
+            }
+            log.warn("Reached max steps {}, terminating turn", maxSteps);
+            if (obs != null) obs.onTurnEnd(turn, "max-steps");
+            return lastContent;
         } finally {
             observer.remove();
         }
     }
 
-    @Override
-    public String systemPrompt() {
-        return systemPrompt;
+    private int countUserMessages(SessionLog sessionLog) {
+        int count = 0;
+        for (var e : sessionLog.snapshot()) {
+            if ("user/message".equals(e.type())) count++;
+        }
+        return count;
     }
 
-    @Override
-    public void setSystemPrompt(String systemPrompt) {
-        this.systemPrompt = systemPrompt;
-    }
-
-    /**
-     * 组装系统提示：分发 {@link com.deepseek.dsh.core.context.SystemPromptInjectEvent}，
-     * 让上下文插件（agent-instructions / time / skill-catalog）追加段落，再合并到基础提示后返回。
-     * 无段落时直接返回基础系统提示。监听器异常被吞并记录，不阻断提示组装。
-     */
-    private String composedSystemPrompt(Context ctx) {
-        var event = new com.deepseek.dsh.core.context.SystemPromptInjectEvent();
-        try {
-            ctx.events().waterfall(com.deepseek.dsh.core.context.SystemPromptInjectEvent.class, event);
-        } catch (RuntimeException e) {
-            log.warn("system-prompt inject error: {}", e.toString());
-        }
-        String sections = event.compose();
-        return sections.isEmpty() ? systemPrompt : systemPrompt + "\n\n" + sections;
-    }
-
-    /**
-     * 运行一个 turn（模板方法）。接收用户消息，驱动 ReAct 循环直到模型停止或达上限。
-     */
-    @Override
-    public String run(SessionId sessionId, ScopeKey scopeKey, Context ctx, String userMessage) throws Exception {
-        Sessions sessions = ctx.require(Sessions.class);
-        SessionLog sessionLog = sessions.getOrCreate(sessionId);
-
-        // turn/start —— 记录用户消息
-        SessionEvent userEvent = sessionLog.append(SessionEvent.Type.USER_MESSAGE,
-                SessionEvent.Payload.text(userMessage));
-        sessions.persist(userEvent);
-
-        // 迭代 step
-        int maxSteps = LoopHierarchy.DEFAULT_MAX_STEPS;
-        for (int stepNo = 0; stepNo < maxSteps; stepNo++) {
-            StepResult step = runStep(sessionId, scopeKey, ctx, sessionLog);
-
-            // 记录 token 用量
-            ctx.get(TokenMeterService.class).ifPresent(m -> m.record(step.response()));
-
-            // 判定是否继续
-            ContinueDecision decision = decideContinue(step.response());
-            if (decision != ContinueDecision.CONTINUE) {
-                return step.response().content();
-            }
-        }
-        log.warn("Reached max steps {}, terminating turn", maxSteps);
-        return "(Max steps limit reached)";
-    }
-
-    /**
-     * 流式运行一个 turn —— 基于 {@link com.deepseek.dsh.llm.adapter.LlmModel#stream} 逐 token 下发。
-     *
-     * <p>纯对话流式（不装配工具，故不触发工具调用）—— 需要工具的回合请用 {@link #run}。
-     * 记录用户/助手消息到会话日志，与 {@link #run} 一致。
-     */
-    @Override
-    public String streamChat(SessionId sessionId, ScopeKey scopeKey, Context ctx,
-                             String userMessage, java.util.function.Consumer<String> deltaSink) throws Exception {
-        Sessions sessions = ctx.require(Sessions.class);
-        SessionLog sessionLog = sessions.getOrCreate(sessionId);
-
-        SessionEvent userEvent = sessionLog.append(SessionEvent.Type.USER_MESSAGE,
-                SessionEvent.Payload.text(userMessage));
-        sessions.persist(userEvent);
-
-        // 装配消息（系统提示 + 历史 + 本轮用户消息），不带工具 schema
-        SessionEvent.Projection projection = sessionLog.deriveMessages();
-        List<ChatMessage> messages = new ArrayList<>(projection.messages());
-        if (messages.isEmpty() || messages.get(0).role() != ChatMessage.Role.SYSTEM) {
-            messages.add(0, ChatMessage.system(composedSystemPrompt(ctx)));
-        }
-        LlmRequest request = LlmRequest.of(messages, java.util.List.of(), modelIdentifier(ctx));
-
-        // 逐 token 流式收集，每个 delta 即时下发
-        StringBuilder acc = new StringBuilder();
-        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
-        java.util.concurrent.atomic.AtomicReference<Throwable> err = new java.util.concurrent.atomic.AtomicReference<>();
-        model.stream(request).subscribe(new java.util.concurrent.Flow.Subscriber<>() {
-            private java.util.concurrent.Flow.Subscription sub;
-            @Override public void onSubscribe(java.util.concurrent.Flow.Subscription s) { this.sub = s; s.request(Long.MAX_VALUE); }
-            @Override public void onNext(com.deepseek.dsh.llm.adapter.LlmChunk c) {
-                if (c.delta() != null && !c.delta().isEmpty()) {
-                    acc.append(c.delta());
-                    deltaSink.accept(c.delta());
-                }
-            }
-            @Override public void onError(Throwable t) { err.set(t); done.countDown(); }
-            @Override public void onComplete() { done.countDown(); }
-        });
-        done.await();
-        if (err.get() != null) {
-            throw err.get() instanceof Exception e ? e : new RuntimeException(err.get());
-        }
-
-        String content = acc.toString();
-        SessionEvent assistantEvent = sessionLog.append(SessionEvent.Type.ASSISTANT_MESSAGE,
-                SessionEvent.Payload.text(content));
-        sessions.persist(assistantEvent);
-        return content;
-    }
-
-    /**
-     * 运行单个 step（模板方法）：装配提示 → 模型请求 → 工具执行 → 记录。
-     */
-    protected StepResult runStep(SessionId sessionId, ScopeKey scopeKey, Context ctx, SessionLog sessionLog) throws Exception {
-        // 1. 从日志派生模型可见消息
-        SessionEvent.Projection projection = sessionLog.deriveMessages();
-        List<ChatMessage> messages = new ArrayList<>(projection.messages());
-        // 前置系统提示
-        if (messages.isEmpty() || messages.get(0).role() != ChatMessage.Role.SYSTEM) {
-            messages.add(0, ChatMessage.system(composedSystemPrompt(ctx)));
-        }
-
-        // 2. 装配工具 schema
-        LlmRequest request = LlmRequest.of(messages, tools.schemas(), modelIdentifier(ctx));
-
-        // 3. 模型请求（流式：逐 token 推送到观察者并累积工具调用；无观察者/不支持流式时等价于 chat）
+    protected StepResult runStep(SessionId sessionId, ScopeKey scopeKey, Context ctx,
+                                 SessionLog sessionLog, int turn, int stepNo) throws Exception {
         TurnObserver o = observer.get();
+
+        SessionEvent.Projection projection = sessionLog.deriveMessages();
+        List<ChatMessage> messages = new ArrayList<>(projection.messages());
+        String sysPrompt = composedSystemPrompt(ctx);
+        if (messages.isEmpty() || messages.get(0).role() != ChatMessage.Role.SYSTEM) {
+            messages.add(0, ChatMessage.system(sysPrompt));
+        }
+
+        LlmRequest request = LlmRequest.of(messages, toolRegistry.schemas(), modelIdentifier(ctx));
+
+        if (o != null) o.onStepStart(turn, stepNo);
+
         LlmResponse response = model.streamCollect(request, chunk -> {
             if (o != null) o.onAssistantChunk(chunk.delta(), chunk.reasoningDelta());
         });
 
-        // 4. 记录助手消息到日志（含推理 reasoning，供历史重放思维链）
-        SessionEvent assistantEvent = sessionLog.append(SessionEvent.Type.ASSISTANT_MESSAGE,
-                SessionEvent.Payload.textWithReasoning(response.content(), response.reasoning()));
-        ctx.require(Sessions.class).persist(assistantEvent);
-        if (o != null) o.onAssistantMessage(response.content(), response.reasoning());
+        String assistantMsgId = "a-" + UUID.randomUUID().toString().substring(0, 8);
+        if (o != null) o.onAssistantMessage(response.content(), response.reasoning(), assistantMsgId);
 
-        // 5. 执行工具调用（如果有）
         if (response.toolCalls() != null && !response.toolCalls().isEmpty()) {
             for (ChatMessage.ToolCall tc : response.toolCalls()) {
-                executeToolCall(sessionId, scopeKey, ctx, sessionLog, tc);
+                executeToolCall(sessionId, scopeKey, ctx, tc);
             }
         }
 
+        if (o != null) o.onStepEnd(turn, stepNo);
         return new StepResult(response, messages);
     }
 
-    /**
-     * 执行一次工具调用，经审批/权限把关后通过管线调用工具，结果记录到日志。
-     */
     protected void executeToolCall(SessionId sessionId, ScopeKey scopeKey, Context ctx,
-                                   SessionLog sessionLog, ChatMessage.ToolCall tc) throws Exception {
-        Sessions sessions = ctx.require(Sessions.class);
-
-        // 权限检查
-        PermissionService perm = ctx.get(PermissionService.class).orElse(null);
+                                    ChatMessage.ToolCall tc) throws Exception {
+        TurnObserver o = observer.get();
+        String callId = (tc.id() == null || tc.id().isEmpty()) ? "call-" + UUID.randomUUID().toString().substring(0, 12) : tc.id();
+        var perm = ctx.get(com.deepseek.dsh.interaction.permission.PermissionService.class).orElse(null);
         if (perm != null) {
-            PermissionPreset.Decision d = perm.check(tc.name(), scopeKey.value().toString());
-            if (d == PermissionPreset.Decision.DENY) {
-                SessionEvent denied = sessionLog.append(SessionEvent.Type.TOOL_RESULT,
-                        SessionEvent.Payload.toolResult(tc.id(), "（已拒绝：权限不足）"));
-                sessions.persist(denied);
+            var d = perm.check(tc.name(), scopeKey.value().toString());
+            if (d == com.deepseek.dsh.interaction.permission.PermissionPreset.Decision.DENY) {
+                if (o != null) o.onToolDenied(callId, "权限不足");
                 return;
             }
-            if (d == PermissionPreset.Decision.ASK) {
-                ApprovalService approval = ctx.get(ApprovalService.class).orElse(null);
+            if (d == com.deepseek.dsh.interaction.permission.PermissionPreset.Decision.ASK) {
+                var approval = ctx.get(com.deepseek.dsh.interaction.approval.ApprovalService.class).orElse(null);
                 if (approval != null) {
-                    ApprovalResult ar = approval.request(
-                            ApprovalRequest.of("工具调用: " + tc.name(),
-                                    "参数: " + tc.argumentsJson())).get();
+                    var ar = approval.request(
+                            com.deepseek.dsh.interaction.approval.ApprovalRequest.of(
+                                    "工具调用: " + tc.name(), "参数: " + tc.argumentsJson())).get();
                     if (!ar.approved()) {
-                        SessionEvent denied = sessionLog.append(SessionEvent.Type.TOOL_RESULT,
-                                SessionEvent.Payload.toolResult(tc.id(),
-                                        "（用户拒绝: " + ar.feedback() + ")"));
-                        sessions.persist(denied);
+                        if (o != null) o.onToolDenied(callId, "用户拒绝: " + ar.feedback());
                         return;
                     }
                 }
             }
         }
 
-        // 记录工具调用事件
-        Map<String, Object> args = parseArgs(tc.argumentsJson());
-        SessionEvent callEvent = sessionLog.append(SessionEvent.Type.TOOL_CALL,
-                SessionEvent.Payload.toolCall(tc.name(), tc.id(), args));
-        sessions.persist(callEvent);
+        if (o != null) o.onToolCall(callId, tc.name(), tc.argumentsJson());
 
-        // 经管线执行
-        ToolContext toolCtx = new ToolContext(sessionId, scopeKey, ctx);
-        TurnObserver o = observer.get();
-        if (o != null) o.onToolCall(tc.id(), tc.name(), tc.argumentsJson());
-        ToolExecutionResult result = pipeline.execute(
-                new ToolExecutionRequest(tc.name(), tc.id(), args, toolCtx));
+        var toolCtx = new ToolContext(sessionId, scopeKey, ctx);
+        var result = pipeline.execute(
+                new ToolExecutionRequest(tc.name(), callId, parseArgs(tc.argumentsJson()), toolCtx));
 
-        // 记录结果
-        SessionEvent resultEvent = sessionLog.append(SessionEvent.Type.TOOL_RESULT,
-                SessionEvent.Payload.toolResult(tc.id(), result.text()));
-        sessions.persist(resultEvent);
-        if (o != null) o.onToolResult(tc.id(), result.text());
+        if (o != null) o.onToolResult(callId, result.text());
     }
 
-    /**
-     * 决定是否继续下一步（状态机）。
-     * <p>若模型以 tool_calls 结束则继续；若 stop 则停止。
-     */
     protected ContinueDecision decideContinue(LlmResponse response) {
-        if (response.toolCalls() != null && !response.toolCalls().isEmpty()) {
-            return ContinueDecision.CONTINUE;
-        }
-        if ("stop".equalsIgnoreCase(response.finishReason())
-                || response.finishReason() == null) {
-            return ContinueDecision.STOP;
-        }
+        if (response.toolCalls() != null && !response.toolCalls().isEmpty()) return ContinueDecision.CONTINUE;
+        if ("stop".equalsIgnoreCase(response.finishReason()) || response.finishReason() == null) return ContinueDecision.STOP;
         return ContinueDecision.CONTINUE;
     }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> parseArgs(String json) {
-        try {
-            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, Map.class);
-        } catch (Exception e) {
-            return Map.of();
-        }
+        try { return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, Map.class); }
+        catch (Exception e) { return Map.of(); }
     }
 
     private String modelIdentifier(Context ctx) {
-        // 默认使用 DeepSeek chat；可被配置覆盖
         return ctx.get(String.class).orElse("deepseek-chat");
+    }
+
+    private String composedSystemPrompt(Context ctx) {
+        String prompt = systemPrompt;
+        String cwd = com.deepseek.dsh.core.context.SessionCwd.get();
+        if (cwd == null || cwd.isEmpty()) cwd = System.getProperty("user.dir");
+        String model = ctx.get(String.class).orElse("deepseek-chat");
+        String osName = System.getProperty("os.name", "unknown");
+        String osArch = System.getProperty("os.arch", "unknown");
+        String shell = osName.toLowerCase().contains("win") ? "powershell" : "bash";
+        String platform = osName + " (" + osArch + "), shell: " + shell;
+        prompt = prompt.replace("{{cwd}}", cwd);
+        prompt = prompt.replace("{{model}}", model);
+        prompt = prompt.replace("{{platform}}", platform);
+        return prompt;
+    }
+
+    public record StepResult(LlmResponse response, List<ChatMessage> messages) {}
+
+    public enum ContinueDecision { CONTINUE, STOP }
+
+    public static class LoopHierarchy {
+        public static final int DEFAULT_MAX_STEPS = 50;
     }
 }

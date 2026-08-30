@@ -5,18 +5,96 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let _deepseek_ai_cordis = require("@deepseek-ai/cordis");
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
+		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
+		//#region lib/types/client/catalog.js
+		/** One Host-generation model catalog shared by every Session selector. */
+		/** Loads at most one model catalog for the current Host generation. */
+		var ModelCatalogDirectory = class {
+			session;
+			/** Current shared catalog value and load lifecycle. */
+			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)({
+				value: null,
+				status: "idle",
+				error: null
+			});
+			generation = 0;
+			inflight;
+			/** @param session - Session Remote namespace carrying the Host-generation catalog. */
+			constructor(session) {
+				this.session = session;
+			}
+			/**
+			* Return the current generation's catalog, sharing its one in-flight load.
+			* @returns the loaded global catalog.
+			*/
+			load() {
+				const state = this.store.getSnapshot();
+				if (state.status === "ready" && state.value !== null) return Promise.resolve(state.value);
+				if (this.inflight !== void 0) return this.inflight;
+				const generation = this.generation;
+				this.store.update((draft) => {
+					draft.status = "loading";
+					draft.error = null;
+				});
+				const operation = this.session.modelCatalog().then((response) => {
+					if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`);
+					if (generation === this.generation) this.store.set({
+						value: response.value,
+						status: "ready",
+						error: null
+					});
+					return response.value;
+				}).catch((error) => {
+					if (generation === this.generation) this.store.update((draft) => {
+						draft.status = "error";
+						draft.error = error instanceof Error ? error.message : String(error);
+					});
+					throw error;
+				}).finally(() => {
+					if (generation === this.generation && this.inflight === operation) this.inflight = void 0;
+				});
+				this.inflight = operation;
+				return operation;
+			}
+			/**
+			* Invalidate the loaded catalog; the next explicit menu read reloads it.
+			* @param clear - whether values from the previous Host generation must be hidden.
+			*/
+			invalidate(clear = false) {
+				this.generation += 1;
+				this.inflight = void 0;
+				const value = clear ? null : this.store.getSnapshot().value;
+				this.store.set({
+					value,
+					status: "idle",
+					error: null
+				});
+			}
+			/** Invalidate and reload the catalog after a Host-side model input changes. */
+			refresh() {
+				this.invalidate();
+				this.load().catch(() => {});
+			}
+			/** Clear Host-specific values and load the replacement Host generation. */
+			resetGeneration() {
+				this.invalidate(true);
+				this.load().catch(() => {});
+			}
+		};
+		//#endregion
 		//#region lib/types/client/directory.js
 		/** One session's shared directory controller; disposed with the session scope. */
 		var ModelDirectory = class {
 			sessions;
 			sessionId;
 			available;
+			catalog;
+			projected;
 			/** The shared snapshot both entries render from (uSES-safe store). */
-			store = (0, _deepseek_ai_dsh_client_runtime_client.createSnapshotStore)({
+			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)({
 				current: null,
 				routable: null,
 				groups: [],
@@ -24,58 +102,47 @@ window.__ModuleLoader__.load({
 				status: "idle",
 				error: null
 			});
-			/** Latest operation wins; an older response never overwrites a newer one. */
+			/** Latest selection operation wins; an older response never overwrites a newer one. */
 			generation = 0;
 			disposed = false;
+			resolved = false;
+			unsubscribeCatalog;
+			unsubscribeSelection;
 			/**
 			* @param sessions - the session wire face (captured from the plugin's root connection).
 			* @param sessionId - the owning session.
 			* @param available - whether this session may use Agent-bound model RPCs.
+			* @param catalog - Host-generation catalog shared by every Session.
+			* @param projected - durable model selection projected from Session history.
 			*/
-			constructor(sessions, sessionId, available) {
+			constructor(sessions, sessionId, available, catalog, projected) {
 				this.sessions = sessions;
 				this.sessionId = sessionId;
 				this.available = available;
+				this.catalog = catalog;
+				this.projected = projected;
+				this.unsubscribeCatalog = catalog.store.subscribe(() => {
+					this.syncInputs();
+				});
+				this.unsubscribeSelection = projected.subscribe(() => {
+					this.syncInputs();
+				});
+				this.syncInputs();
 			}
 			/**
-			* Refresh the advisory directory (both entries call this on open).
-			* Failure preserves the last good groups and current selection.
+			* Ensure the Host generation's shared advisory catalog is loaded.
 			* @returns the fresh directory value.
 			*/
 			async load() {
 				this.assertAvailable();
-				const generation = ++this.generation;
-				this.store.update((s) => {
-					s.status = "loading";
-					s.error = null;
-				});
-				const { result } = await this.sessions.models({ sessionId: this.sessionId });
-				if (this.disposed || generation !== this.generation) {
-					if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
-					return result.value;
-				}
-				if (!result.ok) {
-					this.store.update((s) => {
-						s.status = "error";
-						s.error = `${result.error.code}: ${result.error.message}`;
-					});
-					throw new Error(`session.models failed: ${result.error.code}: ${result.error.message}`);
-				}
-				const { current, routable, groups, failures } = result.value;
-				this.store.update((s) => {
-					s.current = current;
-					s.routable = routable;
-					s.groups = groups;
-					s.failures = failures;
-					s.status = "ready";
-					s.error = null;
-				});
-				return result.value;
+				await this.catalog.load();
+				this.syncInputs();
+				return this.store.getSnapshot();
 			}
 			/**
-			* Select the complete provider/model/reasoning selection (both entries submit through here). Success
-			* updates the shared current; failure surfaces on the store and throws so
-			* each entry's own retry surface engages.
+			* Select the complete provider/model/reasoning selection. The durable
+			* projection frame updates the shared current; failures surface on the store
+			* and throw so each entry's own retry surface engages.
 			* @param selection - provider, provider-owned model id, and optional adapter-owned effort.
 			*/
 			async select(selection) {
@@ -85,7 +152,7 @@ window.__ModuleLoader__.load({
 					s.status = "selecting";
 					s.error = null;
 				});
-				const { result } = await this.sessions.selectModel({
+				const result = await this.sessions.selectModel({
 					sessionId: this.sessionId,
 					provider: selection.provider,
 					model: selection.model,
@@ -103,39 +170,69 @@ window.__ModuleLoader__.load({
 					throw new Error(`session.selectModel failed: ${result.error.code}: ${result.error.message}`);
 				}
 				this.store.update((s) => {
-					s.current = result.value.selected;
-					s.routable = true;
 					s.status = "ready";
 					s.error = null;
 				});
+				this.syncInputs();
 			}
 			/**
-			* Drop the previous Host generation's projection and repull it. Clearing
-			* first prevents an unconsumed process-local selection from being displayed
-			* while the restarted Host has restored the last logged model selection.
+			* Invalidate an in-flight selection response from the previous Host generation.
 			*/
 			resetConnected() {
 				if (this.disposed) return;
 				++this.generation;
-				this.store.update((s) => {
-					s.current = null;
-					s.routable = null;
-					s.groups = [];
-					s.failures = [];
-					s.status = "idle";
-					s.error = null;
+				this.store.update((state) => {
+					if (state.status === "selecting") state.status = "idle";
+					state.error = null;
 				});
-				if (!this.available()) return;
-				this.load().catch(() => {});
+				this.syncInputs();
 			}
 			/** Scope teardown: late settlements lose write access to the store. */
 			dispose() {
 				this.disposed = true;
+				this.unsubscribeSelection();
+				this.unsubscribeCatalog();
 			}
 			assertAvailable() {
 				if (!this.available()) throw new Error("model selection is unavailable for addressed subagent sessions");
 			}
+			syncInputs() {
+				if (this.disposed) return;
+				const catalog = this.catalog.store.getSnapshot();
+				const projected = modelSelectionProjection(this.projected.getSnapshot());
+				if (catalog.status !== "ready" || catalog.value === null || projected === void 0) {
+					if (this.resolved) {
+						if (catalog.status === "error") this.store.update((state) => {
+							state.status = "error";
+							state.error = catalog.error;
+						});
+						return;
+					}
+					this.store.set({
+						current: null,
+						routable: null,
+						groups: [],
+						failures: [],
+						status: catalog.status === "error" ? "error" : "loading",
+						error: catalog.error
+					});
+					return;
+				}
+				const current = projected.next ?? catalog.value.default;
+				this.resolved = true;
+				this.store.set({
+					current,
+					routable: catalog.value.routableProviders.includes(current.provider),
+					groups: catalog.value.groups,
+					failures: catalog.value.failures,
+					status: this.store.getSnapshot().status === "selecting" ? "selecting" : "ready",
+					error: null
+				});
+			}
 		};
+		function modelSelectionProjection(value) {
+			return value === void 0 ? void 0 : value;
+		}
 		//#endregion
 		//#region lib/types/client/service.js
 		/**
@@ -155,11 +252,12 @@ window.__ModuleLoader__.load({
 		/** The `ctx.modelDirectories` session model-selection service. */
 		var ModelDirectoryResolver = class extends _deepseek_ai_cordis.Service {
 			static inject = [
-				"connection",
 				"sessions",
-				"remote"
+				"remote",
+				"remote.session"
 			];
 			live = { directories: /* @__PURE__ */ new Map() };
+			catalog;
 			/** Localized composer-block copy; this plugin owns the string it raises. */
 			blockReason;
 			/**
@@ -169,14 +267,21 @@ window.__ModuleLoader__.load({
 			constructor(ctx, config) {
 				super(ctx, "modelDirectories");
 				this.blockReason = config.blockReason;
+				this.catalog = new ModelCatalogDirectory(ctx.remote.session);
+				this.catalog.load().catch(() => {});
 				ctx.on("connection/reset", () => {
+					this.catalog.resetGeneration();
 					for (const directory of this.live.directories.values()) directory.resetConnected();
 				});
-				const refresh = () => {
-					for (const directory of this.live.directories.values()) directory.load().catch(() => void 0);
-				};
-				ctx.remote.$on("llm/adapters-updated", refresh);
-				ctx.remote.$on("settings/document-updated", refresh);
+				ctx.remote.$on("llm/adapters-updated", () => {
+					this.catalog.refresh();
+				});
+				ctx.remote.$on("settings/document-updated", () => {
+					this.catalog.refresh();
+				});
+				ctx.remote.$on("credentials/reference-updated", () => {
+					this.catalog.refresh();
+				});
 			}
 			/**
 			* Resolve the per-session shared directory (lazy; the scope disposer
@@ -188,10 +293,12 @@ window.__ModuleLoader__.load({
 				const { live } = this;
 				const existing = live.directories.get(sessionId);
 				if (existing !== void 0) return existing;
-				const sessions = this.ctx.get("sessions");
+				const sessions = this.ctx.sessions;
 				const actx = sessions.scope(sessionId);
 				if (actx === void 0) throw new Error(`ui-model-selection: session "${String(sessionId)}" resolved no scope`);
-				const directory = new ModelDirectory(this.ctx.get("connection").api.sessions, sessionId, () => sessions.subagentAddress(sessionId) === void 0);
+				const binding = sessions.binding(sessionId);
+				if (binding === void 0) throw new Error(`ui-model-selection: session "${String(sessionId)}" resolved no binding`);
+				const directory = new ModelDirectory(this.ctx.remote.session, sessionId, () => sessions.subagentAddress(sessionId) === void 0, this.catalog, binding.session.projections.faceOf("modelSelection"));
 				live.directories.set(sessionId, directory);
 				const conversation = this.ctx.get("conversation");
 				if (conversation !== void 0) {
@@ -230,8 +337,8 @@ window.__ModuleLoader__.load({
 			return n;
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-model-selection/src/client/ModelSelect.module.css.mjs
-		const css = ".iMfw3G_root{min-width:0;position:relative}.iMfw3G_trigger{min-width:0;max-width:min(360px,45cqw);height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;border-radius:24px;outline:none;align-items:center;gap:4px;padding:0 4px 0 8px;font-size:13px;font-weight:500;line-height:20px;display:flex}.iMfw3G_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.iMfw3G_trigger:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}.iMfw3G_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.iMfw3G_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.iMfw3G_triggerEffort{color:var(--dsw-alias-label-caption);flex:none}.iMfw3G_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s}.iMfw3G_chevronOpen{transform:rotate(180deg)}.iMfw3G_menu{z-index:20;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:max-content;min-width:min(240px,100vw - 32px);max-width:min(420px,100vw - 32px);max-height:min(360px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);right:0;overflow:hidden}.iMfw3G_status,.iMfw3G_empty{color:var(--dsw-alias-label-tertiary);padding:10px;font-size:13px;line-height:20px}.iMfw3G_error,.iMfw3G_warning{background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);border-radius:8px;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;padding:7px 8px;font-size:12px;line-height:18px;display:flex}.iMfw3G_warning{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-state-warn-label)}.iMfw3G_retry{color:inherit;font:inherit;cursor:pointer;background:0 0;border:none;flex:none;padding:0;font-weight:600}.iMfw3G_groups{min-height:0;overflow-y:auto}.iMfw3G_group+.iMfw3G_group{margin-top:4px}.iMfw3G_groupTitle{z-index:1;background:var(--dsw-specific-menu);color:var(--dsw-alias-label-tertiary);padding:5px 8px 3px;font-size:12px;font-weight:500;line-height:18px;position:sticky;top:0}.iMfw3G_option{box-sizing:border-box;width:auto;min-width:100%;min-height:38px;color:inherit;text-align:left;cursor:pointer;background:0 0;border:none;border-radius:10px;outline:none;align-items:center;gap:8px;padding:6px 8px;display:flex}.iMfw3G_option:hover:not(:disabled),.iMfw3G_option:focus-visible{background:var(--dsw-alias-interactive-bg-hover)}.iMfw3G_selected{background:0 0}.iMfw3G_option:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}.iMfw3G_optionCopy{flex-direction:column;flex:1;min-width:0;display:flex}.iMfw3G_modelName{color:inherit;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;line-height:20px;overflow:hidden}.iMfw3G_description{color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:18px;overflow:hidden}.iMfw3G_check{color:var(--dsw-alias-label-primary);flex:0 0 18px;place-items:center;display:grid}.iMfw3G_cell{box-sizing:border-box;width:auto;min-width:100%;height:40px;color:var(--dsw-alias-label-primary);cursor:pointer;text-align:left;background:0 0;border:none;border-radius:10px;align-items:center;gap:8px;padding:0 10px;font-size:14px;line-height:22px;display:flex}.iMfw3G_cell:hover{background:var(--dsw-alias-interactive-bg-hover)}.iMfw3G_cellLabel{white-space:nowrap;flex:none}.iMfw3G_cellValue{text-overflow:ellipsis;white-space:nowrap;text-align:right;min-width:0;color:var(--dsw-alias-label-tertiary);flex:auto;overflow:hidden}.iMfw3G_cellChevron{color:var(--dsw-alias-label-tertiary);flex:none}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-model-selection/src/client/ModelSelect.module.css.mjs
+		const css = "._5DmXlG_root{min-width:0;position:relative}._5DmXlG_trigger{min-width:0;max-width:min(360px,45cqw);height:28px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:none;border-radius:24px;outline:none;align-items:center;gap:4px;padding:0 4px 0 8px;font-size:13px;font-weight:500;line-height:20px;display:flex}._5DmXlG_trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}._5DmXlG_trigger:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}._5DmXlG_trigger:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}._5DmXlG_triggerLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}._5DmXlG_triggerEffort{color:var(--dsw-alias-label-caption);flex:none}._5DmXlG_chevron{color:var(--dsw-alias-label-caption);flex:none;transition:transform .12s}._5DmXlG_chevronOpen{transform:rotate(180deg)}._5DmXlG_menu{z-index:20;border:1px solid var(--dsw-alias-border-inverted);background:var(--dsw-specific-menu);width:max-content;min-width:min(240px,100vw - 32px);max-width:min(420px,100vw - 32px);max-height:min(360px,100vh - 96px);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border-radius:12px;flex-direction:column;padding:4px;display:flex;position:absolute;bottom:calc(100% + 8px);right:0;overflow:hidden}._5DmXlG_status,._5DmXlG_empty{color:var(--dsw-alias-label-tertiary);padding:10px;font-size:13px;line-height:20px}._5DmXlG_error,._5DmXlG_warning{background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);border-radius:8px;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;padding:7px 8px;font-size:12px;line-height:18px;display:flex}._5DmXlG_warning{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-state-warn-label)}._5DmXlG_retry{color:inherit;font:inherit;cursor:pointer;background:0 0;border:none;flex:none;padding:0;font-weight:600}._5DmXlG_groups{min-height:0;overflow-y:auto}._5DmXlG_group+._5DmXlG_group{margin-top:4px}._5DmXlG_groupTitle{z-index:1;background:var(--dsw-specific-menu);color:var(--dsw-alias-label-tertiary);padding:5px 8px 3px;font-size:12px;font-weight:500;line-height:18px;position:sticky;top:0}._5DmXlG_option{box-sizing:border-box;width:auto;min-width:100%;min-height:38px;color:inherit;text-align:left;cursor:pointer;background:0 0;border:none;border-radius:10px;outline:none;align-items:center;gap:8px;padding:6px 8px;display:flex}._5DmXlG_option:hover:not(:disabled),._5DmXlG_option:focus-visible{background:var(--dsw-alias-interactive-bg-hover)}._5DmXlG_selected{background:0 0}._5DmXlG_option:disabled{color:var(--dsw-alias-label-dimmed);cursor:default}._5DmXlG_optionCopy{flex-direction:column;flex:1;min-width:0;display:flex}._5DmXlG_modelName{color:inherit;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;line-height:20px;overflow:hidden}._5DmXlG_check{color:var(--dsw-alias-label-primary);flex:0 0 18px;place-items:center;display:grid}._5DmXlG_cell{box-sizing:border-box;width:auto;min-width:100%;height:40px;color:var(--dsw-alias-label-primary);cursor:pointer;text-align:left;background:0 0;border:none;border-radius:10px;align-items:center;gap:8px;padding:0 10px;font-size:14px;line-height:22px;display:flex}._5DmXlG_cell:hover{background:var(--dsw-alias-interactive-bg-hover)}._5DmXlG_cellLabel{white-space:nowrap;flex:none}._5DmXlG_cellValue{text-overflow:ellipsis;white-space:nowrap;text-align:right;min-width:0;color:var(--dsw-alias-label-tertiary);flex:auto;overflow:hidden}._5DmXlG_cellChevron{color:var(--dsw-alias-label-tertiary);flex:none}";
 		const tagId = "@deepseek-ai/dsh-client-ui-model-selection/ModelSelect.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -241,31 +348,30 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ModelSelect_module_css_default = {
-			"cell": "iMfw3G_cell",
-			"cellChevron": "iMfw3G_cellChevron",
-			"cellLabel": "iMfw3G_cellLabel",
-			"cellValue": "iMfw3G_cellValue",
-			"check": "iMfw3G_check",
-			"chevron": "iMfw3G_chevron",
-			"chevronOpen": "iMfw3G_chevronOpen",
-			"description": "iMfw3G_description",
-			"empty": "iMfw3G_empty",
-			"error": "iMfw3G_error",
-			"group": "iMfw3G_group",
-			"groupTitle": "iMfw3G_groupTitle",
-			"groups": "iMfw3G_groups",
-			"menu": "iMfw3G_menu",
-			"modelName": "iMfw3G_modelName",
-			"option": "iMfw3G_option",
-			"optionCopy": "iMfw3G_optionCopy",
-			"retry": "iMfw3G_retry",
-			"root": "iMfw3G_root",
-			"selected": "iMfw3G_selected",
-			"status": "iMfw3G_status",
-			"trigger": "iMfw3G_trigger",
-			"triggerEffort": "iMfw3G_triggerEffort",
-			"triggerLabel": "iMfw3G_triggerLabel",
-			"warning": "iMfw3G_warning"
+			"cell": "_5DmXlG_cell",
+			"cellChevron": "_5DmXlG_cellChevron",
+			"cellLabel": "_5DmXlG_cellLabel",
+			"cellValue": "_5DmXlG_cellValue",
+			"check": "_5DmXlG_check",
+			"chevron": "_5DmXlG_chevron",
+			"chevronOpen": "_5DmXlG_chevronOpen",
+			"empty": "_5DmXlG_empty",
+			"error": "_5DmXlG_error",
+			"group": "_5DmXlG_group",
+			"groupTitle": "_5DmXlG_groupTitle",
+			"groups": "_5DmXlG_groups",
+			"menu": "_5DmXlG_menu",
+			"modelName": "_5DmXlG_modelName",
+			"option": "_5DmXlG_option",
+			"optionCopy": "_5DmXlG_optionCopy",
+			"retry": "_5DmXlG_retry",
+			"root": "_5DmXlG_root",
+			"selected": "_5DmXlG_selected",
+			"status": "_5DmXlG_status",
+			"trigger": "_5DmXlG_trigger",
+			"triggerEffort": "_5DmXlG_triggerEffort",
+			"triggerLabel": "_5DmXlG_triggerLabel",
+			"warning": "_5DmXlG_warning"
 		};
 		//#endregion
 		//#region lib/types/client/ModelSelect.js
@@ -319,20 +425,13 @@ window.__ModuleLoader__.load({
 			}] : [], ...reasoning.efforts.map((effort) => ({
 				key: `effort:${effort.id}`,
 				effort: effort.id,
-				label: effort.name,
-				...effort.description === void 0 ? {} : { description: effort.description }
+				label: effort.name
 			}))], [reasoning, t]);
 			const busy = state.status === "selecting";
 			const reload = () => {
 				lastActionRef.current = "load";
 				load();
 			};
-			(0, react.useEffect)(() => {
-				if (available) {
-					lastActionRef.current = "load";
-					load();
-				}
-			}, [available, load]);
 			(0, react.useEffect)(() => {
 				if (!open) return;
 				const closeOutside = (event) => {
@@ -415,9 +514,10 @@ window.__ModuleLoader__.load({
 				lastActionRef.current = "select";
 				select(selection).then(settleSelection);
 			};
-			const modelLabel = currentChoice?.model.name ?? t("trigger.fallback");
+			const waiting = state.current === null && state.status === "loading";
+			const modelLabel = waiting ? t("trigger.loading") : currentChoice?.model.name ?? (state.current === null ? t("trigger.fallback") : `${state.current.provider}/${state.current.model}`);
 			const triggerLabel = effortLabel === void 0 ? modelLabel : `${modelLabel} · ${effortLabel}`;
-			const triggerAria = currentChoice === void 0 ? t("trigger.selectAria") : effortLabel === void 0 ? t("trigger.aria", { model: modelLabel }) : t("trigger.ariaEffort", {
+			const triggerAria = waiting ? t("trigger.loading") : state.current === null ? t("trigger.selectAria") : effortLabel === void 0 ? t("trigger.aria", { model: modelLabel }) : t("trigger.ariaEffort", {
 				model: modelLabel,
 				effort: effortLabel
 			});
@@ -561,15 +661,12 @@ window.__ModuleLoader__.load({
 															model: model.id
 														});
 													},
-													children: [(0, react_jsx_runtime.jsxs)("span", {
+													children: [(0, react_jsx_runtime.jsx)("span", {
 														className: ModelSelect_module_css_default.optionCopy,
-														children: [(0, react_jsx_runtime.jsx)("span", {
+														children: (0, react_jsx_runtime.jsx)("span", {
 															className: ModelSelect_module_css_default.modelName,
 															children: model.name
-														}), model.description !== void 0 && (0, react_jsx_runtime.jsx)("span", {
-															className: ModelSelect_module_css_default.description,
-															children: model.description
-														})]
+														})
 													}), (0, react_jsx_runtime.jsx)("span", {
 														className: ModelSelect_module_css_default.check,
 														children: selected ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutline16, {}) : null
@@ -605,15 +702,12 @@ window.__ModuleLoader__.load({
 								onClick: () => {
 									chooseEffort(level.effort);
 								},
-								children: [(0, react_jsx_runtime.jsxs)("span", {
+								children: [(0, react_jsx_runtime.jsx)("span", {
 									className: ModelSelect_module_css_default.optionCopy,
-									children: [(0, react_jsx_runtime.jsx)("span", {
+									children: (0, react_jsx_runtime.jsx)("span", {
 										className: ModelSelect_module_css_default.modelName,
 										children: level.label
-									}), level.description !== void 0 && (0, react_jsx_runtime.jsx)("span", {
-										className: ModelSelect_module_css_default.description,
-										children: level.description
-									})]
+									})
 								}), (0, react_jsx_runtime.jsx)("span", {
 									className: ModelSelect_module_css_default.check,
 									children: effectiveEffort === level.effort ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCheckOutline16, {}) : null
@@ -637,8 +731,8 @@ window.__ModuleLoader__.load({
 		/**
 		* `model` namespace dictionaries.
 		*
-		* `trigger.selectAria` reads identically to `trigger.fallback` today and is
-		* still a separate key: the visible fallback label and the accessible name of
+		* `trigger.selectAria` intentionally matches `trigger.fallback` but remains a
+		* separate key: the visible fallback label and the accessible name of
 		* an unset trigger are free to diverge per locale, and folding it into
 		* `trigger.aria` would announce the degenerate "Select model, current Select
 		* model".
@@ -648,6 +742,7 @@ window.__ModuleLoader__.load({
 			"command.description": "选择本会话使用的模型",
 			"option.loadError": "目录加载失败：{message}",
 			"trigger.fallback": "选择模型",
+			"trigger.loading": "正在加载模型…",
 			"trigger.selectAria": "选择模型",
 			"trigger.aria": "选择模型，当前 {model}",
 			"trigger.ariaEffort": "选择模型，当前 {model}，推理等级 {effort}",
@@ -668,6 +763,7 @@ window.__ModuleLoader__.load({
 			"command.description": "Select the model for this conversation",
 			"option.loadError": "Catalog failed to load: {message}",
 			"trigger.fallback": "Select model",
+			"trigger.loading": "Loading models…",
 			"trigger.selectAria": "Select model",
 			"trigger.aria": "Select model, current {model}",
 			"trigger.ariaEffort": "Select model, current {model}, reasoning effort {effort}",
@@ -696,7 +792,7 @@ window.__ModuleLoader__.load({
 				id: rowId(group.id, model.id),
 				label: model.name,
 				detail: model.description !== void 0 ? `${group.name} · ${model.description}` : group.name,
-				...directory.current.provider === group.id && directory.current.model === model.id ? { active: true } : {}
+				...directory.current !== null && directory.current.provider === group.id && directory.current.model === model.id ? { active: true } : {}
 			});
 			for (const failure of directory.failures) rows.push({
 				id: `failure/${failure.id}`,
@@ -728,11 +824,11 @@ window.__ModuleLoader__.load({
 		/** Required services: the contribution registry, the seat's slot registry, locale, and the service's own faces. */
 		const inject = [
 			"commandUi",
-			"connection",
 			"locale",
 			"sessions",
 			"slots",
-			"remote"
+			"remote",
+			"remote.session"
 		];
 		/**
 		* Client plugin body: mount ModelDirectoryResolver, register the `model` dictionaries,

@@ -209,7 +209,7 @@ public final class MessageFeedbackService implements Service {
         if (sessions == null) {
             return;
         }
-        if (sessions.get(sessionId).isEmpty()) {
+        if (sessions.getOrCreate(sessionId) == null) {
             throw new FeedbackException(FeedbackException.Code.SESSION_NOT_FOUND,
                     "no persisted session header exists for id: " + sessionId.value());
         }

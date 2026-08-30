@@ -77,7 +77,9 @@ public final class DeepSeekLlmAdapter implements LlmModel {
     /** 当前生效的 API Key：页面配置优先，回退构造值。 */
     private String effectiveApiKey() {
         ModelConfig c = config;
-        return c != null && c.isConfigured() ? c.apiKey() : apiKey;
+        String key = c != null && c.isConfigured() ? c.apiKey() : apiKey;
+        log.debug("effectiveApiKey: configured={}, keyPrefix={}, baseUrl={}", c != null && c.isConfigured(), key.substring(0, Math.min(10, key.length())), effectiveBaseUrl());
+        return key;
     }
 
     /** 当前生效的端点：页面配置优先，回退构造值。 */

@@ -20,7 +20,7 @@ echo "[start-cli] 重新编译后端（mvn clean install）..." >&2
 mvn -q -f "$ROOT/pom.xml" -pl dsh-app -am clean install -DskipTests -Dmaven.test.skip=true
 mvn -q -f "$ROOT/pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="$CP_FILE"
 
-echo "[start-cli] 启动 CLI 交互终端: model=${DSH_MODEL:-deepseek-chat} baseUrl=${DSH_BASE_URL:-https://api.deepseek.com}" >&2
+echo "[start-cli] 启动中..." >&2
 exec java -Dlogback.configurationFile=logback-cli.xml \
   -cp "$ROOT/dsh-app/target/classes:$(cat "$CP_FILE")" \
   com.deepseek.dsh.app.cli.DshRepl

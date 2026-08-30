@@ -20,4 +20,7 @@ public interface SessionStore {
 
     /** 加载某会话的全部历史事件（按序号升序）。 */
     List<SessionEvent> load(SessionId sessionId) throws IOException;
+
+    /** 列出全部已持久化的会话 ID（扫描存储介质）。 */
+    List<SessionId> listAll() throws IOException;
 }

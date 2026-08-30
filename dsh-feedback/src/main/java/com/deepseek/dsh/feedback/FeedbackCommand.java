@@ -3,7 +3,7 @@ package com.deepseek.dsh.feedback;
 import java.util.function.Supplier;
 
 import com.deepseek.dsh.interaction.command.CommandRegistry.CommandHandler;
-import com.deepseek.dsh.session.log.SessionEvent;
+import com.deepseek.dsh.session.log.SessionLog;
 import com.deepseek.dsh.session.log.SessionLog;
 
 /**
@@ -39,7 +39,7 @@ public final class FeedbackCommand {
         if (normalized.isEmpty()) {
             throw new IllegalArgumentException("feedback text must not be empty");
         }
-        session.append(SessionEvent.Type.COMMAND, FeedbackRecord.encode(normalized));
+        session.append(FeedbackRecord.EVENT_TYPE, FeedbackRecord.encode(normalized));
     }
 
     /**

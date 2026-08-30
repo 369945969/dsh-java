@@ -25,7 +25,8 @@ public final class JsonlSessionStore implements SessionStore {
 
     private final ObjectMapper mapper = new ObjectMapper()
             .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
-            .configure(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
+            .configure(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
+            .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private final Path baseDir;
 
     public JsonlSessionStore(Path baseDir) throws IOException {
@@ -52,6 +53,20 @@ public final class JsonlSessionStore implements SessionStore {
             out.add(mapper.readValue(line, SessionEvent.class));
         }
         return out;
+    }
+
+    @Override
+    public List<SessionId> listAll() throws IOException {
+        List<SessionId> ids = new ArrayList<>();
+        try (var stream = Files.list(baseDir)) {
+            for (Path p : (Iterable<Path>) stream::iterator) {
+                String name = p.getFileName().toString();
+                if (name.endsWith(".jsonl")) {
+                    ids.add(SessionId.of(name.substring(0, name.length() - ".jsonl".length())));
+                }
+            }
+        }
+        return ids;
     }
 
     private Path pathFor(SessionId id) {

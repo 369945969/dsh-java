@@ -56,10 +56,16 @@ public final class LlmSessionTitleProvider
     public String generate(SessionLog sessionLog) {
         List<String> userMessages = new ArrayList<>();
         for (SessionEvent e : sessionLog.snapshot()) {
-            if (e.type() == SessionEvent.Type.USER_MESSAGE
-                    && e.payload().text() != null && !e.payload().text().isBlank()) {
-                userMessages.add(e.payload().text().trim());
-                if (!allPrompts) break;
+            if ("user/message".equals(e.type())) {
+                Object content = e.data().get("content");
+                if (content instanceof java.util.List<?> parts && !parts.isEmpty()) {
+                    for (Object part : parts) {
+                        if (part instanceof java.util.Map<?, ?> p && "text".equals(p.get("type")) && p.get("text") instanceof String t && !t.isBlank()) {
+                            userMessages.add(t.trim());
+                            if (!allPrompts) break;
+                        }
+                    }
+                }
             }
         }
         if (userMessages.isEmpty()) return "新会话";

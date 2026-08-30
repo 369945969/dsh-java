@@ -7,8 +7,8 @@ window.__ModuleLoader__.load({
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-plan/src/client/PlanModeControl.module.css.mjs
-		const css = ".Nd_CCG_wrap{align-items:center;gap:6px;display:inline-flex}.Nd_CCG_chip{background:var(--dsw-alias-state-warn-tertiary);min-width:34px;color:var(--dsw-alias-state-warn-label);cursor:pointer;border:none;border-radius:999px;align-items:center;gap:4px;padding:2px 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex}.Nd_CCG_chip:hover:not(:disabled){color:var(--dsw-alias-state-warn-primary)}.Nd_CCG_chip:focus-visible{outline:2px solid var(--dsw-alias-state-warn-label);outline-offset:2px}.Nd_CCG_chip:disabled{opacity:.6;cursor:default}.Nd_CCG_close{color:currentColor;align-items:center;display:inline-flex}.Nd_CCG_error{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-plan/src/client/PlanModeControl.module.css.mjs
+		const css = ".rgxRSa_wrap{align-items:center;gap:6px;display:inline-flex}.rgxRSa_chip{background:var(--dsw-alias-state-warn-tertiary);min-width:34px;color:var(--dsw-alias-state-warn-label);cursor:pointer;border:none;border-radius:999px;align-items:center;gap:4px;padding:2px 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex}.rgxRSa_chip:hover:not(:disabled){color:var(--dsw-alias-state-warn-primary)}.rgxRSa_chip:focus-visible{outline:2px solid var(--dsw-alias-state-warn-label);outline-offset:2px}.rgxRSa_chip:disabled{opacity:.6;cursor:default}.rgxRSa_close{color:currentColor;align-items:center;display:inline-flex}.rgxRSa_error{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px}";
 		const tagId = "@deepseek-ai/dsh-client-ui-plan/PlanModeControl.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -18,10 +18,10 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var PlanModeControl_module_css_default = {
-			"chip": "Nd_CCG_chip",
-			"close": "Nd_CCG_close",
-			"error": "Nd_CCG_error",
-			"wrap": "Nd_CCG_wrap"
+			"chip": "rgxRSa_chip",
+			"close": "rgxRSa_close",
+			"error": "rgxRSa_error",
+			"wrap": "rgxRSa_wrap"
 		};
 		//#endregion
 		//#region lib/types/client/PlanModeControl.js
@@ -65,7 +65,7 @@ window.__ModuleLoader__.load({
 					title: t("chip.on.title"),
 					disabled: locked || leaving,
 					onClick: off,
-					children: ["Plan", (0, react_jsx_runtime.jsx)("span", {
+					children: [t("chip.label"), (0, react_jsx_runtime.jsx)("span", {
 						className: PlanModeControl_module_css_default.close,
 						"aria-hidden": true,
 						children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconCloseFill14, { size: 12 })
@@ -74,7 +74,7 @@ window.__ModuleLoader__.load({
 					className: PlanModeControl_module_css_default.error,
 					role: "status",
 					title: error,
-					children: "failed to exit plan mode"
+					children: t("chip.exitFailed")
 				})]
 			});
 		}
@@ -83,17 +83,21 @@ window.__ModuleLoader__.load({
 		/** `plan` namespace dictionaries (the composer plan chip's copy). */
 		/** Simplified Chinese dictionary (the key-set source of truth). */
 		const zh = {
+			"chip.label": "Plan",
 			"chip.on.aria": "plan mode 已开启，按下关闭",
 			"chip.on.title": "plan mode 已开启 — 点击关闭（/plan off）",
 			"chip.off.aria": "plan mode 已关闭，按下开启",
-			"chip.off.title": "plan mode 已关闭 — 点击开启（/plan）"
+			"chip.off.title": "plan mode 已关闭 — 点击开启（/plan）",
+			"chip.exitFailed": "退出 plan mode 失败"
 		};
 		/** English dictionary, checked complete against the zh key set. */
 		const en = {
+			"chip.label": "Plan",
 			"chip.on.aria": "Plan mode on, press to turn off",
 			"chip.on.title": "Plan mode on — click to turn off (/plan off)",
 			"chip.off.aria": "Plan mode off, press to turn on",
-			"chip.off.title": "Plan mode off — click to turn on (/plan)"
+			"chip.off.title": "Plan mode off — click to turn on (/plan)",
+			"chip.exitFailed": "Failed to exit plan mode"
 		};
 		//#endregion
 		//#region lib/types/client/index.js

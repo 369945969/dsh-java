@@ -53,11 +53,8 @@ echo [start] launching web server: port=%PORT% model=%DSH_MODEL% 1>&2
 
 call :kill_port
 
-rem The classpath may exceed 8KB and the .m2 path contains spaces (user dir "Jack Peng").
-rem java @argfile cannot quote-group backslashed Windows paths, so launch via PowerShell +
-rem ProcessStartInfo: CreateProcess allows ~32KB command line (bypassing cmd's 8191 limit),
-rem and the CRT correctly parses -cp "..." preserving spaces and backslashes.
-powershell -NoProfile -Command "$cp=[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp='%ROOT%\dsh-app\target\classes;'+$cp; $q=[string][char]34; $psi=New-Object Diagnostics.ProcessStartInfo; $psi.FileName='%JAVABIN%'; $psi.Arguments='-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dserver.port=%PORT% -cp '+$q+$cp+$q+' com.deepseek.dsh.app.boot.DshApplication'; $psi.UseShellExecute=$false; $p=[Diagnostics.Process]::Start($psi); $p.WaitForExit(); exit $p.ExitCode"
+rem Launch via PowerShell + ProcessStartInfo, redirect output to capture token URL.
+powershell -NoProfile -Command "$cp=[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp='%ROOT%\dsh-app\target\classes;'+$cp; $q=[string][char]34; $psi=New-Object Diagnostics.ProcessStartInfo; $psi.FileName='%JAVABIN%'; $psi.Arguments='-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dserver.port=%PORT% -cp '+$q+$cp+$q+' com.deepseek.dsh.app.boot.DshApplication'; $psi.UseShellExecute=$false; $psi.RedirectStandardOutput=$true; $psi.RedirectStandardError=$true; $p=[Diagnostics.Process]::Start($psi); $p.ErrorData.Add_DataReceivedHandler({param($s,$e); if($e.Data){[Console]::Error.WriteLine($e.Data); if($e.Data -match 'authentication URL:'){$url=($e.Data -replace '.*authentication URL: ',''); [Console]::Error.WriteLine(''); [Console]::Error.WriteLine('================================================'); [Console]::Error.WriteLine($url); [Console]::Error.WriteLine('================================================'); [Console]::Error.WriteLine('')}}}); $p.OutputData.Add_DataReceivedHandler({param($s,$e); if($e.Data){[Console]::Error.WriteLine($e.Data)}}); $p.BeginErrorReadLine(); $p.BeginOutputReadLine(); $p.WaitForExit(); exit $p.ExitCode"
 exit /b %ERRORLEVEL%
 
 :kill_port

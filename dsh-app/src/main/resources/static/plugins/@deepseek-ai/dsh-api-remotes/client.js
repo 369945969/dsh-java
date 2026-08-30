@@ -1455,6 +1455,20 @@ window.__ModuleLoader__.load({
 				return payload;
 			};
 		});
+		const $ZodVoid = /*@__PURE__*/ $constructor("$ZodVoid", (inst, def) => {
+			$ZodType.init(inst, def);
+			inst._zod.parse = (payload, _ctx) => {
+				const input = payload.value;
+				if (typeof input === "undefined") return payload;
+				payload.issues.push({
+					expected: "void",
+					code: "invalid_type",
+					input,
+					inst
+				});
+				return payload;
+			};
+		});
 		function handleArrayResult(result, final, index) {
 			if (result.issues.length) final.issues.push(...prefixIssues(index, result.issues));
 			final.value[index] = result.value;
@@ -2638,6 +2652,13 @@ window.__ModuleLoader__.load({
 			});
 		}
 		// @__NO_SIDE_EFFECTS__
+		function _void$1(Class, params) {
+			return new Class({
+				type: "void",
+				...normalizeParams(params)
+			});
+		}
+		// @__NO_SIDE_EFFECTS__
 		function _lt(value, params) {
 			return new $ZodCheckLessThan({
 				check: "less_than",
@@ -3177,6 +3198,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		};
 		const undefinedProcessor = (_schema, ctx, _json, _params) => {
 			if (ctx.unrepresentable === "throw") throw new Error("Undefined cannot be represented in JSON Schema");
+		};
+		const voidProcessor = (_schema, ctx, _json, _params) => {
+			if (ctx.unrepresentable === "throw") throw new Error("Void cannot be represented in JSON Schema");
 		};
 		const neverProcessor = (_schema, _ctx, json, _params) => {
 			json.not = {};
@@ -3898,6 +3922,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		function never(params) {
 			return /* @__PURE__ */ _never(ZodNever, params);
 		}
+		const ZodVoid = /*@__PURE__*/ $constructor("ZodVoid", (inst, def) => {
+			$ZodVoid.init(inst, def);
+			ZodType.init(inst, def);
+			inst._zod.processJSONSchema = (ctx, json, params) => voidProcessor(inst, ctx, json, params);
+		});
+		function _void(params) {
+			return /* @__PURE__ */ _void$1(ZodVoid, params);
+		}
 		const ZodArray = /*@__PURE__*/ $constructor("ZodArray", (inst, def) => {
 			$ZodArray.init(inst, def);
 			ZodType.init(inst, def);
@@ -4273,6 +4305,208 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			return /* @__PURE__ */ _superRefine(fn, params);
 		}
 		//#endregion
+		//#region ../../preset/agent-presets/lib/typert.remote-client.js
+		const _deepseek_ai_dsh_agent_presets_agentPresets_copy_parameter_0$schema = string();
+		const _deepseek_ai_dsh_agent_presets_agentPresets_copy_parameter_1$schema = string();
+		const _deepseek_ai_dsh_agent_presets_agentPresets_copy_parameter_2$schema = union([_undefined(), string()]);
+		const _deepseek_ai_dsh_agent_presets_agentPresets_copy_result$schema = _void();
+		const _deepseek_ai_dsh_agent_presets_agentPresets_deletePreset_parameter_0$schema = string();
+		const _deepseek_ai_dsh_agent_presets_agentPresets_deletePreset_result$schema = _void();
+		const _deepseek_ai_dsh_agent_presets_agentPresets_list_result$schema = object({
+			"presets": array(object({
+				"id": string().readonly(),
+				"trust": union([literal("system"), literal("user")]).readonly(),
+				"isDefault": boolean().readonly(),
+				"name": string().readonly().optional(),
+				"description": string().readonly().optional(),
+				"broken": string().readonly().optional()
+			})).readonly(),
+			"authorable": boolean().readonly()
+		});
+		const _deepseek_ai_dsh_agent_presets_agentPresets_read_parameter_0$schema = string();
+		const _deepseek_ai_dsh_agent_presets_agentPresets_read_result$schema = object({
+			"agentPreset": string().readonly(),
+			"trust": union([literal("system"), literal("user")]).readonly(),
+			"content": string().readonly(),
+			"name": string().readonly().optional(),
+			"description": string().readonly().optional()
+		});
+		const _deepseek_ai_dsh_agent_presets_agentPresets_select_parameter_0$schema = intersection(string(), unknown());
+		const _deepseek_ai_dsh_agent_presets_agentPresets_select_parameter_1$schema = string();
+		const _deepseek_ai_dsh_agent_presets_agentPresets_select_result$schema = string();
+		const TYPERT_REMOTE$11 = {
+			package: "@deepseek-ai/dsh-agent-presets",
+			descriptors: [
+				{
+					id: "@deepseek-ai/dsh-agent-presets#agentPresets/copy",
+					service: "agentPresets",
+					namespace: "agentPresets",
+					method: "copy",
+					implementation: "remoteExportCopy",
+					invocation: { kind: "direct" },
+					parameters: [
+						{
+							name: "from",
+							wire: "from",
+							source: "json",
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-agent-presets#agentPresets/copy:from",
+								schema: _deepseek_ai_dsh_agent_presets_agentPresets_copy_parameter_0$schema
+							}
+						},
+						{
+							name: "id",
+							wire: "id",
+							source: "json",
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-agent-presets#agentPresets/copy:id",
+								schema: _deepseek_ai_dsh_agent_presets_agentPresets_copy_parameter_1$schema
+							}
+						},
+						{
+							name: "name",
+							wire: "name",
+							source: "json",
+							acceptsUndefined: true,
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-agent-presets#agentPresets/copy:name",
+								schema: _deepseek_ai_dsh_agent_presets_agentPresets_copy_parameter_2$schema
+							}
+						}
+					],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-agent-presets#agentPresets/copy:result",
+						schema: _deepseek_ai_dsh_agent_presets_agentPresets_copy_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/preset/agent-presets/src/index.ts",
+						"line": 560,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-agent-presets#agentPresets/deletePreset",
+					service: "agentPresets",
+					namespace: "agentPresets",
+					method: "deletePreset",
+					implementation: "remoteExportDelete",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "id",
+						wire: "id",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-agent-presets#agentPresets/deletePreset:id",
+							schema: _deepseek_ai_dsh_agent_presets_agentPresets_deletePreset_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-agent-presets#agentPresets/deletePreset:result",
+						schema: _deepseek_ai_dsh_agent_presets_agentPresets_deletePreset_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/preset/agent-presets/src/index.ts",
+						"line": 602,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-agent-presets#agentPresets/list",
+					service: "agentPresets",
+					namespace: "agentPresets",
+					method: "list",
+					implementation: "remoteExportList",
+					invocation: { kind: "direct" },
+					parameters: [],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-agent-presets/types#AgentPresetRoster",
+						schema: _deepseek_ai_dsh_agent_presets_agentPresets_list_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/preset/agent-presets/src/index.ts",
+						"line": 318,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-agent-presets#agentPresets/read",
+					service: "agentPresets",
+					namespace: "agentPresets",
+					method: "read",
+					implementation: "readDocument",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "agentPreset",
+						wire: "agentPreset",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-agent-presets#agentPresets/read:agentPreset",
+							schema: _deepseek_ai_dsh_agent_presets_agentPresets_read_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-agent-presets/types#AgentPresetDocument",
+						schema: _deepseek_ai_dsh_agent_presets_agentPresets_read_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/preset/agent-presets/src/index.ts",
+						"line": 504,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-agent-presets#agentPresets/select",
+					service: "agentPresets",
+					namespace: "agentPresets",
+					method: "select",
+					invocation: { kind: "direct" },
+					scope: {
+						context: "agent",
+						wire: "agentId"
+					},
+					parameters: [{
+						name: "agent",
+						wire: "agentId",
+						source: "lookup",
+						lookup: "agent",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+							schema: _deepseek_ai_dsh_agent_presets_agentPresets_select_parameter_0$schema
+						}
+					}, {
+						name: "agentPreset",
+						wire: "agentPreset",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-agent-presets#agentPresets/select:agentPreset",
+							schema: _deepseek_ai_dsh_agent_presets_agentPresets_select_parameter_1$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-agent-presets#agentPresets/select:result",
+						schema: _deepseek_ai_dsh_agent_presets_agentPresets_select_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/preset/agent-presets/src/index.ts",
+						"line": 698,
+						"column": 9
+					}
+				}
+			]
+		};
+		//#endregion
 		//#region ../../interaction/commands/lib/typert.remote-client.js
 		const _deepseek_ai_dsh_commands_commands_execute_parameter_0$schema = intersection(string(), unknown());
 		const _deepseek_ai_dsh_commands_commands_execute_parameter_1$schema = string();
@@ -4306,7 +4540,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				"images": boolean().readonly().optional()
 			}).readonly().optional()
 		}));
-		const TYPERT_REMOTE$6 = {
+		const TYPERT_REMOTE$10 = {
 			package: "@deepseek-ai/dsh-commands",
 			descriptors: [{
 				id: "@deepseek-ai/dsh-commands#commands/execute",
@@ -4359,7 +4593,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				},
 				sourceLocation: {
 					"file": "packages/interaction/commands/src/index.ts",
-					"line": 329,
+					"line": 330,
 					"column": 9
 				}
 			}, {
@@ -4390,10 +4624,645 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				},
 				sourceLocation: {
 					"file": "packages/interaction/commands/src/index.ts",
-					"line": 285,
+					"line": 286,
 					"column": 3
 				}
 			}]
+		};
+		//#endregion
+		//#region ../settings-controller/lib/typert.remote-client.js
+		const JsonValueRemoteCodec$schema$2 = union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema$2)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema$2))
+		]);
+		const JsonValueRemoteCodec$schema2$2 = union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema2$2)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema2$2))
+		]);
+		const JsonValueRemoteCodec$schema3$2 = union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema3$2)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema3$2))
+		]);
+		const JsonValueRemoteCodec$schema4$2 = union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema4$2)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema4$2))
+		]);
+		const JsonValueRemoteCodec$schema5 = union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema5)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema5))
+		]);
+		const JsonValueRemoteCodec$schema6 = union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema6)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema6))
+		]);
+		const JsonValueRemoteCodec$schema7 = union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema7)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema7))
+		]);
+		const _deepseek_ai_dsh_api_settings_controller_credentials_describe_parameter_0$schema = array(string());
+		const _deepseek_ai_dsh_api_settings_controller_credentials_describe_result$schema = record(string(), object({
+			"configured": boolean(),
+			"source": string().optional(),
+			"writable": boolean()
+		}));
+		const _deepseek_ai_dsh_api_settings_controller_credentials_set_parameter_0$schema = string();
+		const _deepseek_ai_dsh_api_settings_controller_credentials_set_parameter_1$schema = string();
+		const _deepseek_ai_dsh_api_settings_controller_credentials_set_result$schema = _void();
+		const _deepseek_ai_dsh_api_settings_controller_credentials_unset_parameter_0$schema = string();
+		const _deepseek_ai_dsh_api_settings_controller_credentials_unset_result$schema = _void();
+		const _deepseek_ai_dsh_api_settings_controller_settings_canOpenAgentPresetDirectory_result$schema = boolean();
+		const _deepseek_ai_dsh_api_settings_controller_settings_describe_result$schema = object({
+			"writable": boolean(),
+			"hasDocument": boolean(),
+			"namespaces": array(object({
+				"ns": string(),
+				"schema": union([
+					literal(null),
+					string(),
+					number(),
+					literal(false),
+					literal(true),
+					array(lazy(() => JsonValueRemoteCodec$schema$2)),
+					record(string(), lazy(() => JsonValueRemoteCodec$schema$2))
+				]),
+				"value": union([
+					literal(null),
+					string(),
+					number(),
+					literal(false),
+					literal(true),
+					array(lazy(() => JsonValueRemoteCodec$schema$2)),
+					record(string(), lazy(() => JsonValueRemoteCodec$schema$2))
+				]),
+				"base": union([
+					literal(null),
+					string(),
+					number(),
+					literal(false),
+					literal(true),
+					array(lazy(() => JsonValueRemoteCodec$schema$2)),
+					record(string(), lazy(() => JsonValueRemoteCodec$schema$2))
+				]).optional(),
+				"user": union([
+					literal(null),
+					string(),
+					number(),
+					literal(false),
+					literal(true),
+					array(lazy(() => JsonValueRemoteCodec$schema$2)),
+					record(string(), lazy(() => JsonValueRemoteCodec$schema$2))
+				]).optional(),
+				"applies": union([literal("live"), literal("restart")]),
+				"secrets": array(object({
+					"path": array(string()),
+					"set": boolean()
+				})),
+				"revision": number()
+			}))
+		});
+		const _deepseek_ai_dsh_api_settings_controller_settings_mutate_parameter_0$schema = string();
+		const _deepseek_ai_dsh_api_settings_controller_settings_mutate_parameter_1$schema = array(union([object({
+			"op": literal("set"),
+			"path": array(string()),
+			"value": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema6)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema6))
+			])
+		}), object({
+			"op": literal("unset"),
+			"path": array(string())
+		})]));
+		const _deepseek_ai_dsh_api_settings_controller_settings_mutate_parameter_2$schema = union([_undefined(), number()]);
+		const _deepseek_ai_dsh_api_settings_controller_settings_mutate_result$schema = object({
+			"ns": string(),
+			"schema": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema7)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema7))
+			]),
+			"value": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema7)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema7))
+			]),
+			"base": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema7)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema7))
+			]).optional(),
+			"user": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema7)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema7))
+			]).optional(),
+			"applies": union([literal("live"), literal("restart")]),
+			"secrets": array(object({
+				"path": array(string()),
+				"set": boolean()
+			})),
+			"revision": number()
+		});
+		const _deepseek_ai_dsh_api_settings_controller_settings_openAgentPresetDirectory_parameter_0$schema = string();
+		const _deepseek_ai_dsh_api_settings_controller_settings_openAgentPresetDirectory_result$schema = union([object({ "opened": literal(true).readonly() }), object({
+			"opened": literal(false).readonly(),
+			"path": string().readonly()
+		})]);
+		const _deepseek_ai_dsh_api_settings_controller_settings_openSettingsDocument_result$schema = object({ "opened": literal(true).readonly() });
+		const _deepseek_ai_dsh_api_settings_controller_settings_replace_parameter_0$schema = string();
+		const _deepseek_ai_dsh_api_settings_controller_settings_replace_parameter_1$schema = record(string(), union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema4$2)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema4$2))
+		]));
+		const _deepseek_ai_dsh_api_settings_controller_settings_replace_parameter_2$schema = union([_undefined(), number()]);
+		const _deepseek_ai_dsh_api_settings_controller_settings_replace_result$schema = object({
+			"ns": string(),
+			"schema": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema5)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema5))
+			]),
+			"value": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema5)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema5))
+			]),
+			"base": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema5)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema5))
+			]).optional(),
+			"user": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema5)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema5))
+			]).optional(),
+			"applies": union([literal("live"), literal("restart")]),
+			"secrets": array(object({
+				"path": array(string()),
+				"set": boolean()
+			})),
+			"revision": number()
+		});
+		const _deepseek_ai_dsh_api_settings_controller_settings_update_parameter_0$schema = string();
+		const _deepseek_ai_dsh_api_settings_controller_settings_update_parameter_1$schema = record(string(), union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema2$2)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema2$2))
+		]));
+		const _deepseek_ai_dsh_api_settings_controller_settings_update_parameter_2$schema = union([_undefined(), number()]);
+		const _deepseek_ai_dsh_api_settings_controller_settings_update_result$schema = object({
+			"ns": string(),
+			"schema": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema3$2)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema3$2))
+			]),
+			"value": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema3$2)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema3$2))
+			]),
+			"base": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema3$2)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema3$2))
+			]).optional(),
+			"user": union([
+				literal(null),
+				string(),
+				number(),
+				literal(false),
+				literal(true),
+				array(lazy(() => JsonValueRemoteCodec$schema3$2)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema3$2))
+			]).optional(),
+			"applies": union([literal("live"), literal("restart")]),
+			"secrets": array(object({
+				"path": array(string()),
+				"set": boolean()
+			})),
+			"revision": number()
+		});
+		const TYPERT_REMOTE$9 = {
+			package: "@deepseek-ai/dsh-api-settings-controller",
+			descriptors: [
+				{
+					id: "@deepseek-ai/dsh-api-settings-controller#credentials/describe",
+					service: "credentialsController",
+					namespace: "credentials",
+					method: "describe",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "refs",
+						wire: "refs",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-settings-controller#credentials/describe:refs",
+							schema: _deepseek_ai_dsh_api_settings_controller_credentials_describe_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-settings-controller#credentials/describe:result",
+						schema: _deepseek_ai_dsh_api_settings_controller_credentials_describe_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/settings-controller/src/credentials.ts",
+						"line": 86,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-settings-controller#credentials/set",
+					service: "credentialsController",
+					namespace: "credentials",
+					method: "set",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "ref",
+						wire: "ref",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-settings-controller#credentials/set:ref",
+							schema: _deepseek_ai_dsh_api_settings_controller_credentials_set_parameter_0$schema
+						}
+					}, {
+						name: "value",
+						wire: "value",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-settings-controller#credentials/set:value",
+							schema: _deepseek_ai_dsh_api_settings_controller_credentials_set_parameter_1$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-settings-controller#credentials/set:result",
+						schema: _deepseek_ai_dsh_api_settings_controller_credentials_set_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/settings-controller/src/credentials.ts",
+						"line": 103,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-settings-controller#credentials/unset",
+					service: "credentialsController",
+					namespace: "credentials",
+					method: "unset",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "ref",
+						wire: "ref",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-settings-controller#credentials/unset:ref",
+							schema: _deepseek_ai_dsh_api_settings_controller_credentials_unset_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-settings-controller#credentials/unset:result",
+						schema: _deepseek_ai_dsh_api_settings_controller_credentials_unset_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/settings-controller/src/credentials.ts",
+						"line": 116,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-settings-controller#settings/canOpenAgentPresetDirectory",
+					service: "settingsController",
+					namespace: "settings",
+					method: "canOpenAgentPresetDirectory",
+					invocation: { kind: "direct" },
+					parameters: [],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-settings-controller#settings/canOpenAgentPresetDirectory:result",
+						schema: _deepseek_ai_dsh_api_settings_controller_settings_canOpenAgentPresetDirectory_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/settings-controller/src/index.ts",
+						"line": 136,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-settings-controller#settings/describe",
+					service: "settingsController",
+					namespace: "settings",
+					method: "describe",
+					invocation: { kind: "direct" },
+					parameters: [],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-settings/types#SettingsDescribeValue",
+						schema: _deepseek_ai_dsh_api_settings_controller_settings_describe_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/settings-controller/src/index.ts",
+						"line": 122,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-settings-controller#settings/mutate",
+					service: "settingsController",
+					namespace: "settings",
+					method: "mutate",
+					invocation: { kind: "direct" },
+					parameters: [
+						{
+							name: "ns",
+							wire: "ns",
+							source: "json",
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-api-settings-controller#settings/mutate:ns",
+								schema: _deepseek_ai_dsh_api_settings_controller_settings_mutate_parameter_0$schema
+							}
+						},
+						{
+							name: "ops",
+							wire: "ops",
+							source: "json",
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-api-settings-controller#settings/mutate:ops",
+								schema: _deepseek_ai_dsh_api_settings_controller_settings_mutate_parameter_1$schema
+							}
+						},
+						{
+							name: "expectedRevision",
+							wire: "expectedRevision",
+							source: "json",
+							acceptsUndefined: true,
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-api-settings-controller#settings/mutate:expectedRevision",
+								schema: _deepseek_ai_dsh_api_settings_controller_settings_mutate_parameter_2$schema
+							}
+						}
+					],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-settings/types#SettingsNamespaceView",
+						schema: _deepseek_ai_dsh_api_settings_controller_settings_mutate_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/settings-controller/src/index.ts",
+						"line": 185,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-settings-controller#settings/openAgentPresetDirectory",
+					service: "settingsController",
+					namespace: "settings",
+					method: "openAgentPresetDirectory",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "agentPreset",
+						wire: "agentPreset",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-settings-controller#settings/openAgentPresetDirectory:agentPreset",
+							schema: _deepseek_ai_dsh_api_settings_controller_settings_openAgentPresetDirectory_parameter_0$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-settings-controller/types#AgentPresetDirectoryOpenValue",
+						schema: _deepseek_ai_dsh_api_settings_controller_settings_openAgentPresetDirectory_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/settings-controller/src/index.ts",
+						"line": 231,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-settings-controller#settings/openSettingsDocument",
+					service: "settingsController",
+					namespace: "settings",
+					method: "openSettingsDocument",
+					invocation: { kind: "direct" },
+					parameters: [],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-settings-controller/types#SettingsDocumentOpenValue",
+						schema: _deepseek_ai_dsh_api_settings_controller_settings_openSettingsDocument_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/settings-controller/src/index.ts",
+						"line": 200,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-settings-controller#settings/replace",
+					service: "settingsController",
+					namespace: "settings",
+					method: "replace",
+					invocation: { kind: "direct" },
+					parameters: [
+						{
+							name: "ns",
+							wire: "ns",
+							source: "json",
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-api-settings-controller#settings/replace:ns",
+								schema: _deepseek_ai_dsh_api_settings_controller_settings_replace_parameter_0$schema
+							}
+						},
+						{
+							name: "section",
+							wire: "section",
+							source: "json",
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-api-settings-controller#settings/replace:section",
+								schema: _deepseek_ai_dsh_api_settings_controller_settings_replace_parameter_1$schema
+							}
+						},
+						{
+							name: "expectedRevision",
+							wire: "expectedRevision",
+							source: "json",
+							acceptsUndefined: true,
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-api-settings-controller#settings/replace:expectedRevision",
+								schema: _deepseek_ai_dsh_api_settings_controller_settings_replace_parameter_2$schema
+							}
+						}
+					],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-settings/types#SettingsNamespaceView",
+						schema: _deepseek_ai_dsh_api_settings_controller_settings_replace_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/settings-controller/src/index.ts",
+						"line": 166,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-settings-controller#settings/update",
+					service: "settingsController",
+					namespace: "settings",
+					method: "update",
+					invocation: { kind: "direct" },
+					parameters: [
+						{
+							name: "ns",
+							wire: "ns",
+							source: "json",
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-api-settings-controller#settings/update:ns",
+								schema: _deepseek_ai_dsh_api_settings_controller_settings_update_parameter_0$schema
+							}
+						},
+						{
+							name: "patch",
+							wire: "patch",
+							source: "json",
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-api-settings-controller#settings/update:patch",
+								schema: _deepseek_ai_dsh_api_settings_controller_settings_update_parameter_1$schema
+							}
+						},
+						{
+							name: "expectedRevision",
+							wire: "expectedRevision",
+							source: "json",
+							acceptsUndefined: true,
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-api-settings-controller#settings/update:expectedRevision",
+								schema: _deepseek_ai_dsh_api_settings_controller_settings_update_parameter_2$schema
+							}
+						}
+					],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-settings/types#SettingsNamespaceView",
+						schema: _deepseek_ai_dsh_api_settings_controller_settings_update_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/settings-controller/src/index.ts",
+						"line": 149,
+						"column": 3
+					}
+				}
+			]
 		};
 		//#endregion
 		//#region ../../goal/goal/lib/typert.remote-client.js
@@ -4519,7 +5388,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"id": intersection(string(), unknown()).readonly(),
 			"revision": number().readonly()
 		});
-		const TYPERT_REMOTE$5 = {
+		const TYPERT_REMOTE$8 = {
 			package: "@deepseek-ai/dsh-goal",
 			descriptors: [
 				{
@@ -4785,42 +5654,147 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			]
 		};
 		//#endregion
+		//#region ../../llm/llm/lib/typert.remote-client.js
+		const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0$schema = string();
+		const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema = object({
+			"provider": string().optional(),
+			"baseURL": string().optional(),
+			"api": string().optional(),
+			"apiKey": string().optional()
+		});
+		const _deepseek_ai_dsh_llm_llm_discoverModels_result$schema = array(object({
+			"id": string(),
+			"name": string().optional(),
+			"contextWindow": number().optional(),
+			"maxTokens": number().optional()
+		}));
+		const _deepseek_ai_dsh_llm_llm_listConfigurableProviders_result$schema = array(object({
+			"provider": string(),
+			"displayName": string(),
+			"settingsNs": string(),
+			"settingsPath": array(string()),
+			"declared": boolean().optional()
+		}));
+		const _deepseek_ai_dsh_llm_llm_listProviders_result$schema = array(object({
+			"id": string(),
+			"name": string()
+		}));
+		const TYPERT_REMOTE$7 = {
+			package: "@deepseek-ai/dsh-llm",
+			descriptors: [
+				{
+					id: "@deepseek-ai/dsh-llm#llm/discoverModels",
+					service: "llm",
+					namespace: "llm",
+					method: "discoverModels",
+					implementation: "remoteDiscoverModels",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "settingsNs",
+						wire: "settingsNs",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-llm#llm/discoverModels:settingsNs",
+							schema: _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0$schema
+						}
+					}, {
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-llm/types#LlmModelDiscoveryRequest",
+							schema: _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-llm#llm/discoverModels:result",
+						schema: _deepseek_ai_dsh_llm_llm_discoverModels_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/llm/llm/src/index.ts",
+						"line": 621,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-llm#llm/listConfigurableProviders",
+					service: "llm",
+					namespace: "llm",
+					method: "listConfigurableProviders",
+					invocation: { kind: "direct" },
+					parameters: [],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-llm#llm/listConfigurableProviders:result",
+						schema: _deepseek_ai_dsh_llm_llm_listConfigurableProviders_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/llm/llm/src/index.ts",
+						"line": 534,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-llm#llm/listProviders",
+					service: "llm",
+					namespace: "llm",
+					method: "listProviders",
+					invocation: { kind: "direct" },
+					parameters: [],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-llm#llm/listProviders:result",
+						schema: _deepseek_ai_dsh_llm_llm_listProviders_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/llm/llm/src/index.ts",
+						"line": 462,
+						"column": 3
+					}
+				}
+			]
+		};
+		//#endregion
 		//#region ../../extensions/cordis-host-runner/lib/typert.remote-client.js
-		const JsonValueRemoteCodec$schema = union([
+		const JsonValueRemoteCodec$schema$1 = union([
 			literal(null),
 			string(),
 			number(),
 			literal(false),
 			literal(true),
-			array(lazy(() => JsonValueRemoteCodec$schema)),
-			record(string(), lazy(() => JsonValueRemoteCodec$schema))
+			array(lazy(() => JsonValueRemoteCodec$schema$1)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema$1))
 		]);
-		const JsonValueRemoteCodec$schema2 = union([
+		const JsonValueRemoteCodec$schema2$1 = union([
 			literal(null),
 			string(),
 			number(),
 			literal(false),
 			literal(true),
-			array(lazy(() => JsonValueRemoteCodec$schema2)),
-			record(string(), lazy(() => JsonValueRemoteCodec$schema2))
+			array(lazy(() => JsonValueRemoteCodec$schema2$1)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema2$1))
 		]);
-		const JsonValueRemoteCodec$schema3 = union([
+		const JsonValueRemoteCodec$schema3$1 = union([
 			literal(null),
 			string(),
 			number(),
 			literal(false),
 			literal(true),
-			array(lazy(() => JsonValueRemoteCodec$schema3)),
-			record(string(), lazy(() => JsonValueRemoteCodec$schema3))
+			array(lazy(() => JsonValueRemoteCodec$schema3$1)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema3$1))
 		]);
-		const JsonValueRemoteCodec$schema4 = union([
+		const JsonValueRemoteCodec$schema4$1 = union([
 			literal(null),
 			string(),
 			number(),
 			literal(false),
 			literal(true),
-			array(lazy(() => JsonValueRemoteCodec$schema4)),
-			record(string(), lazy(() => JsonValueRemoteCodec$schema4))
+			array(lazy(() => JsonValueRemoteCodec$schema4$1)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema4$1))
 		]);
 		const _deepseek_ai_dsh_cordis_host_runner_dynamicCordisRunner_getClientCode_parameter_0$schema = intersection(string(), unknown());
 		const _deepseek_ai_dsh_cordis_host_runner_dynamicCordisRunner_getClientCode_parameter_1$schema = intersection(string(), unknown());
@@ -4853,38 +5827,38 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				"packageId": intersection(string(), unknown()),
 				"mode": union([literal("run"), literal("update")]),
 				"status": union([
+					literal("running"),
+					literal("failed"),
 					literal("rejected"),
 					literal("awaiting-approval"),
-					literal("running"),
 					literal("cancelled"),
 					literal("starting-host"),
 					literal("client-pending"),
 					literal("waiting"),
-					literal("failed"),
 					literal("stopped")
 				]),
 				"approvalRequestId": intersection(string(), unknown()).optional(),
 				"requiresApproval": boolean().optional(),
 				"host": object({
 					"status": union([
+						literal("pending"),
 						literal("running"),
-						literal("waiting"),
 						literal("failed"),
+						literal("waiting"),
 						literal("stopped"),
-						literal("absent"),
-						literal("pending")
+						literal("absent")
 					]),
 					"waitingFor": array(string()),
 					"error": string().optional()
 				}),
 				"client": object({
 					"status": union([
+						literal("pending"),
 						literal("running"),
-						literal("waiting"),
 						literal("failed"),
+						literal("waiting"),
 						literal("stopped"),
-						literal("absent"),
-						literal("pending")
+						literal("absent")
 					]),
 					"waitingFor": array(string()),
 					"error": string().optional()
@@ -4915,8 +5889,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			number(),
 			literal(false),
 			literal(true),
-			array(lazy(() => JsonValueRemoteCodec$schema3)),
-			record(string(), lazy(() => JsonValueRemoteCodec$schema3))
+			array(lazy(() => JsonValueRemoteCodec$schema3$1)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema3$1))
 		]);
 		const _deepseek_ai_dsh_cordis_host_runner_dynamicCordisRunner_invoke_result$schema = union([object({
 			"ok": literal(true),
@@ -4926,8 +5900,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				number(),
 				literal(false),
 				literal(true),
-				array(lazy(() => JsonValueRemoteCodec$schema4)),
-				record(string(), lazy(() => JsonValueRemoteCodec$schema4))
+				array(lazy(() => JsonValueRemoteCodec$schema4$1)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema4$1))
 			])
 		}), intersection(object({
 			"ok": literal(false),
@@ -4969,8 +5943,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				number(),
 				literal(false),
 				literal(true),
-				array(lazy(() => JsonValueRemoteCodec$schema2)),
-				record(string(), lazy(() => JsonValueRemoteCodec$schema2))
+				array(lazy(() => JsonValueRemoteCodec$schema2$1)),
+				record(string(), lazy(() => JsonValueRemoteCodec$schema2$1))
 			])
 		}), object({
 			"ok": literal(false),
@@ -5040,9 +6014,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		const _deepseek_ai_dsh_cordis_host_runner_dynamicCordisRunner_settleUserRun_result$schema = union([object({
 			"ok": literal(true),
 			"status": union([
+				literal("running"),
 				literal("awaiting-approval"),
-				literal("starting"),
-				literal("running")
+				literal("starting")
 			]),
 			"pluginId": intersection(string(), unknown()),
 			"packageId": intersection(string(), unknown()),
@@ -5087,8 +6061,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					number(),
 					literal(false),
 					literal(true),
-					array(lazy(() => JsonValueRemoteCodec$schema)),
-					record(string(), lazy(() => JsonValueRemoteCodec$schema))
+					array(lazy(() => JsonValueRemoteCodec$schema$1)),
+					record(string(), lazy(() => JsonValueRemoteCodec$schema$1))
 				]),
 				"outputSchema": union([
 					literal(null),
@@ -5096,8 +6070,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					number(),
 					literal(false),
 					literal(true),
-					array(lazy(() => JsonValueRemoteCodec$schema)),
-					record(string(), lazy(() => JsonValueRemoteCodec$schema))
+					array(lazy(() => JsonValueRemoteCodec$schema$1)),
+					record(string(), lazy(() => JsonValueRemoteCodec$schema$1))
 				])
 			}))
 		}));
@@ -5112,7 +6086,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"reason": literal("plugin-missing"),
 			"message": string()
 		})]);
-		const TYPERT_REMOTE$4 = {
+		const TYPERT_REMOTE$6 = {
 			package: "@deepseek-ai/dsh-cordis-host-runner",
 			descriptors: [
 				{
@@ -5713,61 +6687,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				}
 			]
 		};
-		//#endregion
-		//#region ../../context/file-reference/lib/typert.remote-client.js
-		const _deepseek_ai_dsh_file_reference_fileReferences_list_parameter_0$schema = intersection(string(), unknown());
-		const _deepseek_ai_dsh_file_reference_fileReferences_list_parameter_1$schema = string();
-		const _deepseek_ai_dsh_file_reference_fileReferences_list_result$schema = array(object({
-			"path": string(),
-			"kind": union([literal("file"), literal("directory")])
-		}));
-		const TYPERT_REMOTE$3 = {
-			package: "@deepseek-ai/dsh-file-reference",
-			descriptors: [{
-				id: "@deepseek-ai/dsh-file-reference#fileReferences/list",
-				service: "fileReferences",
-				namespace: "fileReferences",
-				method: "list",
-				implementation: "remoteExportList",
-				invocation: { kind: "direct" },
-				scope: {
-					context: "agent",
-					wire: "agentId"
-				},
-				parameters: [{
-					name: "agent",
-					wire: "agentId",
-					source: "lookup",
-					lookup: "agent",
-					codec: {
-						mode: "strict",
-						typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
-						schema: _deepseek_ai_dsh_file_reference_fileReferences_list_parameter_0$schema
-					}
-				}, {
-					name: "query",
-					wire: "query",
-					source: "json",
-					codec: {
-						mode: "strict",
-						typeSymbol: "@deepseek-ai/dsh-file-reference#fileReferences/list:query",
-						schema: _deepseek_ai_dsh_file_reference_fileReferences_list_parameter_1$schema
-					}
-				}],
-				cancellation: { parameter: "signal" },
-				result: {
-					mode: "strict",
-					typeSymbol: "@deepseek-ai/dsh-file-reference#fileReferences/list:result",
-					schema: _deepseek_ai_dsh_file_reference_fileReferences_list_result$schema
-				},
-				sourceLocation: {
-					"file": "packages/context/file-reference/src/index.ts",
-					"line": 54,
-					"column": 3
-				}
-			}]
-		};
-		const TYPERT_REMOTE$2 = {
+		const TYPERT_REMOTE$5 = {
 			package: "@deepseek-ai/dsh-host-plugin-inventory",
 			descriptors: [{
 				id: "@deepseek-ai/dsh-host-plugin-inventory#pluginInventory/list",
@@ -5785,9 +6705,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						"enabled": boolean().readonly(),
 						"fiberPhase": union([
 							literal(null),
-							literal("failed"),
 							literal("pending"),
 							literal("active"),
+							literal("failed"),
 							literal("loading"),
 							literal("unloading")
 						]).readonly()
@@ -5893,7 +6813,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				})
 			]).readonly()
 		})]);
-		const TYPERT_REMOTE$1 = {
+		const TYPERT_REMOTE$4 = {
 			package: "@deepseek-ai/dsh-message-feedback",
 			descriptors: [
 				{
@@ -5988,9 +6908,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"sessionId": intersection(string(), unknown()),
 			"label": string(),
 			"cwd": string().optional(),
+			"sameWorkspace": boolean(),
 			"createdAt": number()
 		}));
-		const TYPERT_REMOTE = {
+		const TYPERT_REMOTE$3 = {
 			package: "@deepseek-ai/dsh-session-reference",
 			descriptors: [{
 				id: "@deepseek-ai/dsh-session-reference#sessionReferenceResolver/candidates",
@@ -6031,10 +6952,1975 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				},
 				sourceLocation: {
 					"file": "packages/context/session-reference/src/index.ts",
-					"line": 218,
+					"line": 245,
 					"column": 9
 				}
 			}]
+		};
+		//#endregion
+		//#region ../../subagent/subagent/lib/typert.remote-client.js
+		const ContentBlockRemoteCodec$schema$1 = union([
+			object({
+				"type": literal("text"),
+				"text": string()
+			}),
+			object({
+				"type": literal("image"),
+				"attachment": object({
+					"attachmentId": intersection(string(), unknown()),
+					"mediaType": union([
+						literal("image/png"),
+						literal("image/jpeg"),
+						literal("image/webp"),
+						literal("image/gif")
+					]),
+					"bytes": number(),
+					"width": number(),
+					"height": number(),
+					"name": string().optional(),
+					"originalDimensions": object({
+						"width": number(),
+						"height": number()
+					}).optional()
+				})
+			}),
+			object({
+				"type": literal("reasoning"),
+				"text": string()
+			}),
+			object({
+				"type": literal("tool-call"),
+				"id": intersection(string(), unknown()),
+				"name": string(),
+				"arguments": string()
+			}),
+			object({
+				"type": literal("tool-result"),
+				"toolCallId": intersection(string(), unknown()),
+				"content": array(lazy(() => ContentBlockRemoteCodec$schema$1)),
+				"isError": boolean().optional()
+			})
+		]);
+		const _deepseek_ai_dsh_subagent_subagents_interruptByParent_parameter_0$schema = intersection(string(), unknown());
+		const _deepseek_ai_dsh_subagent_subagents_interruptByParent_parameter_1$schema = intersection(string(), unknown());
+		const _deepseek_ai_dsh_subagent_subagents_interruptByParent_parameter_2$schema = literal("continuable");
+		const _deepseek_ai_dsh_subagent_subagents_interruptByParent_result$schema = object({ "accepted": literal(true).readonly() });
+		const _deepseek_ai_dsh_subagent_subagents_list_parameter_0$schema = intersection(string(), unknown());
+		const _deepseek_ai_dsh_subagent_subagents_list_result$schema = object({
+			"entries": array(union([
+				intersection(object({
+					"kind": literal("child").readonly(),
+					"id": intersection(string(), unknown()).readonly(),
+					"activity": union([literal("running"), literal("inactive")]).readonly(),
+					"hasChildren": boolean().readonly()
+				}), object({
+					"mode": literal("one-shot").readonly(),
+					"label": string().readonly().optional()
+				})),
+				intersection(object({
+					"kind": literal("child").readonly(),
+					"id": intersection(string(), unknown()).readonly(),
+					"activity": union([literal("running"), literal("inactive")]).readonly(),
+					"hasChildren": boolean().readonly()
+				}), object({
+					"mode": literal("continuable").readonly(),
+					"label": string().readonly()
+				})),
+				object({
+					"kind": literal("diagnostic").readonly(),
+					"id": intersection(string(), unknown()).readonly(),
+					"reason": union([
+						literal("corrupt"),
+						literal("unsupported"),
+						literal("unavailable")
+					]).readonly()
+				})
+			])).readonly(),
+			"parentAvailable": boolean().readonly()
+		});
+		const _deepseek_ai_dsh_subagent_subagents_prompt_parameter_0$schema = object({
+			"requestId": intersection(string(), unknown()).readonly(),
+			"parentSessionId": intersection(string(), unknown()).readonly(),
+			"childSessionId": intersection(string(), unknown()).readonly(),
+			"mode": literal("continuable").readonly(),
+			"content": array(union([
+				object({
+					"type": literal("text"),
+					"text": string()
+				}),
+				object({
+					"type": literal("image"),
+					"attachment": object({
+						"attachmentId": intersection(string(), unknown()),
+						"mediaType": union([
+							literal("image/png"),
+							literal("image/jpeg"),
+							literal("image/webp"),
+							literal("image/gif")
+						]),
+						"bytes": number(),
+						"width": number(),
+						"height": number(),
+						"name": string().optional(),
+						"originalDimensions": object({
+							"width": number(),
+							"height": number()
+						}).optional()
+					})
+				}),
+				object({
+					"type": literal("reasoning"),
+					"text": string()
+				}),
+				object({
+					"type": literal("tool-call"),
+					"id": intersection(string(), unknown()),
+					"name": string(),
+					"arguments": string()
+				}),
+				object({
+					"type": literal("tool-result"),
+					"toolCallId": intersection(string(), unknown()),
+					"content": array(lazy(() => ContentBlockRemoteCodec$schema$1)),
+					"isError": boolean().optional()
+				})
+			])).readonly(),
+			"clientTimeZone": string().readonly().optional()
+		});
+		const _deepseek_ai_dsh_subagent_subagents_prompt_result$schema = object({ "messageId": intersection(string(), unknown()).readonly() });
+		const TYPERT_REMOTE$2 = {
+			package: "@deepseek-ai/dsh-subagent",
+			descriptors: [
+				{
+					id: "@deepseek-ai/dsh-subagent#subagents/interruptByParent",
+					service: "subagents",
+					namespace: "subagents",
+					method: "interruptByParent",
+					invocation: { kind: "direct" },
+					parameters: [
+						{
+							name: "childSessionId",
+							wire: "childSessionId",
+							source: "json",
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+								schema: _deepseek_ai_dsh_subagent_subagents_interruptByParent_parameter_0$schema
+							}
+						},
+						{
+							name: "parentSessionId",
+							wire: "parentSessionId",
+							source: "json",
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+								schema: _deepseek_ai_dsh_subagent_subagents_interruptByParent_parameter_1$schema
+							}
+						},
+						{
+							name: "mode",
+							wire: "mode",
+							source: "json",
+							codec: {
+								mode: "strict",
+								typeSymbol: "@deepseek-ai/dsh-subagent#subagents/interruptByParent:mode",
+								schema: _deepseek_ai_dsh_subagent_subagents_interruptByParent_parameter_2$schema
+							}
+						}
+					],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-subagent/client#SubagentInterruptReceipt",
+						schema: _deepseek_ai_dsh_subagent_subagents_interruptByParent_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/subagent/subagent/src/index.ts",
+						"line": 479,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-subagent#subagents/list",
+					service: "subagents",
+					namespace: "subagents",
+					method: "list",
+					implementation: "remoteExportList",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "parentSessionId",
+						wire: "parentSessionId",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+							schema: _deepseek_ai_dsh_subagent_subagents_list_parameter_0$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-subagent/client#SubagentCatalog",
+						schema: _deepseek_ai_dsh_subagent_subagents_list_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/subagent/subagent/src/index.ts",
+						"line": 406,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-subagent#subagents/prompt",
+					service: "subagents",
+					namespace: "subagents",
+					method: "prompt",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-subagent/client#SubagentPromptRequest",
+							schema: _deepseek_ai_dsh_subagent_subagents_prompt_parameter_0$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-subagent/client#SubagentPromptReceipt",
+						schema: _deepseek_ai_dsh_subagent_subagents_prompt_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/subagent/subagent/src/index.ts",
+						"line": 430,
+						"column": 9
+					}
+				}
+			]
+		};
+		//#endregion
+		//#region ../session-controller/lib/typert.remote-client.js
+		const ContentBlockRemoteCodec$schema = union([
+			object({
+				"type": literal("text"),
+				"text": string()
+			}),
+			object({
+				"type": literal("image"),
+				"attachment": object({
+					"attachmentId": intersection(string(), unknown()),
+					"mediaType": union([
+						literal("image/png"),
+						literal("image/jpeg"),
+						literal("image/webp"),
+						literal("image/gif")
+					]),
+					"bytes": number(),
+					"width": number(),
+					"height": number(),
+					"name": string().optional(),
+					"originalDimensions": object({
+						"width": number(),
+						"height": number()
+					}).optional()
+				})
+			}),
+			object({
+				"type": literal("reasoning"),
+				"text": string()
+			}),
+			object({
+				"type": literal("tool-call"),
+				"id": intersection(string(), unknown()),
+				"name": string(),
+				"arguments": string()
+			}),
+			object({
+				"type": literal("tool-result"),
+				"toolCallId": intersection(string(), unknown()),
+				"content": array(lazy(() => ContentBlockRemoteCodec$schema)),
+				"isError": boolean().optional()
+			})
+		]);
+		const JsonValueRemoteCodec$schema = union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema))
+		]);
+		const JsonValueRemoteCodec$schema2 = union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema2)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema2))
+		]);
+		const JsonValueRemoteCodec$schema3 = union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema3)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema3))
+		]);
+		const JsonValueRemoteCodec$schema4 = union([
+			literal(null),
+			string(),
+			number(),
+			literal(false),
+			literal(true),
+			array(lazy(() => JsonValueRemoteCodec$schema4)),
+			record(string(), lazy(() => JsonValueRemoteCodec$schema4))
+		]);
+		const _deepseek_ai_dsh_api_session_controller_fileReferences_list_parameter_0$schema = intersection(string(), unknown());
+		const _deepseek_ai_dsh_api_session_controller_fileReferences_list_parameter_1$schema = string();
+		const _deepseek_ai_dsh_api_session_controller_fileReferences_list_result$schema = array(object({
+			"path": string(),
+			"kind": union([literal("file"), literal("directory")])
+		}));
+		const _deepseek_ai_dsh_api_session_controller_session_attachment_parameter_0$schema = object({
+			"sessionId": intersection(string(), unknown()).readonly(),
+			"attachmentId": intersection(string(), unknown()).readonly()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_attachment_result$schema = object({
+			"attachment": object({
+				"attachmentId": intersection(string(), unknown()),
+				"mediaType": union([
+					literal("image/png"),
+					literal("image/jpeg"),
+					literal("image/webp"),
+					literal("image/gif")
+				]),
+				"bytes": number(),
+				"width": number(),
+				"height": number(),
+				"name": string().optional(),
+				"originalDimensions": object({
+					"width": number(),
+					"height": number()
+				}).optional()
+			}).readonly(),
+			"data": string().readonly()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_cancel_parameter_0$schema = object({ "sessionId": intersection(string(), unknown()).readonly() });
+		const _deepseek_ai_dsh_api_session_controller_session_cancel_result$schema = object({ "accepted": literal(true).readonly() });
+		const _deepseek_ai_dsh_api_session_controller_session_canOpenWorkspacePath_result$schema = boolean();
+		const _deepseek_ai_dsh_api_session_controller_session_control_result$schema = union([
+			object({
+				"type": literal("baseline").readonly(),
+				"value": object({
+					"queues": record(intersection(string(), unknown()), array(object({
+						"id": intersection(string(), unknown()).readonly(),
+						"placement": union([
+							literal("queued"),
+							literal("steering"),
+							literal("context")
+						]).readonly(),
+						"rpcId": intersection(string(), unknown()).readonly().optional(),
+						"message": object({
+							"id": intersection(string(), unknown()).readonly(),
+							"content": array(union([
+								literal(null),
+								string(),
+								number(),
+								literal(false),
+								literal(true),
+								array(lazy(() => JsonValueRemoteCodec$schema4)),
+								record(string(), lazy(() => JsonValueRemoteCodec$schema4))
+							])).readonly()
+						}).readonly()
+					}))).readonly().readonly(),
+					"jobs": record(intersection(string(), unknown()), array(object({
+						"id": intersection(string(), unknown()).readonly(),
+						"kind": string().readonly(),
+						"label": string().readonly(),
+						"status": union([
+							literal("completed"),
+							literal("running"),
+							literal("stopping"),
+							literal("killed"),
+							literal("failed")
+						]).readonly(),
+						"detail": string().readonly().optional(),
+						"startedAt": number().readonly(),
+						"finishedAt": number().readonly().optional()
+					}))).readonly().readonly(),
+					"projections": record(intersection(string(), unknown()), object({
+						"asOfSeq": number().readonly(),
+						"values": intersection(object({
+							"agentPreset": union([literal(null), string()]).optional(),
+							"title": union([literal(null), string()]).optional(),
+							"todos": union([literal(null), array(object({
+								"content": string(),
+								"status": union([
+									literal("pending"),
+									literal("in_progress"),
+									literal("completed")
+								])
+							}))]).optional(),
+							"sessionListMetadata": object({
+								"blank": boolean().readonly(),
+								"lastPromptAt": union([literal(null), number()]).readonly()
+							}).optional(),
+							"imageLimits": object({
+								"maxImageBytes": number(),
+								"maxImagesPerMessage": number(),
+								"maxMessageImageBytes": number(),
+								"maxImagePixels": number(),
+								"maxImageDimension": number(),
+								"mediaTypes": array(union([
+									literal("image/png"),
+									literal("image/jpeg"),
+									literal("image/webp"),
+									literal("image/gif")
+								]))
+							}).optional(),
+							"modelSelection": object({
+								"lastUsed": union([literal(null), object({
+									"provider": string().readonly(),
+									"model": string().readonly(),
+									"reasoningEffort": string().readonly().optional()
+								})]).readonly(),
+								"next": union([literal(null), object({
+									"provider": string().readonly(),
+									"model": string().readonly(),
+									"reasoningEffort": string().readonly().optional()
+								})]).readonly()
+							}).optional(),
+							"subagentTiming": object({
+								"settledMs": number(),
+								"active": object({
+									"since": number(),
+									"through": number()
+								}).optional()
+							}).optional(),
+							"subagent": union([
+								literal(null),
+								object({
+									"mode": literal("one-shot"),
+									"label": string().optional(),
+									"seq": number()
+								}),
+								object({
+									"mode": literal("continuable"),
+									"label": string(),
+									"seq": number()
+								})
+							]).optional(),
+							"goal": union([literal(null), object({
+								"goal": object({
+									"objective": string().readonly(),
+									"phase": union([
+										literal("active"),
+										literal("paused"),
+										literal("blocked"),
+										literal("complete")
+									]).readonly(),
+									"blockedReason": object({
+										"code": string().readonly(),
+										"message": string().readonly()
+									}).readonly().optional(),
+									"maxGoalRounds": number().readonly(),
+									"id": intersection(string(), unknown()).readonly(),
+									"revision": number().readonly()
+								}).readonly(),
+								"roundsStarted": number().readonly(),
+								"createdAt": number().readonly(),
+								"updatedAt": number().readonly()
+							})]).optional()
+						}), record(string(), union([
+							literal(null),
+							string(),
+							number(),
+							literal(false),
+							literal(true),
+							array(lazy(() => JsonValueRemoteCodec$schema4)),
+							record(string(), lazy(() => JsonValueRemoteCodec$schema4))
+						])).readonly()).readonly()
+					})).readonly().readonly()
+				}).readonly()
+			}),
+			object({
+				"type": literal("queue").readonly(),
+				"sessionId": intersection(string(), unknown()).readonly(),
+				"items": array(object({
+					"id": intersection(string(), unknown()).readonly(),
+					"placement": union([
+						literal("queued"),
+						literal("steering"),
+						literal("context")
+					]).readonly(),
+					"rpcId": intersection(string(), unknown()).readonly().optional(),
+					"message": object({
+						"id": intersection(string(), unknown()).readonly(),
+						"content": array(union([
+							literal(null),
+							string(),
+							number(),
+							literal(false),
+							literal(true),
+							array(lazy(() => JsonValueRemoteCodec$schema4)),
+							record(string(), lazy(() => JsonValueRemoteCodec$schema4))
+						])).readonly()
+					}).readonly()
+				})).readonly()
+			}),
+			object({
+				"type": literal("jobs").readonly(),
+				"sessionId": intersection(string(), unknown()).readonly(),
+				"jobs": array(object({
+					"id": intersection(string(), unknown()).readonly(),
+					"kind": string().readonly(),
+					"label": string().readonly(),
+					"status": union([
+						literal("completed"),
+						literal("running"),
+						literal("stopping"),
+						literal("killed"),
+						literal("failed")
+					]).readonly(),
+					"detail": string().readonly().optional(),
+					"startedAt": number().readonly(),
+					"finishedAt": number().readonly().optional()
+				})).readonly()
+			}),
+			intersection(object({ "type": literal("projection").readonly() }), object({
+				"sessionId": intersection(string(), unknown()).readonly(),
+				"key": string().readonly(),
+				"value": union([
+					literal(null),
+					string(),
+					number(),
+					literal(false),
+					literal(true),
+					array(lazy(() => JsonValueRemoteCodec$schema4)),
+					record(string(), lazy(() => JsonValueRemoteCodec$schema4))
+				]).readonly(),
+				"seq": number().readonly()
+			}))
+		]);
+		const _deepseek_ai_dsh_api_session_controller_session_create_parameter_0$schema = object({
+			"workspaceId": intersection(string(), unknown()).readonly().optional(),
+			"cwd": string().readonly().optional(),
+			"sessionId": intersection(string(), unknown()).readonly().optional(),
+			"agentPreset": string().readonly().optional()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_create_result$schema = object({
+			"sessionId": intersection(string(), unknown()).readonly(),
+			"agentPreset": string().readonly().optional()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_follow_parameter_0$schema = object({
+			"address": union([object({
+				"kind": literal("session").readonly(),
+				"sessionId": intersection(string(), unknown()).readonly()
+			}), object({
+				"kind": literal("subagent").readonly(),
+				"parentSessionId": intersection(string(), unknown()).readonly(),
+				"childSessionId": intersection(string(), unknown()).readonly(),
+				"mode": union([literal("one-shot"), literal("continuable")]).readonly()
+			})]).readonly(),
+			"maxMessages": number().readonly().optional()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_follow_result$schema = union([object({
+			"type": literal("event").readonly(),
+			"event": object({
+				"type": string().readonly(),
+				"seq": number().readonly(),
+				"time": number().readonly(),
+				"data": union([
+					literal(null),
+					string(),
+					number(),
+					literal(false),
+					literal(true),
+					array(lazy(() => JsonValueRemoteCodec$schema3)),
+					record(string(), lazy(() => JsonValueRemoteCodec$schema3))
+				]).readonly(),
+				"sourceEventSeqs": array(number()).readonly().optional(),
+				"surfaceOp": union([literal("append"), object({
+					"op": literal("replace"),
+					"start": number(),
+					"end": number()
+				})]).readonly().optional()
+			}).readonly()
+		}), object({
+			"type": literal("snapshot").readonly(),
+			"header": object({
+				"version": number().readonly(),
+				"id": intersection(string(), unknown()).readonly(),
+				"createdAt": number().readonly(),
+				"cwd": string().readonly().optional(),
+				"parentSession": intersection(string(), unknown()).readonly().optional(),
+				"seedLength": number().readonly().optional(),
+				"origin": literal("subagent").readonly().optional(),
+				"delegationDepth": number().readonly().optional(),
+				"agentPreset": string().readonly().optional()
+			}).readonly(),
+			"cursor": number().readonly(),
+			"records": array(union([object({
+				"type": literal("event").readonly(),
+				"event": object({
+					"type": string().readonly(),
+					"seq": number().readonly(),
+					"time": number().readonly(),
+					"data": union([
+						literal(null),
+						string(),
+						number(),
+						literal(false),
+						literal(true),
+						array(lazy(() => JsonValueRemoteCodec$schema3)),
+						record(string(), lazy(() => JsonValueRemoteCodec$schema3))
+					]).readonly(),
+					"sourceEventSeqs": array(number()).readonly().optional(),
+					"surfaceOp": union([literal("append"), object({
+						"op": literal("replace"),
+						"start": number(),
+						"end": number()
+					})]).readonly().optional()
+				}).readonly()
+			}), object({
+				"type": literal("chunks").readonly(),
+				"event": union([
+					object({
+						"type": literal("chunkrow/text-chunks").readonly(),
+						"seq": number().readonly(),
+						"time": number().readonly(),
+						"data": object({
+							"texts": array(string()),
+							"turn": number(),
+							"step": number(),
+							"index": number(),
+							"dt": array(number())
+						}).readonly()
+					}),
+					object({
+						"type": literal("chunkrow/reasoning-chunks").readonly(),
+						"seq": number().readonly(),
+						"time": number().readonly(),
+						"data": object({
+							"texts": array(string()),
+							"turn": number(),
+							"step": number(),
+							"index": number(),
+							"dt": array(number())
+						}).readonly()
+					}),
+					object({
+						"type": literal("chunkrow/tool-call-chunks").readonly(),
+						"seq": number().readonly(),
+						"time": number().readonly(),
+						"data": object({
+							"id": intersection(string(), unknown()),
+							"name": string().optional(),
+							"args": array(string()),
+							"turn": number(),
+							"step": number(),
+							"index": number(),
+							"dt": array(number())
+						}).readonly()
+					})
+				]).readonly()
+			})])).readonly(),
+			"hasMore": boolean().readonly(),
+			"projections": object({
+				"asOfSeq": number().readonly(),
+				"values": intersection(object({
+					"agentPreset": union([literal(null), string()]).optional(),
+					"title": union([literal(null), string()]).optional(),
+					"todos": union([literal(null), array(object({
+						"content": string(),
+						"status": union([
+							literal("pending"),
+							literal("in_progress"),
+							literal("completed")
+						])
+					}))]).optional(),
+					"sessionListMetadata": object({
+						"blank": boolean().readonly(),
+						"lastPromptAt": union([literal(null), number()]).readonly()
+					}).optional(),
+					"imageLimits": object({
+						"maxImageBytes": number(),
+						"maxImagesPerMessage": number(),
+						"maxMessageImageBytes": number(),
+						"maxImagePixels": number(),
+						"maxImageDimension": number(),
+						"mediaTypes": array(union([
+							literal("image/png"),
+							literal("image/jpeg"),
+							literal("image/webp"),
+							literal("image/gif")
+						]))
+					}).optional(),
+					"modelSelection": object({
+						"lastUsed": union([literal(null), object({
+							"provider": string().readonly(),
+							"model": string().readonly(),
+							"reasoningEffort": string().readonly().optional()
+						})]).readonly(),
+						"next": union([literal(null), object({
+							"provider": string().readonly(),
+							"model": string().readonly(),
+							"reasoningEffort": string().readonly().optional()
+						})]).readonly()
+					}).optional(),
+					"subagentTiming": object({
+						"settledMs": number(),
+						"active": object({
+							"since": number(),
+							"through": number()
+						}).optional()
+					}).optional(),
+					"subagent": union([
+						literal(null),
+						object({
+							"mode": literal("one-shot"),
+							"label": string().optional(),
+							"seq": number()
+						}),
+						object({
+							"mode": literal("continuable"),
+							"label": string(),
+							"seq": number()
+						})
+					]).optional(),
+					"goal": union([literal(null), object({
+						"goal": object({
+							"objective": string().readonly(),
+							"phase": union([
+								literal("active"),
+								literal("paused"),
+								literal("blocked"),
+								literal("complete")
+							]).readonly(),
+							"blockedReason": object({
+								"code": string().readonly(),
+								"message": string().readonly()
+							}).readonly().optional(),
+							"maxGoalRounds": number().readonly(),
+							"id": intersection(string(), unknown()).readonly(),
+							"revision": number().readonly()
+						}).readonly(),
+						"roundsStarted": number().readonly(),
+						"createdAt": number().readonly(),
+						"updatedAt": number().readonly()
+					})]).optional()
+				}), record(string(), union([
+					literal(null),
+					string(),
+					number(),
+					literal(false),
+					literal(true),
+					array(lazy(() => JsonValueRemoteCodec$schema3)),
+					record(string(), lazy(() => JsonValueRemoteCodec$schema3))
+				])).readonly()).readonly()
+			}).readonly()
+		})]);
+		const _deepseek_ai_dsh_api_session_controller_session_fork_parameter_0$schema = object({
+			"sessionId": intersection(string(), unknown()).readonly(),
+			"atSeq": number().readonly().optional()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_fork_result$schema = object({ "sessionId": intersection(string(), unknown()).readonly() });
+		const _deepseek_ai_dsh_api_session_controller_session_list_parameter_0$schema = object({ "cursor": string().readonly().optional() });
+		const _deepseek_ai_dsh_api_session_controller_session_list_result$schema = object({ "items": array(object({
+			"sessionId": intersection(string(), unknown()).readonly(),
+			"updatedAt": number().readonly(),
+			"running": boolean().readonly(),
+			"blank": boolean().readonly(),
+			"parentSessionId": intersection(string(), unknown()).readonly().optional(),
+			"origin": literal("subagent").readonly().optional(),
+			"cwd": string().readonly().optional(),
+			"projections": object({
+				"asOfSeq": number().readonly(),
+				"values": intersection(object({
+					"agentPreset": union([literal(null), string()]).optional(),
+					"title": union([literal(null), string()]).optional(),
+					"todos": union([literal(null), array(object({
+						"content": string(),
+						"status": union([
+							literal("pending"),
+							literal("in_progress"),
+							literal("completed")
+						])
+					}))]).optional(),
+					"sessionListMetadata": object({
+						"blank": boolean().readonly(),
+						"lastPromptAt": union([literal(null), number()]).readonly()
+					}).optional(),
+					"imageLimits": object({
+						"maxImageBytes": number(),
+						"maxImagesPerMessage": number(),
+						"maxMessageImageBytes": number(),
+						"maxImagePixels": number(),
+						"maxImageDimension": number(),
+						"mediaTypes": array(union([
+							literal("image/png"),
+							literal("image/jpeg"),
+							literal("image/webp"),
+							literal("image/gif")
+						]))
+					}).optional(),
+					"modelSelection": object({
+						"lastUsed": union([literal(null), object({
+							"provider": string().readonly(),
+							"model": string().readonly(),
+							"reasoningEffort": string().readonly().optional()
+						})]).readonly(),
+						"next": union([literal(null), object({
+							"provider": string().readonly(),
+							"model": string().readonly(),
+							"reasoningEffort": string().readonly().optional()
+						})]).readonly()
+					}).optional(),
+					"subagentTiming": object({
+						"settledMs": number(),
+						"active": object({
+							"since": number(),
+							"through": number()
+						}).optional()
+					}).optional(),
+					"subagent": union([
+						literal(null),
+						object({
+							"mode": literal("one-shot"),
+							"label": string().optional(),
+							"seq": number()
+						}),
+						object({
+							"mode": literal("continuable"),
+							"label": string(),
+							"seq": number()
+						})
+					]).optional(),
+					"goal": union([literal(null), object({
+						"goal": object({
+							"objective": string().readonly(),
+							"phase": union([
+								literal("active"),
+								literal("paused"),
+								literal("blocked"),
+								literal("complete")
+							]).readonly(),
+							"blockedReason": object({
+								"code": string().readonly(),
+								"message": string().readonly()
+							}).readonly().optional(),
+							"maxGoalRounds": number().readonly(),
+							"id": intersection(string(), unknown()).readonly(),
+							"revision": number().readonly()
+						}).readonly(),
+						"roundsStarted": number().readonly(),
+						"createdAt": number().readonly(),
+						"updatedAt": number().readonly()
+					})]).optional()
+				}), record(string(), union([
+					literal(null),
+					string(),
+					number(),
+					literal(false),
+					literal(true),
+					array(lazy(() => JsonValueRemoteCodec$schema)),
+					record(string(), lazy(() => JsonValueRemoteCodec$schema))
+				])).readonly()).readonly()
+			}).readonly().optional()
+		})).readonly() });
+		const _deepseek_ai_dsh_api_session_controller_session_modelCatalog_result$schema = object({
+			"default": object({
+				"provider": string().readonly(),
+				"model": string().readonly(),
+				"reasoningEffort": string().readonly().optional()
+			}).readonly(),
+			"routableProviders": array(string()).readonly(),
+			"groups": array(object({
+				"id": string().readonly(),
+				"name": string().readonly(),
+				"models": array(object({
+					"id": string().readonly(),
+					"name": string().readonly(),
+					"description": string().readonly().optional(),
+					"reasoning": object({
+						"efforts": array(object({
+							"id": string().readonly(),
+							"name": string().readonly(),
+							"description": string().readonly().optional()
+						})).readonly(),
+						"defaultEffort": string().readonly().optional()
+					}).readonly().optional()
+				})).readonly()
+			})).readonly(),
+			"failures": array(object({
+				"id": string().readonly(),
+				"name": string().readonly(),
+				"message": string().readonly()
+			})).readonly()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_openWorkspacePath_parameter_0$schema = object({ "path": string().readonly() });
+		const _deepseek_ai_dsh_api_session_controller_session_openWorkspacePath_result$schema = object({ "opened": literal(true).readonly() });
+		const _deepseek_ai_dsh_api_session_controller_session_page_parameter_0$schema = object({
+			"address": union([object({
+				"kind": literal("session").readonly(),
+				"sessionId": intersection(string(), unknown()).readonly()
+			}), object({
+				"kind": literal("subagent").readonly(),
+				"parentSessionId": intersection(string(), unknown()).readonly(),
+				"childSessionId": intersection(string(), unknown()).readonly(),
+				"mode": union([literal("one-shot"), literal("continuable")]).readonly()
+			})]).readonly(),
+			"throughSeq": number().readonly(),
+			"beforeSeq": number().readonly().optional(),
+			"maxMessages": number().readonly().optional()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_page_result$schema = object({
+			"records": array(union([object({
+				"type": literal("event").readonly(),
+				"event": object({
+					"type": string().readonly(),
+					"seq": number().readonly(),
+					"time": number().readonly(),
+					"data": union([
+						literal(null),
+						string(),
+						number(),
+						literal(false),
+						literal(true),
+						array(lazy(() => JsonValueRemoteCodec$schema2)),
+						record(string(), lazy(() => JsonValueRemoteCodec$schema2))
+					]).readonly(),
+					"sourceEventSeqs": array(number()).readonly().optional(),
+					"surfaceOp": union([literal("append"), object({
+						"op": literal("replace"),
+						"start": number(),
+						"end": number()
+					})]).readonly().optional()
+				}).readonly()
+			}), object({
+				"type": literal("chunks").readonly(),
+				"event": union([
+					object({
+						"type": literal("chunkrow/text-chunks").readonly(),
+						"seq": number().readonly(),
+						"time": number().readonly(),
+						"data": object({
+							"texts": array(string()),
+							"turn": number(),
+							"step": number(),
+							"index": number(),
+							"dt": array(number())
+						}).readonly()
+					}),
+					object({
+						"type": literal("chunkrow/reasoning-chunks").readonly(),
+						"seq": number().readonly(),
+						"time": number().readonly(),
+						"data": object({
+							"texts": array(string()),
+							"turn": number(),
+							"step": number(),
+							"index": number(),
+							"dt": array(number())
+						}).readonly()
+					}),
+					object({
+						"type": literal("chunkrow/tool-call-chunks").readonly(),
+						"seq": number().readonly(),
+						"time": number().readonly(),
+						"data": object({
+							"id": intersection(string(), unknown()),
+							"name": string().optional(),
+							"args": array(string()),
+							"turn": number(),
+							"step": number(),
+							"index": number(),
+							"dt": array(number())
+						}).readonly()
+					})
+				]).readonly()
+			})])).readonly(),
+			"hasMore": boolean().readonly()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_prompt_parameter_0$schema = object({
+			"requestId": intersection(string(), unknown()).readonly(),
+			"sessionId": intersection(string(), unknown()).readonly(),
+			"mode": union([literal("queue"), literal("steer")]).readonly(),
+			"content": array(union([object({
+				"type": literal("text").readonly(),
+				"text": string().readonly()
+			}), object({
+				"type": literal("image").readonly(),
+				"mediaType": union([
+					literal("image/png"),
+					literal("image/jpeg"),
+					literal("image/webp"),
+					literal("image/gif")
+				]).readonly(),
+				"data": string().readonly(),
+				"name": string().readonly().optional()
+			})])).readonly(),
+			"clientTimeZone": string().readonly().optional()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_prompt_result$schema = object({ "accepted": literal(true).readonly() });
+		const _deepseek_ai_dsh_api_session_controller_session_rename_parameter_0$schema = object({
+			"sessionId": intersection(string(), unknown()).readonly(),
+			"title": string().readonly()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_rename_result$schema = object({
+			"title": string().readonly(),
+			"seq": number().readonly()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_search_parameter_0$schema = object({ "query": string().readonly() });
+		const _deepseek_ai_dsh_api_session_controller_session_search_result$schema = object({
+			"items": array(object({
+				"sessionId": intersection(string(), unknown()).readonly(),
+				"snippet": string().readonly()
+			})).readonly(),
+			"hasMore": boolean().readonly()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_selectModel_parameter_0$schema = object({
+			"sessionId": intersection(string(), unknown()).readonly(),
+			"provider": string().readonly(),
+			"model": string().readonly(),
+			"reasoningEffort": string().readonly().optional()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_selectModel_result$schema = object({ "selected": object({
+			"provider": string().readonly(),
+			"model": string().readonly(),
+			"reasoningEffort": string().readonly().optional()
+		}).readonly() });
+		const _deepseek_ai_dsh_api_session_controller_session_updateQueue_parameter_0$schema = object({
+			"sessionId": intersection(string(), unknown()).readonly(),
+			"itemId": intersection(string(), unknown()).readonly(),
+			"action": union([
+				object({
+					"kind": literal("edit").readonly(),
+					"content": array(union([
+						object({
+							"type": literal("text"),
+							"text": string()
+						}),
+						object({
+							"type": literal("image"),
+							"attachment": object({
+								"attachmentId": intersection(string(), unknown()),
+								"mediaType": union([
+									literal("image/png"),
+									literal("image/jpeg"),
+									literal("image/webp"),
+									literal("image/gif")
+								]),
+								"bytes": number(),
+								"width": number(),
+								"height": number(),
+								"name": string().optional(),
+								"originalDimensions": object({
+									"width": number(),
+									"height": number()
+								}).optional()
+							})
+						}),
+						object({
+							"type": literal("reasoning"),
+							"text": string()
+						}),
+						object({
+							"type": literal("tool-call"),
+							"id": intersection(string(), unknown()),
+							"name": string(),
+							"arguments": string()
+						}),
+						object({
+							"type": literal("tool-result"),
+							"toolCallId": intersection(string(), unknown()),
+							"content": array(lazy(() => ContentBlockRemoteCodec$schema)),
+							"isError": boolean().optional()
+						})
+					])).readonly()
+				}),
+				object({ "kind": literal("remove").readonly() }),
+				object({ "kind": literal("steer").readonly() })
+			]).readonly()
+		});
+		const _deepseek_ai_dsh_api_session_controller_session_updateQueue_result$schema = object({ "accepted": literal(true).readonly() });
+		const _deepseek_ai_dsh_api_session_controller_skills_list_parameter_0$schema = object({ "sessionId": intersection(string(), unknown()).readonly() });
+		const _deepseek_ai_dsh_api_session_controller_skills_list_result$schema = object({ "skills": array(object({
+			"name": string().readonly(),
+			"description": string().readonly(),
+			"whenToUse": string().readonly().optional(),
+			"modelInvocable": boolean().readonly()
+		})).readonly() });
+		const TYPERT_REMOTE$1 = {
+			package: "@deepseek-ai/dsh-api-session-controller",
+			descriptors: [
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#fileReferences/list",
+					service: "sessionFileReferences",
+					namespace: "fileReferences",
+					method: "list",
+					invocation: { kind: "direct" },
+					scope: {
+						context: "agent",
+						wire: "agentId"
+					},
+					parameters: [{
+						name: "agent",
+						wire: "agentId",
+						source: "lookup",
+						lookup: "agent",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+							schema: _deepseek_ai_dsh_api_session_controller_fileReferences_list_parameter_0$schema
+						}
+					}, {
+						name: "query",
+						wire: "query",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller#fileReferences/list:query",
+							schema: _deepseek_ai_dsh_api_session_controller_fileReferences_list_parameter_1$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller#fileReferences/list:result",
+						schema: _deepseek_ai_dsh_api_session_controller_fileReferences_list_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/file-references.ts",
+						"line": 33,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/attachment",
+					service: "sessionController",
+					namespace: "session",
+					method: "attachment",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionAttachmentRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_attachment_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionAttachmentValue",
+						schema: _deepseek_ai_dsh_api_session_controller_session_attachment_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 337,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/cancel",
+					service: "sessionController",
+					namespace: "session",
+					method: "cancel",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionCancelRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_cancel_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionCancelValue",
+						schema: _deepseek_ai_dsh_api_session_controller_session_cancel_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 357,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/canOpenWorkspacePath",
+					service: "sessionController",
+					namespace: "session",
+					method: "canOpenWorkspacePath",
+					invocation: { kind: "direct" },
+					parameters: [],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller#session/canOpenWorkspacePath:result",
+						schema: _deepseek_ai_dsh_api_session_controller_session_canOpenWorkspacePath_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 258,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/control",
+					service: "sessionController",
+					namespace: "session",
+					method: "control",
+					mode: "stream",
+					invocation: { kind: "direct" },
+					parameters: [],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionControlFrame",
+						schema: _deepseek_ai_dsh_api_session_controller_session_control_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 389,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/create",
+					service: "sessionController",
+					namespace: "session",
+					method: "create",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionCreateRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_create_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionCreateValue",
+						schema: _deepseek_ai_dsh_api_session_controller_session_create_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 230,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/follow",
+					service: "sessionController",
+					namespace: "session",
+					method: "follow",
+					mode: "stream",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionFollowRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_follow_parameter_0$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionFollowFrame",
+						schema: _deepseek_ai_dsh_api_session_controller_session_follow_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 379,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/fork",
+					service: "sessionController",
+					namespace: "session",
+					method: "fork",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionForkRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_fork_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionForkValue",
+						schema: _deepseek_ai_dsh_api_session_controller_session_fork_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 315,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/list",
+					service: "sessionController",
+					namespace: "session",
+					method: "list",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "_request",
+						wire: "_request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionListRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_list_parameter_0$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionListValue",
+						schema: _deepseek_ai_dsh_api_session_controller_session_list_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 209,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/modelCatalog",
+					service: "sessionController",
+					namespace: "session",
+					method: "modelCatalog",
+					invocation: { kind: "direct" },
+					parameters: [],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#ModelCatalog",
+						schema: _deepseek_ai_dsh_api_session_controller_session_modelCatalog_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 249,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/openWorkspacePath",
+					service: "sessionController",
+					namespace: "session",
+					method: "openWorkspacePath",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionOpenWorkspacePathRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_openWorkspacePath_parameter_0$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionOpenWorkspacePathValue",
+						schema: _deepseek_ai_dsh_api_session_controller_session_openWorkspacePath_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 270,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/page",
+					service: "sessionController",
+					namespace: "session",
+					method: "page",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionPageRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_page_parameter_0$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionPage",
+						schema: _deepseek_ai_dsh_api_session_controller_session_page_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 368,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/prompt",
+					service: "sessionController",
+					namespace: "session",
+					method: "prompt",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionPromptRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_prompt_parameter_0$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionPromptValue",
+						schema: _deepseek_ai_dsh_api_session_controller_session_prompt_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 326,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/rename",
+					service: "sessionController",
+					namespace: "session",
+					method: "rename",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionRenameRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_rename_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionRenameValue",
+						schema: _deepseek_ai_dsh_api_session_controller_session_rename_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 305,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/search",
+					service: "sessionController",
+					namespace: "session",
+					method: "search",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionSearchRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_search_parameter_0$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionSearchValue",
+						schema: _deepseek_ai_dsh_api_session_controller_session_search_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 220,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/selectModel",
+					service: "sessionController",
+					namespace: "session",
+					method: "selectModel",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionSelectModelRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_selectModel_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionSelectModelValue",
+						schema: _deepseek_ai_dsh_api_session_controller_session_selectModel_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 240,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#session/updateQueue",
+					service: "sessionController",
+					namespace: "session",
+					method: "updateQueue",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionUpdateQueueRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_session_updateQueue_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SessionUpdateQueueValue",
+						schema: _deepseek_ai_dsh_api_session_controller_session_updateQueue_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/index.ts",
+						"line": 347,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-session-controller#skills/list",
+					service: "sessionSkillCatalog",
+					namespace: "skills",
+					method: "list",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SkillListRequest",
+							schema: _deepseek_ai_dsh_api_session_controller_skills_list_parameter_0$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-session-controller/types#SkillListValue",
+						schema: _deepseek_ai_dsh_api_session_controller_skills_list_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/session-controller/src/skill-catalog.ts",
+						"line": 36,
+						"column": 9
+					}
+				}
+			]
+		};
+		//#endregion
+		//#region ../workspace-controller/lib/typert.remote-client.js
+		const _deepseek_ai_dsh_api_workspace_controller_directoryPicker_createDirectory_parameter_0$schema = string();
+		const _deepseek_ai_dsh_api_workspace_controller_directoryPicker_createDirectory_parameter_1$schema = string();
+		const _deepseek_ai_dsh_api_workspace_controller_directoryPicker_createDirectory_result$schema = string();
+		const _deepseek_ai_dsh_api_workspace_controller_directoryPicker_list_parameter_0$schema = union([_undefined(), string()]);
+		const _deepseek_ai_dsh_api_workspace_controller_directoryPicker_list_result$schema = object({
+			"path": string(),
+			"home": string(),
+			"crumbs": array(object({
+				"name": string(),
+				"path": string(),
+				"hidden": boolean()
+			})),
+			"entries": array(object({
+				"name": string(),
+				"path": string(),
+				"hidden": boolean()
+			})),
+			"truncated": boolean()
+		});
+		const _deepseek_ai_dsh_api_workspace_controller_directoryPicker_pick_result$schema = union([literal(null), string()]);
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_archiveSession_parameter_0$schema = object({ "sessionId": intersection(string(), unknown()).readonly() });
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_archiveSession_result$schema = object({ "archivedSessionIds": array(intersection(string(), unknown())).readonly() });
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_create_parameter_0$schema = object({ "path": string().readonly() });
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_create_result$schema = object({
+			"workspace": object({
+				"workspaceId": intersection(string(), unknown()).readonly(),
+				"path": string().readonly(),
+				"title": string().readonly(),
+				"sessionIds": array(intersection(string(), unknown())).readonly(),
+				"createdAt": string().readonly(),
+				"updatedAt": string().readonly()
+			}).readonly(),
+			"created": boolean().readonly()
+		});
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_delete_parameter_0$schema = object({ "workspaceId": intersection(string(), unknown()).readonly() });
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_delete_result$schema = object({ "deleted": literal(true).readonly() });
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_follow_result$schema = union([
+			object({
+				"type": literal("baseline").readonly(),
+				"value": object({
+					"items": array(object({
+						"workspaceId": intersection(string(), unknown()).readonly(),
+						"path": string().readonly(),
+						"title": string().readonly(),
+						"sessionIds": array(intersection(string(), unknown())).readonly(),
+						"createdAt": string().readonly(),
+						"updatedAt": string().readonly()
+					})).readonly(),
+					"archivedSessionIds": array(intersection(string(), unknown())).readonly()
+				}).readonly()
+			}),
+			object({
+				"type": literal("upsert").readonly(),
+				"workspace": object({
+					"workspaceId": intersection(string(), unknown()).readonly(),
+					"path": string().readonly(),
+					"title": string().readonly(),
+					"sessionIds": array(intersection(string(), unknown())).readonly(),
+					"createdAt": string().readonly(),
+					"updatedAt": string().readonly()
+				}).readonly()
+			}),
+			object({
+				"type": literal("remove").readonly(),
+				"workspaceId": intersection(string(), unknown()).readonly()
+			}),
+			object({
+				"type": literal("order").readonly(),
+				"workspaceIds": array(intersection(string(), unknown())).readonly()
+			}),
+			object({
+				"type": literal("archived").readonly(),
+				"archivedSessionIds": array(intersection(string(), unknown())).readonly()
+			})
+		]);
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_insertBefore_parameter_0$schema = object({
+			"workspaceId": intersection(string(), unknown()).readonly(),
+			"beforeWorkspaceId": intersection(string(), unknown()).readonly().optional()
+		});
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_insertBefore_result$schema = object({ "workspaceIds": array(intersection(string(), unknown())).readonly() });
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_insertSessionBefore_parameter_0$schema = object({
+			"workspaceId": intersection(string(), unknown()).readonly(),
+			"sessionId": intersection(string(), unknown()).readonly(),
+			"beforeSessionId": intersection(string(), unknown()).readonly().optional()
+		});
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_insertSessionBefore_result$schema = object({ "workspace": object({
+			"workspaceId": intersection(string(), unknown()).readonly(),
+			"path": string().readonly(),
+			"title": string().readonly(),
+			"sessionIds": array(intersection(string(), unknown())).readonly(),
+			"createdAt": string().readonly(),
+			"updatedAt": string().readonly()
+		}).readonly() });
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_rename_parameter_0$schema = object({
+			"workspaceId": intersection(string(), unknown()).readonly(),
+			"title": string().readonly()
+		});
+		const _deepseek_ai_dsh_api_workspace_controller_workspace_rename_result$schema = object({ "workspace": object({
+			"workspaceId": intersection(string(), unknown()).readonly(),
+			"path": string().readonly(),
+			"title": string().readonly(),
+			"sessionIds": array(intersection(string(), unknown())).readonly(),
+			"createdAt": string().readonly(),
+			"updatedAt": string().readonly()
+		}).readonly() });
+		const TYPERT_REMOTE = {
+			package: "@deepseek-ai/dsh-api-workspace-controller",
+			descriptors: [
+				{
+					id: "@deepseek-ai/dsh-api-workspace-controller#directoryPicker/createDirectory",
+					service: "directoryPickerController",
+					namespace: "directoryPicker",
+					method: "createDirectory",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "path",
+						wire: "path",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-workspace-controller#directoryPicker/createDirectory:path",
+							schema: _deepseek_ai_dsh_api_workspace_controller_directoryPicker_createDirectory_parameter_0$schema
+						}
+					}, {
+						name: "name",
+						wire: "name",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-workspace-controller#directoryPicker/createDirectory:name",
+							schema: _deepseek_ai_dsh_api_workspace_controller_directoryPicker_createDirectory_parameter_1$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-workspace-controller#directoryPicker/createDirectory:result",
+						schema: _deepseek_ai_dsh_api_workspace_controller_directoryPicker_createDirectory_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/workspace-controller/src/directory-picker.ts",
+						"line": 86,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-workspace-controller#directoryPicker/list",
+					service: "directoryPickerController",
+					namespace: "directoryPicker",
+					method: "list",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "path",
+						wire: "path",
+						source: "json",
+						acceptsUndefined: true,
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-workspace-controller#directoryPicker/list:path",
+							schema: _deepseek_ai_dsh_api_workspace_controller_directoryPicker_list_parameter_0$schema
+						}
+					}],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-host-directory-picker/types#DirectoryListing",
+						schema: _deepseek_ai_dsh_api_workspace_controller_directoryPicker_list_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/workspace-controller/src/directory-picker.ts",
+						"line": 70,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-workspace-controller#directoryPicker/pick",
+					service: "directoryPickerController",
+					namespace: "directoryPicker",
+					method: "pick",
+					invocation: { kind: "direct" },
+					parameters: [],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-workspace-controller#directoryPicker/pick:result",
+						schema: _deepseek_ai_dsh_api_workspace_controller_directoryPicker_pick_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/workspace-controller/src/directory-picker.ts",
+						"line": 53,
+						"column": 9
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-workspace-controller#workspace/archiveSession",
+					service: "workspaceController",
+					namespace: "workspace",
+					method: "archiveSession",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceArchiveSessionRequest",
+							schema: _deepseek_ai_dsh_api_workspace_controller_workspace_archiveSession_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceArchiveValue",
+						schema: _deepseek_ai_dsh_api_workspace_controller_workspace_archiveSession_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/workspace-controller/src/index.ts",
+						"line": 108,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-workspace-controller#workspace/create",
+					service: "workspaceController",
+					namespace: "workspace",
+					method: "create",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceCreateRequest",
+							schema: _deepseek_ai_dsh_api_workspace_controller_workspace_create_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceCreateValue",
+						schema: _deepseek_ai_dsh_api_workspace_controller_workspace_create_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/workspace-controller/src/index.ts",
+						"line": 58,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-workspace-controller#workspace/delete",
+					service: "workspaceController",
+					namespace: "workspace",
+					method: "delete",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceDeleteRequest",
+							schema: _deepseek_ai_dsh_api_workspace_controller_workspace_delete_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceDeleteValue",
+						schema: _deepseek_ai_dsh_api_workspace_controller_workspace_delete_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/workspace-controller/src/index.ts",
+						"line": 78,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-workspace-controller#workspace/follow",
+					service: "workspaceController",
+					namespace: "workspace",
+					method: "follow",
+					mode: "stream",
+					invocation: { kind: "direct" },
+					parameters: [],
+					cancellation: { parameter: "signal" },
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceFollowFrame",
+						schema: _deepseek_ai_dsh_api_workspace_controller_workspace_follow_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/workspace-controller/src/index.ts",
+						"line": 118,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-workspace-controller#workspace/insertBefore",
+					service: "workspaceController",
+					namespace: "workspace",
+					method: "insertBefore",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceInsertBeforeRequest",
+							schema: _deepseek_ai_dsh_api_workspace_controller_workspace_insertBefore_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceOrderValue",
+						schema: _deepseek_ai_dsh_api_workspace_controller_workspace_insertBefore_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/workspace-controller/src/index.ts",
+						"line": 88,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-workspace-controller#workspace/insertSessionBefore",
+					service: "workspaceController",
+					namespace: "workspace",
+					method: "insertSessionBefore",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceInsertSessionBeforeRequest",
+							schema: _deepseek_ai_dsh_api_workspace_controller_workspace_insertSessionBefore_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceValue",
+						schema: _deepseek_ai_dsh_api_workspace_controller_workspace_insertSessionBefore_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/workspace-controller/src/index.ts",
+						"line": 98,
+						"column": 3
+					}
+				},
+				{
+					id: "@deepseek-ai/dsh-api-workspace-controller#workspace/rename",
+					service: "workspaceController",
+					namespace: "workspace",
+					method: "rename",
+					invocation: { kind: "direct" },
+					parameters: [{
+						name: "request",
+						wire: "request",
+						source: "json",
+						codec: {
+							mode: "strict",
+							typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceRenameRequest",
+							schema: _deepseek_ai_dsh_api_workspace_controller_workspace_rename_parameter_0$schema
+						}
+					}],
+					result: {
+						mode: "strict",
+						typeSymbol: "@deepseek-ai/dsh-api-workspace-controller/types#WorkspaceValue",
+						schema: _deepseek_ai_dsh_api_workspace_controller_workspace_rename_result$schema
+					},
+					sourceLocation: {
+						"file": "packages/api/workspace-controller/src/index.ts",
+						"line": 68,
+						"column": 3
+					}
+				}
+			]
 		};
 		//#endregion
 		//#region lib/types/client/index.js
@@ -6050,6 +8936,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			const disposers = [];
 			try {
 				for (const contribution of [
+					TYPERT_REMOTE$11,
+					TYPERT_REMOTE$10,
+					TYPERT_REMOTE$9,
+					TYPERT_REMOTE$8,
+					TYPERT_REMOTE$7,
 					TYPERT_REMOTE$6,
 					TYPERT_REMOTE$5,
 					TYPERT_REMOTE$4,

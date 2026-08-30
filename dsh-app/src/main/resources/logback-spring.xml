@@ -12,7 +12,7 @@
     </appender>
 
     <!-- 项目自身代码 INFO -->
-    <logger name="com.deepseek.dsh" level="INFO"/>
+    <logger name="com.deepseek.dsh" level="DEBUG"/>
 
     <!-- 抑制框架噪声 -->
     <logger name="org.springframework" level="WARN"/>

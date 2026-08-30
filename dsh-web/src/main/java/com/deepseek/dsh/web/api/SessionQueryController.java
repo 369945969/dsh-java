@@ -63,13 +63,12 @@ public class SessionQueryController {
                     "title", titleOf(p.messages(), id),
                     "messageCount", p.messages().size(),
                     "createdAt", log.snapshot().isEmpty()
-                            ? "" : log.snapshot().get(0).createdAt().toString()));
+                            ? "" : String.valueOf(log.snapshot().get(0).time())));
         }
         long totalTokens = ctx.get(TokenMeterService.class).map(TokenMeterService::totalTokens).orElse(0L);
         return Map.of("sessions", items, "count", items.size(), "totalTokens", totalTokens);
     }
 
-    /** 投影某会话为消息列表（含思维链 reasoning + 工具调用/结果），供前端刷新后重放。 */
     @GetMapping("/{id}/messages")
     public Map<String, Object> messages(@PathVariable String id) {
         Context ctx = holder.context();
@@ -79,31 +78,35 @@ public class SessionQueryController {
         List<Map<String, Object>> messages = new ArrayList<>();
         for (SessionEvent e : slog.events()) {
             switch (e.type()) {
-                case USER_MESSAGE -> {
+                case "user/message" -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("role", "user");
-                    m.put("content", e.payload().text() == null ? "" : e.payload().text());
+                    m.put("content", extractTextFromContent(e.data().get("content")));
                     messages.add(m);
                 }
-                case ASSISTANT_MESSAGE -> {
+                case "assistant/message" -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("role", "assistant");
-                    m.put("content", e.payload().text() == null ? "" : e.payload().text());
-                    String reasoning = e.payload().reasoning();
-                    if (reasoning != null && !reasoning.isBlank()) m.put("reasoning", reasoning);
+                    Object msgObj = e.data().get("message");
+                    if (msgObj instanceof Map<?, ?> msg) {
+                        m.put("content", extractTextFromContent(msg.get("content")));
+                    }
                     messages.add(m);
                 }
-                case TOOL_CALL -> {
+                case "tool/call" -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("role", "tool");
-                    m.put("name", e.payload().toolName() == null ? "" : e.payload().toolName());
-                    m.put("arguments", toolArgsJson(e.payload().structured()));
+                    m.put("name", String.valueOf(e.data().getOrDefault("name", "")));
+                    m.put("arguments", String.valueOf(e.data().getOrDefault("arguments", "{}")));
                     messages.add(m);
                 }
-                case TOOL_RESULT -> {
+                case "tool/result" -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("role", "tool_result");
-                    m.put("content", e.payload().text() == null ? "" : e.payload().text());
+                    Object msgObj = e.data().get("message");
+                    if (msgObj instanceof Map<?, ?> msg) {
+                        m.put("content", extractTextFromContent(msg.get("content")));
+                    }
                     messages.add(m);
                 }
                 default -> {}
@@ -115,6 +118,21 @@ public class SessionQueryController {
                 "messages", messages,
                 "totalTokens", totalTokens,
                 "lastSeq", slog.lastSeq());
+    }
+
+    private static String extractTextFromContent(Object content) {
+        if (content == null) return "";
+        if (content instanceof String s) return s;
+        if (content instanceof java.util.List<?> parts) {
+            StringBuilder sb = new StringBuilder();
+            for (Object part : parts) {
+                if (part instanceof java.util.Map<?, ?> p && "text".equals(p.get("type")) && p.get("text") instanceof String t) {
+                    sb.append(t);
+                }
+            }
+            return sb.toString();
+        }
+        return String.valueOf(content);
     }
 
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();

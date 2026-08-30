@@ -7,7 +7,7 @@ window.__ModuleLoader__.load({
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
+		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		//#region lib/types/client/apiKey.js
 		/**
 		* Browser-side judgement of a typed API key.
@@ -54,8 +54,8 @@ window.__ModuleLoader__.load({
 			if (!LEGAL_API_KEY.test(value)) return "keyIllegalCharacters";
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-settings-models/src/client/ModelsSection.module.css.mjs
-		const css$3 = "._wNcrq_section{max-width:720px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:12px;display:flex}._wNcrq_title{color:var(--dsw-alias-label-primary);margin:0;font-size:16px;font-weight:500;line-height:24px}._wNcrq_intro{color:var(--dsw-alias-label-tertiary);margin:0;font-size:14px;line-height:22px}._wNcrq_notice{color:var(--dsw-alias-state-warn-label);margin:0;font-size:12px;line-height:18px}._wNcrq_savedNotice{color:var(--dsw-alias-state-success-primary);margin:0;font-size:12px;line-height:18px}._wNcrq_rows{flex-direction:column;gap:8px;margin:12px 0 0;padding:0;list-style:none;display:flex}._wNcrq_rowCard{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;flex-direction:column;gap:12px;padding:12px 14px;display:flex}._wNcrq_rowHead{align-items:center;gap:10px;display:flex}._wNcrq_rowIdentity{align-items:center;gap:6px;min-width:0;display:inline-flex}._wNcrq_rowName{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:22px}._wNcrq_rowTag{border:1px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary);border-radius:4px;flex:none;padding:1px 6px;font-size:11px;line-height:16px}._wNcrq_credentialDot{box-sizing:border-box;border-radius:50%;flex:none;width:8px;height:8px;display:inline-block}._wNcrq_credentialDotConfigured{background:var(--dsw-alias-state-success-primary)}._wNcrq_credentialDotMissing{background:var(--dsw-alias-state-error-primary)}._wNcrq_rowActions{align-items:center;gap:4px;margin-left:auto;display:inline-flex}._wNcrq_primaryButton,._wNcrq_secondaryButton,._wNcrq_addButton{box-sizing:border-box;height:36px;font:inherit;cursor:pointer;border:none;border-radius:18px;justify-content:center;align-items:center;gap:4px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}._wNcrq_primaryButton{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}._wNcrq_primaryButton:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}._wNcrq_secondaryButton,._wNcrq_addButton{border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);background:0 0}._wNcrq_secondaryButton:hover:not(:disabled),._wNcrq_addButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}._wNcrq_secondaryButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}._wNcrq_dangerButton{box-sizing:border-box;height:36px;color:var(--dsw-alias-state-error-primary);font:inherit;cursor:pointer;background:0 0;border:none;border-radius:18px;justify-content:center;align-items:center;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}._wNcrq_dangerButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}._wNcrq_rowActions ._wNcrq_secondaryButton,._wNcrq_rowActions ._wNcrq_dangerButton{border-radius:14px;height:28px;padding:0 10px;font-size:12px;line-height:18px}._wNcrq_primaryButton:disabled,._wNcrq_secondaryButton:disabled,._wNcrq_dangerButton:disabled,._wNcrq_addButton:disabled,._wNcrq_linkButton:disabled,._wNcrq_addModelButton:disabled{opacity:.4;cursor:default}._wNcrq_primaryButton:focus-visible,._wNcrq_secondaryButton:focus-visible,._wNcrq_dangerButton:focus-visible,._wNcrq_addButton:focus-visible,._wNcrq_linkButton:focus-visible,._wNcrq_addModelButton:focus-visible,._wNcrq_iconButton:focus-visible,._wNcrq_customizedSummary:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none}._wNcrq_editor{background:var(--dsw-alias-bg-module-platform);border-radius:12px;flex-direction:column;gap:14px;padding:14px 16px;display:flex}._wNcrq_editorHeader{align-items:baseline;gap:8px;display:flex}._wNcrq_editorTitle{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:22px}._wNcrq_editorRoute{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}._wNcrq_field{flex-direction:column;gap:6px;display:flex}._wNcrq_fieldLabel{color:var(--dsw-alias-label-secondary);align-items:center;gap:10px;font-size:12px;font-weight:500;line-height:18px;display:inline-flex}._wNcrq_linkButton{box-sizing:border-box;height:28px;color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:none;border-radius:14px;align-items:center;padding:0 10px;font-size:12px;line-height:18px;display:inline-flex}._wNcrq_linkButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}._wNcrq_advancedHint{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:18px}._wNcrq_editorActions{justify-content:flex-end;gap:8px;display:flex}._wNcrq_addBlock{flex-direction:column;gap:12px;display:flex}._wNcrq_addActions{flex-wrap:wrap;gap:10px;display:flex}._wNcrq_addButton{border:1px dashed var(--dsw-alias-border-l3);border-radius:12px;flex:1 1 0;gap:6px;min-width:180px;height:44px}._wNcrq_addCard,._wNcrq_setupCard{background:var(--dsw-alias-bg-module-platform);border-radius:12px;flex-direction:column;gap:14px;padding:14px 16px;list-style:none;display:flex}._wNcrq_addCard ._wNcrq_editor,._wNcrq_setupCard ._wNcrq_editor{background:0 0;padding:0}._wNcrq_customized{border-top:1px solid var(--dsw-alias-border-l2);padding-top:10px}._wNcrq_customizedSummary{cursor:pointer;width:fit-content;color:var(--dsw-alias-label-secondary);border-radius:6px;align-items:center;gap:6px;margin-left:-4px;padding:2px 4px;font-size:12px;font-weight:500;line-height:18px;list-style:none;display:flex}._wNcrq_customizedSummary::-webkit-details-marker{display:none}._wNcrq_customizedSummary:before{content:\"\";border-bottom:1.5px solid;border-right:1.5px solid;width:5px;height:5px;transition:transform .12s;transform:rotate(-45deg)translate(-1px,-1px)}._wNcrq_customized[open]>._wNcrq_customizedSummary:before{transform:rotate(45deg)translate(-1px,-1px)}._wNcrq_customizedSummary:hover{color:var(--dsw-alias-label-primary)}._wNcrq_customizedBody{flex-direction:column;gap:12px;padding-top:12px;display:flex}._wNcrq_modelCatalog{border-top:1px solid var(--dsw-alias-border-l2);flex-direction:column;gap:10px;padding-top:12px;display:flex}._wNcrq_modelCatalogHeading{flex-direction:column;gap:2px;display:flex}._wNcrq_modelCatalogTitle{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500;line-height:18px}._wNcrq_modelCatalogMeta,._wNcrq_modelEmpty{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:18px}._wNcrq_modelList{flex-direction:column;gap:8px;display:flex}._wNcrq_modelListHead{justify-content:space-between;align-items:flex-start;gap:12px;display:flex}._wNcrq_modelEntry{border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:6px}._wNcrq_modelRow{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto auto;align-items:center;gap:6px;display:grid}._wNcrq_iconButton{box-sizing:border-box;width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:6px;justify-content:center;align-items:center;display:inline-flex}._wNcrq_iconButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}._wNcrq_iconButton:disabled{cursor:default;opacity:.4}._wNcrq_iconButtonDanger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary)}._wNcrq_modelAdvanced{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;padding:8px 4px 2px;display:grid}._wNcrq_modelField{flex-direction:column;gap:4px;display:flex}._wNcrq_modelFieldLabel{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}._wNcrq_modelEmpty{border:1px dashed var(--dsw-alias-border-l3);text-align:center;border-radius:8px;padding:12px}._wNcrq_addModelButton{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);height:28px;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer;background:0 0;border-radius:14px;align-self:flex-start;align-items:center;gap:4px;padding:0 10px;font-size:12px;line-height:18px;display:inline-flex}._wNcrq_addModelButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}._wNcrq_input{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);width:100%;height:32px;font:inherit;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 10px;font-size:14px;line-height:22px}select._wNcrq_input{cursor:pointer;max-width:240px}._wNcrq_input:focus{border-color:var(--dsw-alias-brand-primary);outline:none}._wNcrq_input::placeholder{color:var(--dsw-alias-label-dimmed)}._wNcrq_input:disabled{opacity:.6;cursor:default}._wNcrq_selectInput{appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\");background-position:right 12px center;background-repeat:no-repeat;background-size:12px 12px;padding-right:32px}._wNcrq_error{color:var(--dsw-alias-state-error-primary);margin:0;font-size:12px;line-height:18px}._wNcrq_deleteDialog{width:min(480px,100%)}._wNcrq_deleteConfirm:not(:disabled){border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}._wNcrq_deleteConfirm:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}._wNcrq_hiddenLabel{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){._wNcrq_customizedSummary:before{transition:none}}._wNcrq_fetchDialog{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);max-width:520px}._wNcrq_candidateActions{justify-content:flex-end;margin-bottom:6px;display:flex}._wNcrq_candidateList{flex-direction:column;gap:2px;max-height:320px;margin:0;padding:0;list-style:none;display:flex;overflow-y:auto}._wNcrq_candidate{border-radius:6px}._wNcrq_candidateLabel{cursor:pointer;align-items:center;gap:8px;padding:6px 8px;display:flex}._wNcrq_candidateId{font-family:var(--ds-font-family-code);overflow-wrap:anywhere;flex:auto;font-size:13px}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-settings-models/src/client/ModelsSection.module.css.mjs
+		const css$3 = ".zOrTxW_section{max-width:720px;color:var(--dsw-alias-label-primary);flex-direction:column;gap:12px;display:flex}.zOrTxW_title{color:var(--dsw-alias-label-primary);margin:0;font-size:16px;font-weight:500;line-height:24px}.zOrTxW_intro{color:var(--dsw-alias-label-tertiary);margin:0;font-size:14px;line-height:22px}.zOrTxW_notice{color:var(--dsw-alias-state-warn-label);margin:0;font-size:12px;line-height:18px}.zOrTxW_savedNotice{color:var(--dsw-alias-state-success-primary);margin:0;font-size:12px;line-height:18px}.zOrTxW_rows{flex-direction:column;gap:8px;margin:12px 0 0;padding:0;list-style:none;display:flex}.zOrTxW_rowCard{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;flex-direction:column;gap:12px;padding:12px 14px;display:flex}.zOrTxW_rowHead{align-items:center;gap:10px;display:flex}.zOrTxW_rowIdentity{align-items:center;gap:6px;min-width:0;display:inline-flex}.zOrTxW_rowName{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:22px}.zOrTxW_rowTag{border:1px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary);border-radius:4px;flex:none;padding:1px 6px;font-size:11px;line-height:16px}.zOrTxW_credentialDot{box-sizing:border-box;border-radius:50%;flex:none;width:8px;height:8px;display:inline-block}.zOrTxW_credentialDotConfigured{background:var(--dsw-alias-state-success-primary)}.zOrTxW_credentialDotMissing{background:var(--dsw-alias-state-error-primary)}.zOrTxW_rowActions{align-items:center;gap:4px;margin-left:auto;display:inline-flex}.zOrTxW_primaryButton,.zOrTxW_secondaryButton,.zOrTxW_addButton{box-sizing:border-box;height:36px;font:inherit;cursor:pointer;border:none;border-radius:18px;justify-content:center;align-items:center;gap:4px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}.zOrTxW_primaryButton{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}.zOrTxW_primaryButton:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}.zOrTxW_secondaryButton,.zOrTxW_addButton{border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary);background:0 0}.zOrTxW_secondaryButton:hover:not(:disabled),.zOrTxW_addButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.zOrTxW_secondaryButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}.zOrTxW_dangerButton{box-sizing:border-box;height:36px;color:var(--dsw-alias-state-error-primary);font:inherit;cursor:pointer;background:0 0;border:none;border-radius:18px;justify-content:center;align-items:center;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}.zOrTxW_dangerButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}.zOrTxW_rowActions .zOrTxW_secondaryButton,.zOrTxW_rowActions .zOrTxW_dangerButton{border-radius:14px;height:28px;padding:0 10px;font-size:12px;line-height:18px}.zOrTxW_primaryButton:disabled,.zOrTxW_secondaryButton:disabled,.zOrTxW_dangerButton:disabled,.zOrTxW_addButton:disabled,.zOrTxW_linkButton:disabled,.zOrTxW_addModelButton:disabled{opacity:.4;cursor:default}.zOrTxW_primaryButton:focus-visible,.zOrTxW_secondaryButton:focus-visible,.zOrTxW_dangerButton:focus-visible,.zOrTxW_addButton:focus-visible,.zOrTxW_linkButton:focus-visible,.zOrTxW_addModelButton:focus-visible,.zOrTxW_iconButton:focus-visible,.zOrTxW_customizedSummary:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none}.zOrTxW_editor{background:var(--dsw-alias-bg-module-platform);border-radius:12px;flex-direction:column;gap:14px;padding:14px 16px;display:flex}.zOrTxW_editorHeader{align-items:baseline;gap:8px;display:flex}.zOrTxW_editorTitle{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:22px}.zOrTxW_editorRoute{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}.zOrTxW_field{flex-direction:column;gap:6px;display:flex}.zOrTxW_fieldLabel{color:var(--dsw-alias-label-secondary);align-items:center;gap:10px;font-size:12px;font-weight:500;line-height:18px;display:inline-flex}.zOrTxW_linkButton{box-sizing:border-box;height:28px;color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:none;border-radius:14px;align-items:center;padding:0 10px;font-size:12px;line-height:18px;display:inline-flex}.zOrTxW_linkButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}.zOrTxW_advancedHint{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:18px}.zOrTxW_editorActions{justify-content:flex-end;gap:8px;display:flex}.zOrTxW_addBlock{flex-direction:column;gap:12px;display:flex}.zOrTxW_addActions{flex-wrap:wrap;gap:10px;display:flex}.zOrTxW_addButton{border:1px dashed var(--dsw-alias-border-l3);border-radius:12px;flex:1 1 0;gap:6px;min-width:180px;height:44px}.zOrTxW_addCard,.zOrTxW_setupCard{background:var(--dsw-alias-bg-module-platform);border-radius:12px;flex-direction:column;gap:14px;padding:14px 16px;list-style:none;display:flex}.zOrTxW_addCard .zOrTxW_editor,.zOrTxW_setupCard .zOrTxW_editor{background:0 0;padding:0}.zOrTxW_customized{border-top:1px solid var(--dsw-alias-border-l2);padding-top:10px}.zOrTxW_customizedSummary{cursor:pointer;width:fit-content;color:var(--dsw-alias-label-secondary);border-radius:6px;align-items:center;gap:6px;margin-left:-4px;padding:2px 4px;font-size:12px;font-weight:500;line-height:18px;list-style:none;display:flex}.zOrTxW_customizedSummary::-webkit-details-marker{display:none}.zOrTxW_customizedSummary:before{content:\"\";border-bottom:1.5px solid;border-right:1.5px solid;width:5px;height:5px;transition:transform .12s;transform:rotate(-45deg)translate(-1px,-1px)}.zOrTxW_customized[open]>.zOrTxW_customizedSummary:before{transform:rotate(45deg)translate(-1px,-1px)}.zOrTxW_customizedSummary:hover{color:var(--dsw-alias-label-primary)}.zOrTxW_customizedBody{flex-direction:column;gap:12px;padding-top:12px;display:flex}.zOrTxW_modelCatalog{border-top:1px solid var(--dsw-alias-border-l2);flex-direction:column;gap:10px;padding-top:12px;display:flex}.zOrTxW_modelCatalogHeading{flex-direction:column;gap:2px;display:flex}.zOrTxW_modelCatalogTitle{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500;line-height:18px}.zOrTxW_modelCatalogMeta,.zOrTxW_modelEmpty{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:18px}.zOrTxW_modelList{flex-direction:column;gap:8px;display:flex}.zOrTxW_modelListHead{justify-content:space-between;align-items:flex-start;gap:12px;display:flex}.zOrTxW_modelEntry{border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:6px}.zOrTxW_modelRow{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto auto;align-items:center;gap:6px;display:grid}.zOrTxW_iconButton{box-sizing:border-box;width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:6px;justify-content:center;align-items:center;display:inline-flex}.zOrTxW_iconButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.zOrTxW_iconButton:disabled{cursor:default;opacity:.4}.zOrTxW_iconButtonDanger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary)}.zOrTxW_modelAdvanced{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;padding:8px 4px 2px;display:grid}.zOrTxW_modelField{flex-direction:column;gap:4px;display:flex}.zOrTxW_modelFieldLabel{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}.zOrTxW_modelEmpty{border:1px dashed var(--dsw-alias-border-l3);text-align:center;border-radius:8px;padding:12px}.zOrTxW_addModelButton{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);height:28px;color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer;background:0 0;border-radius:14px;align-self:flex-start;align-items:center;gap:4px;padding:0 10px;font-size:12px;line-height:18px;display:inline-flex}.zOrTxW_addModelButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.zOrTxW_input{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);width:100%;height:32px;font:inherit;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 10px;font-size:14px;line-height:22px}select.zOrTxW_input{cursor:pointer;max-width:240px}.zOrTxW_input:focus{border-color:var(--dsw-alias-brand-primary);outline:none}.zOrTxW_input::placeholder{color:var(--dsw-alias-label-dimmed)}.zOrTxW_input:disabled{opacity:.6;cursor:default}.zOrTxW_selectInput{appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\");background-position:right 12px center;background-repeat:no-repeat;background-size:12px 12px;padding-right:32px}.zOrTxW_error{color:var(--dsw-alias-state-error-primary);margin:0;font-size:12px;line-height:18px}.zOrTxW_deleteDialog{width:min(480px,100%)}.zOrTxW_deleteConfirm:not(:disabled){border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}.zOrTxW_deleteConfirm:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}.zOrTxW_hiddenLabel{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){.zOrTxW_customizedSummary:before,.zOrTxW_switchThumb{transition:none}}.zOrTxW_fetchDialog{--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);max-width:520px}.zOrTxW_candidateActions{justify-content:flex-end;margin-bottom:6px;display:flex}.zOrTxW_candidateList{flex-direction:column;gap:2px;max-height:320px;margin:0;padding:0;list-style:none;display:flex;overflow-y:auto}.zOrTxW_candidate{border-radius:6px}.zOrTxW_candidateLabel{cursor:pointer;align-items:center;gap:8px;padding:6px 8px;display:flex}.zOrTxW_candidateId{font-family:var(--ds-font-family-code);overflow-wrap:anywhere;flex:auto;font-size:13px}";
 		const tagId$3 = "@deepseek-ai/dsh-client-ui-settings-models/ModelsSection.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$3) + "]") === null) {
 			const tag = document.createElement("style");
@@ -65,68 +65,69 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ModelsSection_module_css_default = {
-			"addActions": "_wNcrq_addActions",
-			"addBlock": "_wNcrq_addBlock",
-			"addButton": "_wNcrq_addButton",
-			"addCard": "_wNcrq_addCard",
-			"addModelButton": "_wNcrq_addModelButton",
-			"advancedHint": "_wNcrq_advancedHint",
-			"candidate": "_wNcrq_candidate",
-			"candidateActions": "_wNcrq_candidateActions",
-			"candidateId": "_wNcrq_candidateId",
-			"candidateLabel": "_wNcrq_candidateLabel",
-			"candidateList": "_wNcrq_candidateList",
-			"credentialDot": "_wNcrq_credentialDot",
-			"credentialDotConfigured": "_wNcrq_credentialDotConfigured",
-			"credentialDotMissing": "_wNcrq_credentialDotMissing",
-			"customized": "_wNcrq_customized",
-			"customizedBody": "_wNcrq_customizedBody",
-			"customizedSummary": "_wNcrq_customizedSummary",
-			"dangerButton": "_wNcrq_dangerButton",
-			"deleteConfirm": "_wNcrq_deleteConfirm",
-			"deleteDialog": "_wNcrq_deleteDialog",
-			"editor": "_wNcrq_editor",
-			"editorActions": "_wNcrq_editorActions",
-			"editorHeader": "_wNcrq_editorHeader",
-			"editorRoute": "_wNcrq_editorRoute",
-			"editorTitle": "_wNcrq_editorTitle",
-			"error": "_wNcrq_error",
-			"fetchDialog": "_wNcrq_fetchDialog",
-			"field": "_wNcrq_field",
-			"fieldLabel": "_wNcrq_fieldLabel",
-			"hiddenLabel": "_wNcrq_hiddenLabel",
-			"iconButton": "_wNcrq_iconButton",
-			"iconButtonDanger": "_wNcrq_iconButtonDanger",
-			"input": "_wNcrq_input",
-			"intro": "_wNcrq_intro",
-			"linkButton": "_wNcrq_linkButton",
-			"modelAdvanced": "_wNcrq_modelAdvanced",
-			"modelCatalog": "_wNcrq_modelCatalog",
-			"modelCatalogHeading": "_wNcrq_modelCatalogHeading",
-			"modelCatalogMeta": "_wNcrq_modelCatalogMeta",
-			"modelCatalogTitle": "_wNcrq_modelCatalogTitle",
-			"modelEmpty": "_wNcrq_modelEmpty",
-			"modelEntry": "_wNcrq_modelEntry",
-			"modelField": "_wNcrq_modelField",
-			"modelFieldLabel": "_wNcrq_modelFieldLabel",
-			"modelList": "_wNcrq_modelList",
-			"modelListHead": "_wNcrq_modelListHead",
-			"modelRow": "_wNcrq_modelRow",
-			"notice": "_wNcrq_notice",
-			"primaryButton": "_wNcrq_primaryButton",
-			"rowActions": "_wNcrq_rowActions",
-			"rowCard": "_wNcrq_rowCard",
-			"rowHead": "_wNcrq_rowHead",
-			"rowIdentity": "_wNcrq_rowIdentity",
-			"rowName": "_wNcrq_rowName",
-			"rowTag": "_wNcrq_rowTag",
-			"rows": "_wNcrq_rows",
-			"savedNotice": "_wNcrq_savedNotice",
-			"secondaryButton": "_wNcrq_secondaryButton",
-			"section": "_wNcrq_section",
-			"selectInput": "_wNcrq_selectInput",
-			"setupCard": "_wNcrq_setupCard",
-			"title": "_wNcrq_title"
+			"addActions": "zOrTxW_addActions",
+			"addBlock": "zOrTxW_addBlock",
+			"addButton": "zOrTxW_addButton",
+			"addCard": "zOrTxW_addCard",
+			"addModelButton": "zOrTxW_addModelButton",
+			"advancedHint": "zOrTxW_advancedHint",
+			"candidate": "zOrTxW_candidate",
+			"candidateActions": "zOrTxW_candidateActions",
+			"candidateId": "zOrTxW_candidateId",
+			"candidateLabel": "zOrTxW_candidateLabel",
+			"candidateList": "zOrTxW_candidateList",
+			"credentialDot": "zOrTxW_credentialDot",
+			"credentialDotConfigured": "zOrTxW_credentialDotConfigured",
+			"credentialDotMissing": "zOrTxW_credentialDotMissing",
+			"customized": "zOrTxW_customized",
+			"customizedBody": "zOrTxW_customizedBody",
+			"customizedSummary": "zOrTxW_customizedSummary",
+			"dangerButton": "zOrTxW_dangerButton",
+			"deleteConfirm": "zOrTxW_deleteConfirm",
+			"deleteDialog": "zOrTxW_deleteDialog",
+			"editor": "zOrTxW_editor",
+			"editorActions": "zOrTxW_editorActions",
+			"editorHeader": "zOrTxW_editorHeader",
+			"editorRoute": "zOrTxW_editorRoute",
+			"editorTitle": "zOrTxW_editorTitle",
+			"error": "zOrTxW_error",
+			"fetchDialog": "zOrTxW_fetchDialog",
+			"field": "zOrTxW_field",
+			"fieldLabel": "zOrTxW_fieldLabel",
+			"hiddenLabel": "zOrTxW_hiddenLabel",
+			"iconButton": "zOrTxW_iconButton",
+			"iconButtonDanger": "zOrTxW_iconButtonDanger",
+			"input": "zOrTxW_input",
+			"intro": "zOrTxW_intro",
+			"linkButton": "zOrTxW_linkButton",
+			"modelAdvanced": "zOrTxW_modelAdvanced",
+			"modelCatalog": "zOrTxW_modelCatalog",
+			"modelCatalogHeading": "zOrTxW_modelCatalogHeading",
+			"modelCatalogMeta": "zOrTxW_modelCatalogMeta",
+			"modelCatalogTitle": "zOrTxW_modelCatalogTitle",
+			"modelEmpty": "zOrTxW_modelEmpty",
+			"modelEntry": "zOrTxW_modelEntry",
+			"modelField": "zOrTxW_modelField",
+			"modelFieldLabel": "zOrTxW_modelFieldLabel",
+			"modelList": "zOrTxW_modelList",
+			"modelListHead": "zOrTxW_modelListHead",
+			"modelRow": "zOrTxW_modelRow",
+			"notice": "zOrTxW_notice",
+			"primaryButton": "zOrTxW_primaryButton",
+			"rowActions": "zOrTxW_rowActions",
+			"rowCard": "zOrTxW_rowCard",
+			"rowHead": "zOrTxW_rowHead",
+			"rowIdentity": "zOrTxW_rowIdentity",
+			"rowName": "zOrTxW_rowName",
+			"rowTag": "zOrTxW_rowTag",
+			"rows": "zOrTxW_rows",
+			"savedNotice": "zOrTxW_savedNotice",
+			"secondaryButton": "zOrTxW_secondaryButton",
+			"section": "zOrTxW_section",
+			"selectInput": "zOrTxW_selectInput",
+			"setupCard": "zOrTxW_setupCard",
+			"switchThumb": "zOrTxW_switchThumb",
+			"title": "zOrTxW_title"
 		};
 		//#endregion
 		//#region lib/types/client/EditorFooter.js
@@ -144,13 +145,13 @@ window.__ModuleLoader__.load({
 					className: ModelsSection_module_css_default["secondaryButton"],
 					disabled: props.busy,
 					onClick: props.onCancel,
-					children: t(props.cancelLabel ?? "cancel")
+					children: t(props.cancelLabelKey ?? "cancel")
 				}), (0, react_jsx_runtime.jsx)("button", {
 					type: "button",
 					className: ModelsSection_module_css_default["primaryButton"],
 					disabled: props.submitDisabled,
 					onClick: props.onSubmit,
-					children: props.busy ? t(props.submitBusyLabel) : t(props.submitLabel)
+					children: props.busy ? t(props.submitBusyLabelKey) : t(props.submitLabelKey)
 				})]
 			});
 		}
@@ -445,8 +446,9 @@ window.__ModuleLoader__.load({
 		//#region lib/types/client/store.js
 		/**
 		* Models settings page store: one snapshot joining the configurable-provider
-		* directory (`llm.providers`), the settings namespaces (shared settings mirror),
-		* and the referenced credentials (`credentials.describe`). The host stays the
+		* directory (`llm/listProviders` joined with `llm/listConfigurableProviders`),
+		* the settings namespaces (shared settings mirror),
+		* and the referenced credentials (`credentials/describe`). The host stays the
 		* single fact source — every mutation writes through the wire and the page
 		* re-renders from the next describe, pushed or refetched.
 		*/
@@ -455,6 +457,35 @@ window.__ModuleLoader__.load({
 		* names one that cannot collide with a configured route.
 		*/
 		const PROBE_ROUTE = "\0probe";
+		/**
+		* Join declared configurable providers with the currently registered routes.
+		* @param registered - live provider routes in registration order.
+		* @param directory - declared configurable providers in declaration order.
+		* @returns declared rows followed by live routes with no declaration.
+		*/
+		function joinProviderDirectory(registered, directory) {
+			const active = new Set(registered.map((provider) => provider.id));
+			const declared = new Set(directory.map((entry) => entry.provider));
+			const rows = directory.map((entry) => ({
+				provider: entry.provider,
+				displayName: entry.displayName,
+				settingsNs: entry.settingsNs,
+				settingsPath: [...entry.settingsPath],
+				active: active.has(entry.provider),
+				...entry.declared === void 0 ? {} : { declared: entry.declared }
+			}));
+			for (const provider of registered) {
+				if (declared.has(provider.id)) continue;
+				rows.push({
+					provider: provider.id,
+					displayName: provider.name,
+					settingsNs: "",
+					settingsPath: [],
+					active: true
+				});
+			}
+			return rows;
+		}
 		/**
 		* Human text for a rejected wire call. A transport failure rejects with an
 		* Error; a host or a runtime can reject with anything, and the page still has
@@ -508,7 +539,7 @@ window.__ModuleLoader__.load({
 			schema;
 			describeFace;
 			/** The snapshot the section renders from (uSES-safe store). */
-			store = (0, _deepseek_ai_dsh_client_runtime_client.createSnapshotStore)({
+			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)({
 				status: "idle",
 				error: null,
 				credentialError: null,
@@ -519,7 +550,7 @@ window.__ModuleLoader__.load({
 			/** Latest load wins; an older response never overwrites a newer one. */
 			generation = 0;
 			/**
-			* @param api - the wire face (credentials/llm domains, and settings writes).
+			* @param api - the page's credentials Remote and LLM wire faces.
 			* @param describeFace - the shared mirror's describe face (namespace views and writability).
 			*/
 			constructor(api, schema, describeFace) {
@@ -545,11 +576,16 @@ window.__ModuleLoader__.load({
 				let writable;
 				let views;
 				try {
-					const [providersResponse] = await Promise.all([this.api.llm.providers({}), this.describeFace.ensure()]);
-					if (!providersResponse.result.ok) throw new Error(providersResponse.result.error.message);
+					const [registered, declared] = await Promise.all([
+						this.api.llm.listProviders(),
+						this.api.llm.listConfigurableProviders(),
+						this.describeFace.ensure()
+					]);
+					if (!registered.ok) throw new Error(registered.error.message);
+					if (!declared.ok) throw new Error(declared.error.message);
 					const mirrored = this.describeFace.getSnapshot();
 					if (mirrored.view === void 0) throw new Error(mirrored.error ?? "settings are unavailable in this browser");
-					providers = providersResponse.result.value.providers;
+					providers = joinProviderDirectory(registered.value, declared.value);
 					writable = mirrored.view.writable;
 					views = mirrored.view.namespaces;
 				} catch (error) {
@@ -571,13 +607,13 @@ window.__ModuleLoader__.load({
 						credential: void 0
 					};
 				});
-				const refs = [...new Set(rows.flatMap((row) => row.apiKeyEnv === void 0 ? [] : [row.apiKeyEnv]))];
+				const refs = [...new Set(rows.map((row) => row.apiKeyEnv ?? deriveKeyRef(row.entry.provider)))];
 				let credentials = {};
 				let credentialError = null;
 				if (refs.length > 0) try {
-					const response = await this.api.credentials.describe({ refs });
-					if (response.result.ok) credentials = response.result.value.credentials;
-					else credentialError = response.result.error.message;
+					const response = await this.api.credentials.describe(refs);
+					if (response.ok) credentials = response.value;
+					else credentialError = response.error.message;
 				} catch (error) {
 					credentialError = messageOf(error);
 				}
@@ -587,10 +623,15 @@ window.__ModuleLoader__.load({
 					s.error = null;
 					s.credentialError = credentialError;
 					s.writable = writable;
-					s.rows = rows.map((row) => ({
-						...row,
-						...row.apiKeyEnv !== void 0 && credentials[row.apiKeyEnv] !== void 0 ? { credential: credentials[row.apiKeyEnv] } : {}
-					}));
+					s.rows = rows.map((row) => {
+						const named = row.apiKeyEnv === void 0 ? void 0 : credentials[row.apiKeyEnv];
+						const derived = row.apiKeyEnv !== void 0 ? void 0 : credentials[deriveKeyRef(row.entry.provider)];
+						return {
+							...row,
+							...named === void 0 ? {} : { credential: named },
+							...derived === void 0 ? {} : { derivedCredential: derived }
+						};
+					});
 					s.namespaces = namespaces;
 				});
 			}
@@ -798,18 +839,17 @@ window.__ModuleLoader__.load({
 				setBusy(true);
 				setFailure(void 0);
 				try {
-					const response = await api.llm.discoverModels({
-						settingsNs: probe.settingsNs,
+					const response = await api.llm.discoverModels(probe.settingsNs, {
 						...probe.provider === void 0 ? {} : { provider: probe.provider },
 						...probe.baseURL === void 0 || probe.baseURL.length === 0 ? {} : { baseURL: probe.baseURL },
 						...probe.api === void 0 ? {} : { api: probe.api },
 						...probe.apiKey === void 0 ? {} : { apiKey: probe.apiKey }
 					});
-					if (!response.result.ok) {
-						setFailure(response.result.error.message);
+					if (!response.ok) {
+						setFailure(response.error.message);
 						return;
 					}
-					const found = response.result.value.models;
+					const found = response.value;
 					if (found.length === 0) {
 						setFailure(t("fetchEmpty"));
 						return;
@@ -1060,7 +1100,7 @@ window.__ModuleLoader__.load({
 		* the provider editor with extra fields: the route id is being *chosen* here,
 		* and the settings address does not exist until it is. One `settings.mutate`
 		* sets the whole profile at `providers.<route>`; the key travels separately
-		* through `credentials.set` under the reference the profile records, exactly as
+		* through `credentials/set` under the reference the profile records, exactly as
 		* an existing provider's key does.
 		*
 		* The three fields a hand-declared route cannot default — endpoint, protocol,
@@ -1128,24 +1168,17 @@ window.__ModuleLoader__.load({
 						baseURL,
 						models: models.map((model) => ({ ...model }))
 					};
-					const response = await api.settings.mutate({
-						ns: NS$1,
-						ops: [{
-							op: "set",
-							path: ["providers", route],
-							value: profile
-						}],
-						expectedRevision: openedAt
-					});
-					if (!response.result.ok) return response.result.error.message;
+					const response = await api.settings.mutate(NS$1, [{
+						op: "set",
+						path: ["providers", route],
+						value: profile
+					}], openedAt);
+					if (!response.ok) return response.error.message;
 					setCommitted(true);
 				}
 				if (storesKey) {
-					const stored = await api.credentials.set({
-						ref: keyRef,
-						value: keyValue
-					});
-					if (!stored.result.ok) return stored.result.error.message;
+					const stored = await api.credentials.set(keyRef, keyValue);
+					if (!stored.ok) return stored.error.message;
 				}
 			};
 			const create = async () => {
@@ -1224,7 +1257,7 @@ window.__ModuleLoader__.load({
 							className: ModelsSection_module_css_default["input"],
 							type: "text",
 							value: baseURL,
-							placeholder: "https://gateway.example/v1",
+							placeholder: t("customBaseUrlPlaceholder"),
 							"aria-label": t("baseUrl"),
 							disabled: profileDisabled,
 							onChange: (event) => {
@@ -1302,8 +1335,8 @@ window.__ModuleLoader__.load({
 						t,
 						busy,
 						submitDisabled: disabled || !ready,
-						submitLabel: "create",
-						submitBusyLabel: "creating",
+						submitLabelKey: "create",
+						submitBusyLabelKey: "creating",
 						onCancel: () => {
 							props.onClose(committed);
 						},
@@ -1319,7 +1352,7 @@ window.__ModuleLoader__.load({
 		/**
 		* One provider's editor card, hand-written per adapter family: the primary
 		* field is a single write-only **API key** input (the page never asks for an
-		* environment-variable name — a typed key stores through `credentials.set`
+		* environment-variable name — a typed key stores through `credentials/set`
 		* under the profile's reference, deriving `<ROUTE>_API_KEY` when the profile
 		* has none. The pi-ai profile records that derivation as `apiKeyEnv` only when
 		* a key is entered; a blank key materializes a reference-free profile for
@@ -1417,9 +1450,9 @@ window.__ModuleLoader__.load({
 			(0, react.useEffect)(() => {
 				let stale = false;
 				setKeyState(void 0);
-				api.credentials.describe({ refs: [keyRef] }).then((response) => {
-					if (stale || !response.result.ok) return;
-					setKeyState(response.result.value.credentials[keyRef]);
+				api.credentials.describe([keyRef]).then((response) => {
+					if (stale || !response.ok) return;
+					setKeyState(response.value[keyRef]);
 				}, () => void 0);
 				return () => {
 					stale = true;
@@ -1472,22 +1505,15 @@ window.__ModuleLoader__.load({
 					value: {}
 				}] : pathOps(settingsPath, committedOriginal, next);
 				if (ops.length > 0) {
-					const response = await api.settings.mutate({
-						ns,
-						ops,
-						expectedRevision
-					});
-					if (!response.result.ok) return response.result.error.code === "settings-conflict" ? t("conflict") : response.result.error.message;
-					setCommittedOriginal(schema.getPath(response.result.value.user, settingsPath));
-					setExpectedRevision(response.result.value.revision);
+					const response = await api.settings.mutate(ns, ops, expectedRevision);
+					if (!response.ok) return response.error.code === "settings-conflict" ? t("conflict") : response.error.message;
+					setCommittedOriginal(schema.getPath(response.value.user, settingsPath));
+					setExpectedRevision(response.value.revision);
 					setDraft(next);
 				}
 				if (keyValue.length > 0) {
-					const stored = await api.credentials.set({
-						ref: keyRef,
-						value: keyValue
-					});
-					if (!stored.result.ok) return stored.result.error.message;
+					const stored = await api.credentials.set(keyRef, keyValue);
+					if (!stored.ok) return stored.error.message;
 				}
 				setKeyDraft("");
 			};
@@ -1507,9 +1533,13 @@ window.__ModuleLoader__.load({
 					setBusy(false);
 				}
 			};
-			if (node === void 0) return (0, react_jsx_runtime.jsx)("p", {
+			if (node === void 0) return (0, react_jsx_runtime.jsxs)("p", {
 				className: ModelsSection_module_css_default["error"],
-				children: `${props.provider}: unresolvable settings path`
+				children: [
+					props.provider,
+					": ",
+					props.t("settingsPathUnresolvable")
+				]
 			});
 			const keyLocked = keyState?.writable === false;
 			/**
@@ -1682,9 +1712,9 @@ window.__ModuleLoader__.load({
 						t,
 						busy,
 						submitDisabled: disabled || layout === "unknown" || props.credentialOnly !== true && modelFailure !== void 0 || shownKeyFailure !== void 0 || props.credentialRequired === true && keyValue.length === 0,
-						submitLabel: props.submitLabel ?? "apply",
-						submitBusyLabel: props.submitBusyLabel ?? "applying",
-						...props.cancelLabel === void 0 ? {} : { cancelLabel: props.cancelLabel },
+						submitLabelKey: props.submitLabelKey ?? "apply",
+						submitBusyLabelKey: props.submitBusyLabelKey ?? "applying",
+						...props.cancelLabelKey === void 0 ? {} : { cancelLabelKey: props.cancelLabelKey },
 						onCancel: () => {
 							props.onClose(false);
 						},
@@ -1734,17 +1764,14 @@ window.__ModuleLoader__.load({
 		async function removeProviderProfile(api, controller, target) {
 			try {
 				if (target.credentialRef !== void 0) {
-					const credential = await api.credentials.unset({ ref: target.credentialRef });
-					if (!credential.result.ok) return credential.result.error.message;
+					const credential = await api.credentials.unset(target.credentialRef);
+					if (!credential.ok) return credential.error.message;
 				}
-				const response = await api.settings.mutate({
-					ns: target.settingsNs,
-					ops: [{
-						op: "unset",
-						path: [...target.settingsPath]
-					}]
-				});
-				if (!response.result.ok) return response.result.error.message;
+				const response = await api.settings.mutate(target.settingsNs, [{
+					op: "unset",
+					path: [...target.settingsPath]
+				}], void 0);
+				if (!response.ok) return response.error.message;
 			} catch (error) {
 				return messageOf(error);
 			}
@@ -1763,6 +1790,16 @@ window.__ModuleLoader__.load({
 			if (anyUsable) return false;
 			if (row.entry.settingsPath.length > 0) return false;
 			return row.credential?.configured !== true;
+		}
+		/**
+		* The provider-card seat's credential fact: the reference this page would use
+		* for the row — the profile's `apiKeyEnv`, or the page's derived
+		* `<ROUTE>_API_KEY` while the profile names none — confirmed configured. The
+		* derived half is what keeps the seat consistent with the editor on the
+		* add-provider draft, whose dormant row names no reference yet.
+		*/
+		function keyConfiguredOf(row) {
+			return row.apiKeyEnv !== void 0 ? row.credential?.configured === true : row.derivedCredential?.configured === true;
 		}
 		function targetOf(row) {
 			const managedRef = deriveKeyRef(row.entry.provider);
@@ -1790,17 +1827,20 @@ window.__ModuleLoader__.load({
 		* @returns the section, or null while the shell has not injected yet.
 		*/
 		function ModelsSection(props) {
-			const { controller, useSnapshot, api, schema, t } = props;
+			const { controller, useSnapshot, api, schema, t, renderSlot } = props;
 			if (controller === void 0 || useSnapshot === void 0 || api === void 0 || schema === void 0 || t === void 0) return null;
-			return (0, react_jsx_runtime.jsx)(Loaded, { injected: {
-				controller,
-				useSnapshot,
-				api,
-				schema,
-				t
-			} });
+			return (0, react_jsx_runtime.jsx)(Loaded, {
+				injected: {
+					controller,
+					useSnapshot,
+					api,
+					schema,
+					t
+				},
+				renderSlot
+			});
 		}
-		function Loaded({ injected }) {
+		function Loaded({ injected, renderSlot }) {
 			const { controller, api, schema, t } = injected;
 			const state = injected.useSnapshot((snapshot) => snapshot);
 			const [editing, setEditing] = (0, react.useState)(void 0);
@@ -1882,6 +1922,7 @@ window.__ModuleLoader__.load({
 			const addable = state.rows.filter((row) => !row.configured && row.entry.settingsNs !== "");
 			const addTarget = adding ? editing : void 0;
 			const addNamespace = addTarget === void 0 ? void 0 : state.namespaces.get(addTarget.settingsNs);
+			const addRow = addTarget === void 0 ? void 0 : state.rows.find((row) => row.entry.provider === addTarget.provider);
 			const protocols = protocolChoices(state.namespaces.get("llm-pi-ai"), schema);
 			return (0, react_jsx_runtime.jsxs)("div", {
 				className: ModelsSection_module_css_default["section"],
@@ -1911,9 +1952,9 @@ window.__ModuleLoader__.load({
 							const namespace = state.namespaces.get(target.settingsNs);
 							/* v8 ignore next -- the join marks a row configured only when its namespace resolved */
 							if (namespace === void 0) return null;
-							if (needsSetup(row, anyUsable) && !dismissedSetup.has(row.entry.provider)) return (0, react_jsx_runtime.jsx)("li", {
+							if (needsSetup(row, anyUsable) && !dismissedSetup.has(row.entry.provider)) return (0, react_jsx_runtime.jsxs)("li", {
 								className: ModelsSection_module_css_default["setupCard"],
-								children: renderProviderEditor({
+								children: [renderProviderEditor({
 									target,
 									namespace,
 									schema,
@@ -1923,75 +1964,87 @@ window.__ModuleLoader__.load({
 									onClose: (changed) => {
 										closeSetup(changed, target);
 									}
-								})
+								}), renderSlot("settings.models.provider-card", {
+									provider: row.entry,
+									configured: row.configured,
+									keyConfigured: keyConfiguredOf(row)
+								}, { entryKey: row.entry.settingsNs })]
 							}, row.entry.provider);
 							const open = !adding && editing?.provider === row.entry.provider;
 							const credentialConfigured = row.credential?.configured === true;
 							const credentialMissing = !credentialConfigured && row.apiKeyEnv !== void 0 && row.credential?.configured === false;
 							return (0, react_jsx_runtime.jsxs)("li", {
 								className: ModelsSection_module_css_default["rowCard"],
-								children: [(0, react_jsx_runtime.jsxs)("div", {
-									className: ModelsSection_module_css_default["rowHead"],
-									children: [(0, react_jsx_runtime.jsxs)("span", {
-										className: ModelsSection_module_css_default["rowIdentity"],
-										children: [
-											(0, react_jsx_runtime.jsx)("span", {
-												className: ModelsSection_module_css_default["rowName"],
-												children: row.entry.displayName
-											}),
-											row.entry.declared === true ? (0, react_jsx_runtime.jsx)("span", {
-												className: ModelsSection_module_css_default["rowTag"],
-												children: t("customTag")
-											}) : null,
-											credentialConfigured ? (0, react_jsx_runtime.jsx)("span", {
-												className: `${ModelsSection_module_css_default["credentialDot"]} ${ModelsSection_module_css_default["credentialDotConfigured"]}`,
-												role: "img",
-												"aria-label": t("credentialConfigured"),
-												title: t("credentialConfigured")
-											}) : credentialMissing ? (0, react_jsx_runtime.jsx)("span", {
-												className: `${ModelsSection_module_css_default["credentialDot"]} ${ModelsSection_module_css_default["credentialDotMissing"]}`,
-												role: "img",
-												"aria-label": t("credentialMissing"),
-												title: t("credentialMissing")
-											}) : null
-										]
-									}), (0, react_jsx_runtime.jsxs)("span", {
-										className: ModelsSection_module_css_default["rowActions"],
-										children: [(0, react_jsx_runtime.jsx)("button", {
-											type: "button",
-											className: ModelsSection_module_css_default["secondaryButton"],
-											"aria-label": providerCopy(t("editProvider"), target),
-											onClick: () => {
-												setSavedTarget(void 0);
-												setDeclaring(false);
-												setAdding(false);
-												setEditing(open ? void 0 : target);
-											},
-											children: t("edit")
-										}), row.removable ? (0, react_jsx_runtime.jsx)("button", {
-											type: "button",
-											className: ModelsSection_module_css_default["dangerButton"],
-											"aria-label": providerCopy(t("removeProvider"), target),
-											disabled: !state.writable,
-											onClick: () => {
-												setSavedTarget(void 0);
-												setDeleteFailure(void 0);
-												setDeleteTarget(target);
-											},
-											children: t("remove")
-										}) : null]
-									})]
-								}), open ? renderProviderEditor({
-									target,
-									namespace,
-									schema,
-									api,
-									t,
-									readOnly: !state.writable,
-									onClose: (changed) => {
-										closeEditor(changed, target);
-									}
-								}) : null]
+								children: [
+									(0, react_jsx_runtime.jsxs)("div", {
+										className: ModelsSection_module_css_default["rowHead"],
+										children: [(0, react_jsx_runtime.jsxs)("span", {
+											className: ModelsSection_module_css_default["rowIdentity"],
+											children: [
+												(0, react_jsx_runtime.jsx)("span", {
+													className: ModelsSection_module_css_default["rowName"],
+													children: row.entry.displayName
+												}),
+												row.entry.declared === true ? (0, react_jsx_runtime.jsx)("span", {
+													className: ModelsSection_module_css_default["rowTag"],
+													children: t("customTag")
+												}) : null,
+												credentialConfigured ? (0, react_jsx_runtime.jsx)("span", {
+													className: `${ModelsSection_module_css_default["credentialDot"]} ${ModelsSection_module_css_default["credentialDotConfigured"]}`,
+													role: "img",
+													"aria-label": t("credentialConfigured"),
+													title: t("credentialConfigured")
+												}) : credentialMissing ? (0, react_jsx_runtime.jsx)("span", {
+													className: `${ModelsSection_module_css_default["credentialDot"]} ${ModelsSection_module_css_default["credentialDotMissing"]}`,
+													role: "img",
+													"aria-label": t("credentialMissing"),
+													title: t("credentialMissing")
+												}) : null
+											]
+										}), (0, react_jsx_runtime.jsxs)("span", {
+											className: ModelsSection_module_css_default["rowActions"],
+											children: [(0, react_jsx_runtime.jsx)("button", {
+												type: "button",
+												className: ModelsSection_module_css_default["secondaryButton"],
+												"aria-label": providerCopy(t("editProvider"), target),
+												onClick: () => {
+													setSavedTarget(void 0);
+													setDeclaring(false);
+													setAdding(false);
+													setEditing(open ? void 0 : target);
+												},
+												children: t("edit")
+											}), row.removable ? (0, react_jsx_runtime.jsx)("button", {
+												type: "button",
+												className: ModelsSection_module_css_default["dangerButton"],
+												"aria-label": providerCopy(t("removeProvider"), target),
+												disabled: !state.writable,
+												onClick: () => {
+													setSavedTarget(void 0);
+													setDeleteFailure(void 0);
+													setDeleteTarget(target);
+												},
+												children: t("remove")
+											}) : null]
+										})]
+									}),
+									renderSlot("settings.models.provider-card", {
+										provider: row.entry,
+										configured: row.configured,
+										keyConfigured: keyConfiguredOf(row)
+									}, { entryKey: row.entry.settingsNs }),
+									open ? renderProviderEditor({
+										target,
+										namespace,
+										schema,
+										api,
+										t,
+										readOnly: !state.writable,
+										onClose: (changed) => {
+											closeEditor(changed, target);
+										}
+									}) : null
+								]
 							}, row.entry.provider);
 						})
 					}),
@@ -1999,40 +2052,48 @@ window.__ModuleLoader__.load({
 						className: ModelsSection_module_css_default["addBlock"],
 						children: addTarget !== void 0 && addNamespace !== void 0 ? (0, react_jsx_runtime.jsxs)("div", {
 							className: ModelsSection_module_css_default["addCard"],
-							children: [(0, react_jsx_runtime.jsxs)("div", {
-								className: ModelsSection_module_css_default["field"],
-								children: [(0, react_jsx_runtime.jsx)("span", {
-									className: ModelsSection_module_css_default["fieldLabel"],
-									children: t("provider")
-								}), (0, react_jsx_runtime.jsx)("select", {
-									className: `${ModelsSection_module_css_default["input"]} ${ModelsSection_module_css_default["selectInput"]}`,
-									value: addTarget.provider,
-									"aria-label": t("provider"),
-									onChange: (event) => {
-										const row = addable.find((candidate) => candidate.entry.provider === event.target.value);
-										/* v8 ignore next -- the select only lists addable rows */
-										if (row === void 0) return;
-										setEditing(targetOf(row));
-									},
-									children: addable.map((row) => (0, react_jsx_runtime.jsx)("option", {
-										value: row.entry.provider,
-										children: row.entry.displayName
-									}, row.entry.provider))
-								})]
-							}), (0, react_jsx_runtime.jsx)(ProviderEditor, {
-								provider: addTarget.provider,
-								displayName: addTarget.displayName,
-								hideTitle: true,
-								namespace: addNamespace,
-								schema,
-								settingsPath: addTarget.settingsPath,
-								api,
-								t,
-								readOnly: !state.writable,
-								onClose: (changed) => {
-									closeEditor(changed, addTarget);
-								}
-							}, addTarget.provider)]
+							children: [
+								(0, react_jsx_runtime.jsxs)("div", {
+									className: ModelsSection_module_css_default["field"],
+									children: [(0, react_jsx_runtime.jsx)("span", {
+										className: ModelsSection_module_css_default["fieldLabel"],
+										children: t("provider")
+									}), (0, react_jsx_runtime.jsx)("select", {
+										className: `${ModelsSection_module_css_default["input"]} ${ModelsSection_module_css_default["selectInput"]}`,
+										value: addTarget.provider,
+										"aria-label": t("provider"),
+										onChange: (event) => {
+											const row = addable.find((candidate) => candidate.entry.provider === event.target.value);
+											/* v8 ignore next -- the select only lists addable rows */
+											if (row === void 0) return;
+											setEditing(targetOf(row));
+										},
+										children: addable.map((row) => (0, react_jsx_runtime.jsx)("option", {
+											value: row.entry.provider,
+											children: row.entry.displayName
+										}, row.entry.provider))
+									})]
+								}),
+								(0, react_jsx_runtime.jsx)(ProviderEditor, {
+									provider: addTarget.provider,
+									displayName: addTarget.displayName,
+									hideTitle: true,
+									namespace: addNamespace,
+									schema,
+									settingsPath: addTarget.settingsPath,
+									api,
+									t,
+									readOnly: !state.writable,
+									onClose: (changed) => {
+										closeEditor(changed, addTarget);
+									}
+								}, addTarget.provider),
+								addRow === void 0 ? null : renderSlot("settings.models.provider-card", {
+									provider: addRow.entry,
+									configured: addRow.configured,
+									keyConfigured: keyConfiguredOf(addRow)
+								}, { entryKey: addRow.entry.settingsNs })
+							]
 						}) : declaring ? (0, react_jsx_runtime.jsx)("div", {
 							className: ModelsSection_module_css_default["addCard"],
 							children: (0, react_jsx_runtime.jsx)(CustomProviderCard, {
@@ -2078,6 +2139,7 @@ window.__ModuleLoader__.load({
 							})]
 						})
 					}),
+					renderSlot("settings.models.footer", {}),
 					(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Modal, {
 						open: deleteTarget !== void 0,
 						onClose: closeDelete,
@@ -2107,8 +2169,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-settings-models/src/client/OnboardingModal.module.css.mjs
-		const css$2 = "._9hDYLG_dialog{width:min(600px,100%);padding:0}._9hDYLG_content{box-sizing:border-box;flex-direction:column;max-height:calc(100vh - 48px);padding:28px;display:flex;overflow-y:auto}._9hDYLG_title{color:var(--dsw-alias-label-primary);outline:none;margin:0;font-size:20px;font-weight:500;line-height:28px}._9hDYLG_body{margin-top:20px}@media (width<=560px){._9hDYLG_content{padding:24px}}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-settings-models/src/client/OnboardingModal.module.css.mjs
+		const css$2 = ".LDOeLW_dialog{width:min(600px,100%);padding:0}.LDOeLW_content{box-sizing:border-box;flex-direction:column;max-height:calc(100vh - 48px);padding:28px;display:flex;overflow-y:auto}.LDOeLW_title{color:var(--dsw-alias-label-primary);outline:none;margin:0;font-size:20px;font-weight:500;line-height:28px}.LDOeLW_body{margin-top:20px}@media (width<=560px){.LDOeLW_content{padding:24px}}";
 		const tagId$2 = "@deepseek-ai/dsh-client-ui-settings-models/OnboardingModal.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
@@ -2118,10 +2180,10 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var OnboardingModal_module_css_default = {
-			"body": "_9hDYLG_body",
-			"content": "_9hDYLG_content",
-			"dialog": "_9hDYLG_dialog",
-			"title": "_9hDYLG_title"
+			"body": "LDOeLW_body",
+			"content": "LDOeLW_content",
+			"dialog": "LDOeLW_dialog",
+			"title": "LDOeLW_title"
 		};
 		//#endregion
 		//#region lib/types/client/OnboardingModal.js
@@ -2169,8 +2231,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-settings-models/src/client/DeepSeekOnboardingDialog.module.css.mjs
-		const css$1 = ".i5GRzq_description{color:var(--dsw-alias-label-secondary);margin:0;font-size:14px;line-height:24px}.i5GRzq_editor{margin-top:24px}@media (width<=560px){.i5GRzq_editor{margin-top:20px}}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-settings-models/src/client/DeepSeekOnboardingDialog.module.css.mjs
+		const css$1 = ".CV8JJq_description{color:var(--dsw-alias-label-secondary);margin:0;font-size:14px;line-height:24px}.CV8JJq_editor{margin-top:24px}@media (width<=560px){.CV8JJq_editor{margin-top:20px}}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-settings-models/DeepSeekOnboardingDialog.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -2180,8 +2242,8 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var DeepSeekOnboardingDialog_module_css_default = {
-			"description": "i5GRzq_description",
-			"editor": "i5GRzq_editor"
+			"description": "CV8JJq_description",
+			"editor": "CV8JJq_editor"
 		};
 		//#endregion
 		//#region lib/types/client/DeepSeekOnboardingDialog.js
@@ -2252,17 +2314,17 @@ window.__ModuleLoader__.load({
 						credentialOnly: true,
 						credentialRequired: true,
 						autoFocusCredential: true,
-						cancelLabel: "onboardingLater",
-						submitLabel: "onboardingSave",
-						submitBusyLabel: "onboardingSaving",
+						cancelLabelKey: "onboardingLater",
+						submitLabelKey: "onboardingSave",
+						submitBusyLabelKey: "onboardingSaving",
 						onClose: finishCredential
 					})
 				})]
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-settings-models/src/client/WelcomeNotice.module.css.mjs
-		const css = ".pxFcwq_copy{color:var(--dsw-alias-label-secondary);font-size:14px;line-height:24px}.pxFcwq_copy p{margin:0}.pxFcwq_copy p+p{margin-top:12px}.pxFcwq_error{color:var(--dsw-alias-state-error-primary);margin:16px 0 0;font-size:14px;line-height:22px}.pxFcwq_actions{justify-content:flex-end;margin-top:24px;display:flex}.pxFcwq_primary{min-width:120px}@media (width<=560px){.pxFcwq_primary{width:100%}}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-settings-models/src/client/WelcomeNotice.module.css.mjs
+		const css = ".PBmrKa_copy{color:var(--dsw-alias-label-secondary);font-size:14px;line-height:24px}.PBmrKa_copy p{margin:0}.PBmrKa_copy p+p{margin-top:12px}.PBmrKa_error{color:var(--dsw-alias-state-error-primary);margin:16px 0 0;font-size:14px;line-height:22px}.PBmrKa_actions{justify-content:flex-end;margin-top:24px;display:flex}.PBmrKa_primary{min-width:120px}@media (width<=560px){.PBmrKa_primary{width:100%}}";
 		const tagId = "@deepseek-ai/dsh-client-ui-settings-models/WelcomeNotice.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -2272,10 +2334,10 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var WelcomeNotice_module_css_default = {
-			"actions": "pxFcwq_actions",
-			"copy": "pxFcwq_copy",
-			"error": "pxFcwq_error",
-			"primary": "pxFcwq_primary"
+			"actions": "PBmrKa_actions",
+			"copy": "PBmrKa_copy",
+			"error": "PBmrKa_error",
+			"primary": "PBmrKa_primary"
 		};
 		//#endregion
 		//#region lib/types/client/WelcomeNotice.js
@@ -2344,19 +2406,6 @@ window.__ModuleLoader__.load({
 		* again. The acknowledgement is compared for exact equality.
 		*/
 		const WELCOME_NOTICE_VERSION = "2026-08-13.1";
-		/** The complete editable internal-testing notice in both supported GUI locales. */
-		const WELCOME_NOTICE_COPY = {
-			zh: {
-				title: "内测声明",
-				body: "DeepSeek Harness 目前的 0.1 版本仍处在面向 Harness 开发者进行测试的阶段，还有许多地方需要持续改进和打磨，希望听取广大开发者的反馈建议。预计 DeepSeek Harness 的核心插件以及基础 API 都会在接下来的一段时间内快速迭代、持续演化。\n\n我们期待与全球开发者一起，在开源、开放、可复用、可组合的基础设施之上，共同探索智能上限。欢迎全球 Harness 开发者加入 DSH 插件生态。",
-				continueLabel: "继续"
-			},
-			en: {
-				title: "Internal Testing Notice",
-				body: "DeepSeek Harness 0.1 remains in testing for Harness developers. Many areas need further improvement, and we welcome feedback from the developer community. DeepSeek Harness's core plugins and foundational APIs will continue to evolve rapidly over the coming months.\n\nWe look forward to exploring the limits of intelligence with developers around the world, building on open-source, open, reusable, and composable infrastructure. We welcome Harness developers everywhere to join the DSH plugin ecosystem.",
-				continueLabel: "Continue"
-			}
-		};
 		//#endregion
 		//#region lib/types/client/welcome-store.js
 		/**
@@ -2383,7 +2432,7 @@ window.__ModuleLoader__.load({
 		var WelcomeNoticeStore = class {
 			scope;
 			/** uSES-safe state source shared by the registered welcome step. */
-			store = (0, _deepseek_ai_dsh_client_runtime_client.createSnapshotStore)({
+			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)({
 				status: "idle",
 				acknowledged: false,
 				error: null
@@ -2589,11 +2638,13 @@ window.__ModuleLoader__.load({
 			customApiUnset: "Not selected",
 			customNeedsBaseUrl: "A custom provider needs a base URL.",
 			customNeedsModels: "A custom provider needs at least one model.",
+			customBaseUrlPlaceholder: "https://gateway.example/v1",
+			settingsPathUnresolvable: "unresolvable settings path",
 			create: "Create provider",
 			creating: "Creating…",
-			welcomeTitle: WELCOME_NOTICE_COPY.en.title,
-			welcomeBody: WELCOME_NOTICE_COPY.en.body,
-			welcomeContinue: WELCOME_NOTICE_COPY.en.continueLabel,
+			welcomeTitle: "Internal Testing Notice",
+			welcomeBody: "DeepSeek Harness 0.1 remains in testing for Harness developers. Many areas need further improvement, and we welcome feedback from the developer community. DeepSeek Harness's core plugins and foundational APIs will continue to evolve rapidly over the coming months.\n\nWe look forward to exploring the limits of intelligence with developers around the world, building on open-source, open, reusable, and composable infrastructure. We welcome Harness developers everywhere to join the DSH plugin ecosystem.",
+			welcomeContinue: "Continue",
 			welcomeError: "The acknowledgement could not be saved. Please try again.",
 			onboardingTitle: "Add an API key to get started",
 			onboardingDescription: "Configure the official DeepSeek provider to start building.",
@@ -2687,11 +2738,13 @@ window.__ModuleLoader__.load({
 			customApiUnset: "未选择",
 			customNeedsBaseUrl: "自定义提供方需要填写 API 地址。",
 			customNeedsModels: "自定义提供方至少需要一个模型。",
+			customBaseUrlPlaceholder: "https://gateway.example/v1",
+			settingsPathUnresolvable: "无法解析设置路径",
 			create: "创建提供方",
 			creating: "创建中…",
-			welcomeTitle: WELCOME_NOTICE_COPY.zh.title,
-			welcomeBody: WELCOME_NOTICE_COPY.zh.body,
-			welcomeContinue: WELCOME_NOTICE_COPY.zh.continueLabel,
+			welcomeTitle: "内测声明",
+			welcomeBody: "DeepSeek Harness 目前的 0.1 版本仍处在面向 Harness 开发者进行测试的阶段，还有许多地方需要持续改进和打磨，希望听取广大开发者的反馈建议。预计 DeepSeek Harness 的核心插件以及基础 API 都会在接下来的一段时间内快速迭代、持续演化。\n\n我们期待与全球开发者一起，在开源、开放、可复用、可组合的基础设施之上，共同探索智能上限。欢迎全球 Harness 开发者加入 DSH 插件生态。",
+			welcomeContinue: "继续",
 			welcomeError: "暂时无法保存确认状态，请重试。",
 			onboardingTitle: "添加一个 API Key 开始使用",
 			onboardingDescription: "配置 DeepSeek 官方模型，即可开始使用。",
@@ -2721,8 +2774,10 @@ window.__ModuleLoader__.load({
 		const inject = [
 			"slots",
 			"locale",
-			"connection",
 			"remote",
+			"remote.credentials",
+			"remote.llm",
+			"remote.settings",
 			"settingsScope",
 			"settingsSchema"
 		];
@@ -2737,21 +2792,25 @@ window.__ModuleLoader__.load({
 				zh,
 				en
 			}), "ui-settings-models: copy dictionaries");
-			const connection = ctx.get("connection");
 			const schema = createSettingsSchemaOperations(ctx.settingsSchema);
-			const controller = new ModelsSettingsStore(connection.api, schema, ctx.settingsScope.describe());
+			const wire = {
+				credentials: ctx.remote.credentials,
+				llm: ctx.remote.llm,
+				settings: ctx.remote.settings
+			};
+			const controller = new ModelsSettingsStore(wire, schema, ctx.settingsScope.describe());
 			const t = ctx.locale.bind(NS);
 			const injected = () => ({
 				controller,
 				hooks: { snapshot: controller.store },
-				api: connection.api,
+				api: wire,
 				schema,
 				t
 			});
 			const deepSeekOnboardingInjected = () => ({
 				controller,
 				hooks: { models: controller.store },
-				api: connection.api,
+				api: wire,
 				schema,
 				t
 			});
@@ -2786,7 +2845,17 @@ window.__ModuleLoader__.load({
 				id: "models",
 				order: 10,
 				label: () => t("nav"),
-				inject: injected
+				inject: injected,
+				children: {
+					"settings.models.provider-card": {
+						kind: "keyed",
+						scope: "root"
+					},
+					"settings.models.footer": {
+						kind: "list",
+						scope: "root"
+					}
+				}
 			}, ModelsSection));
 			ctx.slots.inject("settings.onboarding", () => ctx.slots.register({
 				name: "settings.onboarding",

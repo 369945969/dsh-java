@@ -40,7 +40,7 @@ class ReActAgentLoopTest {
         new UserQuestionService.AutoUserQuestionService().apply(ctx);
         new CommandRegistry().apply(ctx);
 
-        ReActAgentLoop agent = new ReActAgentLoop("test", "你是助手", model, tools);
+        ReActAgentLoop agent = new ReActAgentLoop(model, new com.deepseek.dsh.tools.pipeline.ToolPipeline(tools, java.util.List.of()), tools);
         SessionId sessionId = SessionId.of("test-1");
         String reply = agent.run(sessionId, ScopeKey.random(), ctx, "你好");
 
@@ -84,7 +84,7 @@ class ReActAgentLoopTest {
         new UserQuestionService.AutoUserQuestionService().apply(ctx);
         new CommandRegistry().apply(ctx);
 
-        ReActAgentLoop agent = new ReActAgentLoop("test", "你是助手", model, tools);
+        ReActAgentLoop agent = new ReActAgentLoop(model, new com.deepseek.dsh.tools.pipeline.ToolPipeline(tools, java.util.List.of()), tools);
         String reply = agent.run(SessionId.of("test-2"), ScopeKey.random(), ctx, "说 hello");
 
         assertEquals("你说了: hello", reply);

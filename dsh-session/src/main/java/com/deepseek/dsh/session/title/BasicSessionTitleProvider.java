@@ -32,10 +32,15 @@ public final class BasicSessionTitleProvider
     public String generate(SessionLog sessionLog) {
         return cache.computeIfAbsent(sessionLog.sessionId(), id -> {
             for (SessionEvent e : sessionLog.snapshot()) {
-                if (e.type() == SessionEvent.Type.USER_MESSAGE
-                        && e.payload().text() != null && !e.payload().text().isBlank()) {
-                    String text = e.payload().text().trim();
-                    return text.length() > 40 ? text.substring(0, 40) + "…" : text;
+                if ("user/message".equals(e.type())) {
+                    Object content = e.data().get("content");
+                    if (content instanceof java.util.List<?> parts && !parts.isEmpty()) {
+                        for (Object part : parts) {
+                            if (part instanceof java.util.Map<?, ?> p && "text".equals(p.get("type")) && p.get("text") instanceof String t && !t.isBlank()) {
+                                return t.length() > 40 ? t.substring(0, 40) + "…" : t;
+                            }
+                        }
+                    }
                 }
             }
             return "新会话";

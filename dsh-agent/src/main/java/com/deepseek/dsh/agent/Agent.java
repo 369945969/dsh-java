@@ -29,6 +29,9 @@ public interface Agent {
     /** 系统提示。 */
     String systemPrompt();
 
+    /** 解析模板变量后的系统提示（{{cwd}}/{{model}}/{{platform}}）。 */
+    default String composeSystemPrompt(Context ctx) { return systemPrompt(); }
+
     /** 运行时切换系统提示（agent 预设 select 用；单 agent 架构下为全局切换，非按会话）。默认空实现。 */
     default void setSystemPrompt(String systemPrompt) {}
 

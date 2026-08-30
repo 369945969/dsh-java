@@ -7,86 +7,39 @@ import java.util.Map;
 import com.deepseek.dsh.core.brand.SessionId;
 
 /**
- * 会话事件 —— 不可变的、仅追加的日志记录，是 agent 状态的真相来源。
+ * 会话事件 —— 不可变的、仅追加的日志记录，存储 wire 格式（与浏览器收到的格式一致）。
  *
- * <p>对应原 Harness 的不变式：<b>"模型可见 ⟺ 已记录"</b>。任何到达模型请求的内容
- * 都必须能从日志重建。{@code SessionEvent} 是追加日志中的原子单元。
- *
- * <p>事件类型包括：用户消息、助手消息、助手分块(chunk)、工具调用、工具结果、
- * turn 开始/结束、step 开始/结束等。
+ * <p>对应 harness 的 SessionEvent：每个事件都有唯一递增 seq，
+ * 与 live event 和 snapshot cursor 完全一致，无需映射。
  *
  * <p>设计模式：事件溯源（Event Sourcing）中的领域事件。
  */
 public record SessionEvent(
-        /** 全局唯一、单调递增的序号（同一会话内）。 */
         long seq,
-        /** 所属会话 ID。 */
         SessionId sessionId,
-        /** 事件类型。 */
-        Type type,
-        /** 事件负载（消息、分块、工具调用等）。 */
-        Payload payload,
-        /** 创建时间。 */
-        Instant createdAt,
-        /** 可选的父会话/委派深度等谱系信息。 */
+        String type,
+        Map<String, Object> data,
+        long time,
+        String surfaceOp,
         Lineage lineage
 ) {
 
-    /** 事件类型枚举。 */
-    public enum Type {
-        TURN_START,
-        TURN_END,
-        STEP_START,
-        STEP_END,
-        USER_MESSAGE,
-        ASSISTANT_CHUNK,
-        ASSISTANT_MESSAGE,
-        TOOL_CALL,
-        TOOL_RESULT,
-        COMMAND
+    public SessionEvent {
+        if (surfaceOp == null) surfaceOp = "";
+        if (lineage == null) lineage = Lineage.root();
     }
 
-    /** 事件负载 —— 可携带文本、多模态内容或结构化数据。 */
-    public record Payload(
-            /** 文本内容（消息/分块/结果文本）。 */
-            String text,
-            /** 结构化内容（工具调用的参数、结果 JSON 等）。 */
-            Map<String, Object> structured,
-            /** 工具名（仅 TOOL_CALL / TOOL_RESULT 有义）。 */
-            String toolName,
-            /** 工具调用 ID（关联 TOOL_CALL 与 TOOL_RESULT）。 */
-            String toolCallId,
-            /** 助手消息的推理/思考内容（reasoning_content，仅 ASSISTANT_MESSAGE 有义；模型可见投影只用 text，不回放推理）。 */
-            String reasoning
-    ) {
-        public static Payload text(String text) {
-            return new Payload(text, Map.of(), null, null, null);
-        }
-
-        /** 助手消息负载：正文 content + 推理 reasoning（reasoning 可为 null/空）。 */
-        public static Payload textWithReasoning(String content, String reasoning) {
-            return new Payload(content, Map.of(), null, null, reasoning);
-        }
-
-        public static Payload toolCall(String toolName, String toolCallId, Map<String, Object> args) {
-            return new Payload(null, args, toolName, toolCallId, null);
-        }
-
-        public static Payload toolResult(String toolCallId, String text) {
-            return new Payload(text, Map.of(), null, toolCallId, null);
-        }
+    public SessionEvent(long seq, SessionId sessionId, String type, Map<String, Object> data, long time) {
+        this(seq, sessionId, type, data, time, null, Lineage.root());
     }
 
-    /** 谱系信息（子会话/委派）。 */
-    public record Lineage(
-            SessionId parentSession,
-            int delegationDepth
-    ) {
-        public static Lineage root() {
-            return new Lineage(null, 0);
-        }
+    public SessionEvent(long seq, SessionId sessionId, String type, Map<String, Object> data, long time, String surfaceOp) {
+        this(seq, sessionId, type, data, time, surfaceOp, Lineage.root());
     }
 
-    /** 便捷工厂：从输入列表中派生模型可见消息时使用的投影视图。 */
+    public record Lineage(SessionId parentSession, int delegationDepth) {
+        public static Lineage root() { return new Lineage(null, 0); }
+    }
+
     public record Projection(List<ChatMessage> messages, long lastSeq) {}
 }

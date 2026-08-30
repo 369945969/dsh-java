@@ -27,6 +27,4 @@ public interface ShellCapability {
      * @param timeoutSeconds 超时秒数（0 表示不超时）
      */
     ShellResult execute(String command, Map<String, String> env, String cwd, int timeoutSeconds) throws Exception;
-
-    default String shellName() { return "bash"; }
 }

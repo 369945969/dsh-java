@@ -1,5 +1,6 @@
 package com.deepseek.dsh.subagent.fork;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,8 +35,8 @@ class ForkInProcessProviderTest {
         public String run(SessionId sessionId, ScopeKey scopeKey, Context ctx, String userMessage) {
             Sessions sessions = ctx.require(Sessions.class);
             SessionLog log = sessions.getOrCreate(sessionId);
-            log.append(SessionEvent.Type.USER_MESSAGE, SessionEvent.Payload.text(userMessage));
-            log.append(SessionEvent.Type.ASSISTANT_MESSAGE, SessionEvent.Payload.text("Subtask completed"));
+            log.append("user/message", java.util.Map.of("content", java.util.List.of(java.util.Map.of("type", "text", "text", userMessage)), "source", java.util.Map.of("kind", "user"), "role", "user", "id", "u-1"), "append");
+            log.append("assistant/message", java.util.Map.of("message", java.util.Map.of("content", java.util.List.of(java.util.Map.of("type", "text", "text", "Subtask completed")), "source", java.util.Map.of("kind", "model"))), "append");
             return "Subtask completed";
         }
     }
@@ -46,6 +47,7 @@ class ForkInProcessProviderTest {
             private final Map<SessionId, List<SessionEvent>> db = new ConcurrentHashMap<>();
             @Override public void append(SessionEvent event) { db.computeIfAbsent(event.sessionId(), k -> new CopyOnWriteArrayList<>()).add(event); }
             @Override public List<SessionEvent> load(SessionId sessionId) { return db.getOrDefault(sessionId, List.of()); }
+            @Override public List<SessionId> listAll() { return new ArrayList<>(db.keySet()); }
         };
     }
 

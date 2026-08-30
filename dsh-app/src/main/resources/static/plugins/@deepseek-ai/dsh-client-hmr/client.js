@@ -11,6 +11,33 @@ window.__ModuleLoader__.load({
 		* browser half validates them at its JSON parse point; sharing the type keeps
 		* the two ends from drifting, not from parsing.
 		*/
+		/**
+		* Validate one JSON-decoded SSE payload before it can mutate module state.
+		* @param value - Parsed JSON value from the EventSource message.
+		* @returns the known frame, an unknown-type marker, or an invalid marker.
+		*/
+		function parsePluginsEventFrame(value) {
+			if (typeof value !== "object" || value === null) return { kind: "invalid" };
+			const record = value;
+			switch (record.type) {
+				case "rebuilt": return typeof record.id === "string" && typeof record.rev === "string" ? {
+					kind: "frame",
+					frame: {
+						type: "rebuilt",
+						id: record.id,
+						rev: record.rev
+					}
+				} : { kind: "invalid" };
+				case "graph": return typeof record.graph === "object" && record.graph !== null ? {
+					kind: "frame",
+					frame: {
+						type: "graph",
+						graph: record.graph
+					}
+				} : { kind: "invalid" };
+				default: return typeof record.type === "string" ? { kind: "unknown" } : { kind: "invalid" };
+			}
+		}
 		/** System SSE endpoint pushing graph/rebuilt frames (wire protocol constant). */
 		const EVENTS_ENDPOINT = "/plugins/events";
 		//#endregion
@@ -35,13 +62,13 @@ window.__ModuleLoader__.load({
 		function apply(ctx) {
 			const modLoader = ctx.modules;
 			const loader = ctx.loader;
-			async function reload(id) {
+			async function reload(id, rev) {
 				const entry = findEntry(loader, id);
 				if (entry === void 0) {
 					ctx.logger.warn(`client-hmr: rebuilt frame for unknown entry "${id}" (not in the loader tree)`);
 					return;
 				}
-				modLoader.invalidate(id);
+				modLoader.invalidate(id, rev);
 				await modLoader.prefetch(id);
 				const oldFiber = entry.fiber;
 				if (oldFiber !== void 0) {
@@ -58,7 +85,7 @@ window.__ModuleLoader__.load({
 			const handle = (frame) => {
 				switch (frame.type) {
 					case "rebuilt":
-						queue = queue.then(() => reload(frame.id)).catch((error) => {
+						queue = queue.then(() => reload(frame.id, frame.rev)).catch((error) => {
 							ctx.logger.error(`client-hmr: reload of "${frame.id}" failed`);
 							ctx.logger.error(error);
 						});
@@ -70,14 +97,16 @@ window.__ModuleLoader__.load({
 			ctx.effect(() => {
 				const source = new EventSource(EVENTS_ENDPOINT);
 				source.addEventListener("message", (event) => {
-					let frame;
+					let value;
 					try {
-						frame = JSON.parse(event.data);
+						value = JSON.parse(event.data);
 					} catch {
 						ctx.logger.warn(`client-hmr: unparseable event frame: ${event.data}`);
 						return;
 					}
-					handle(frame);
+					const parsed = parsePluginsEventFrame(value);
+					if (parsed.kind === "invalid") ctx.logger.warn(`client-hmr: invalid event frame: ${event.data}`);
+					else if (parsed.kind === "frame") handle(parsed.frame);
 				});
 				return () => {
 					source.close();

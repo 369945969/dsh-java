@@ -26,7 +26,7 @@ class CliTurnObserverTest {
 
     @Test
     void rendersThinkBlockThenContent() {
-        String out = render(o -> o.onAssistantMessage("final reply", "step one\nstep two"));
+        String out = render(o -> o.onAssistantMessage("final reply", "step one\nstep two", "a-test"));
         int thinkIdx = out.indexOf("-- think");
         int contentIdx = out.indexOf("final reply");
         assertTrue(thinkIdx >= 0, "think header present");
@@ -38,35 +38,46 @@ class CliTurnObserverTest {
 
     @Test
     void contentOnlyWhenNoReasoning() {
-        String out = render(o -> o.onAssistantMessage("just text", null));
+        String out = render(o -> o.onAssistantMessage("just text", null, "a-test"));
         assertTrue(out.contains("just text"));
         assertFalse(out.contains("think"), "no think block when reasoning absent");
     }
 
     @Test
     void emptyMessagePrintsNothing() {
-        assertEquals("", render(o -> o.onAssistantMessage("", "")));
-        assertEquals("", render(o -> o.onAssistantMessage(null, null)));
+        assertEquals("", render(o -> o.onAssistantMessage("", "", "a-test")));
+        assertEquals("", render(o -> o.onAssistantMessage(null, null, "a-test")));
     }
 
     @Test
     void toolCallAndResultCollapsed() {
         String out = render(o -> {
-            o.onToolCall("c1", "read", "{\"path\":\"/a\"}");
+            o.onToolCall("c1", "read", "{\"path\":\"/a/b.md\"}");
             o.onToolResult("c1", "file contents\nline2");
         });
-        assertTrue(out.contains("> read"), "tool-call line with name");
-        assertTrue(out.contains("{\"path\":\"/a\"}"), "tool arguments present");
-        assertTrue(out.contains("-> "), "tool-result prefix");
-        assertTrue(out.contains("file contents line2"), "result newlines collapsed to spaces");
+        assertTrue(out.contains("> read: /a/b.md"), "tool-call shows name + path");
+        assertFalse(out.contains("file contents"), "result content not printed");
+        assertTrue(out.contains("✓"), "tool-result checkmark");
+    }
+
+    @Test
+    void toolCallShowsBashCommand() {
+        String out = render(o -> o.onToolCall("c", "bash", "{\"command\":\"ls -la /tmp\"}"));
+        assertTrue(out.contains("> bash: ls -la /tmp"), "bash command shown");
+    }
+
+    @Test
+    void toolCallShowsGrepPattern() {
+        String out = render(o -> o.onToolCall("c", "grep", "{\"pattern\":\"TODO\",\"path\":\"src\"}"));
+        assertTrue(out.contains("> grep: TODO"), "grep pattern shown");
     }
 
     @Test
     void truncatesLongText() {
-        String args = "x".repeat(500);
-        String out = render(o -> o.onToolCall("c", "t", args));
-        assertTrue(out.contains("..."), "truncated marker");
-        assertFalse(out.contains("x".repeat(300)), "long run of xs not shown in full");
+        String args = "{\"command\":\"" + "x".repeat(500) + "\"}";
+        String out = render(o -> o.onToolCall("c", "bash", args));
+        assertTrue(out.contains("> bash:"), "tool name shown");
+        assertFalse(out.contains("x".repeat(300)), "long command truncated");
     }
 
     @Test
@@ -74,7 +85,7 @@ class CliTurnObserverTest {
         String out = render(o -> {
             o.onAssistantChunk(null, "think-1");   // reasoning delta -> opens think block
             o.onAssistantChunk("ans", null);       // content delta -> closes think, streams content
-            o.onAssistantMessage("ans", "think-1"); // step end: streamed -> only trailing newline
+            o.onAssistantMessage("ans", "think-1", "a-test"); // step end: streamed -> only trailing newline
         });
         assertTrue(out.contains("-- think ----------------"), "think header on first reasoning chunk");
         assertTrue(out.contains("think-1"), "reasoning streamed");
@@ -89,8 +100,8 @@ class CliTurnObserverTest {
         // step 1 streamed, step 2 non-streamed (fallback) — state resets between
         String out = render(o -> {
             o.onAssistantChunk("first", null);
-            o.onAssistantMessage("first", null);
-            o.onAssistantMessage("second", "why");   // no chunks this step -> fallback
+            o.onAssistantMessage("first", null, "a-test");
+            o.onAssistantMessage("second", "why", "a-test");   // no chunks this step -> fallback
         });
         assertTrue(out.contains("first"));
         assertTrue(out.contains("second"));

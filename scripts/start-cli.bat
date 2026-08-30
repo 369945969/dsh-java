@@ -1,5 +1,5 @@
 @echo off
-chcp 936 >nul
+chcp 65001 >nul
 setlocal
 rem Launch the CLI interactive terminal (REPL) - the original Harness default interactive mode.
 rem Reads user input line-by-line from stdin, drives the agent conversation, prints replies to stdout.
@@ -54,12 +54,12 @@ call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.ou
 echo [%SELF%] launching CLI REPL: model=%DSH_MODEL% baseUrl=%DSH_BASE_URL% 1>&2
 
 rem 用 PowerShell 写 argfile（正确引用含空格的 classpath），再用 java @argfile 直接启动。
-rem 控制台与 java 均用 GBK(936)：zh_CN 下中文 IME 输入与中文输出都走 GBK，避免 UTF-8(65001)
-rem 控制台下 Java Console.readLine 乱码读中文的毛病。-Dfile.encoding=GBK 让 stdout/stderr 也按 GBK。
+rem 不经 PowerShell Process.Start 启动 java，使 java 直接继承 cmd 控制台 → System.console()
+rem 非 null，readLine 走 ReadConsoleW 宽字符 API，正确读取中文（与控制台代码页无关）。
 set "ARGF=%ROOT%\dsh-app\target\dsh-cli-%RANDOM%.arg"
-powershell -NoProfile -Command "$cp='%ROOT%\dsh-app\target\classes;'+[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp=$cp.Replace('\','\\'); $n=[char]10; $q=[char]34; [IO.File]::WriteAllText('%ARGF%', '-Dfile.encoding=GBK -Dstdout.encoding=GBK -Dstderr.encoding=GBK -Dlogback.configurationFile=logback-cli.xml'+$n+'-cp'+$n+$q+$cp+$q+$n+'com.deepseek.dsh.app.cli.DshRepl'+$n)"
+powershell -NoProfile -Command "$cp='%ROOT%\dsh-app\target\classes;'+[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp=$cp.Replace('\','\\'); $n=[char]10; $q=[char]34; [IO.File]::WriteAllText('%ARGF%', '-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dlogback.configurationFile=logback-cli.xml'+$n+'-cp'+$n+$q+$cp+$q+$n+'com.deepseek.dsh.app.cli.DshRepl'+$n)"
 if errorlevel 1 ( echo [%SELF%] failed to write argfile 1>&2 & exit /b 1 )
-chcp 936 >nul
+chcp 65001 >nul
 "%JAVABIN%" @%ARGF%
 set "EXITCODE=%ERRORLEVEL%"
 if exist "%ARGF%" del "%ARGF%" 2>nul

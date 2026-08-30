@@ -26,6 +26,10 @@
         </dependency>
         <dependency>
             <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
             <artifactId>dsh-sdk</artifactId>
         </dependency>
         <dependency>

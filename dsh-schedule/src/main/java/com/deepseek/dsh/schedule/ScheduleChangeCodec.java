@@ -7,28 +7,21 @@ import java.util.Map;
 import com.deepseek.dsh.session.log.SessionEvent;
 
 /**
- * 调度变更编解码器 —— 在 {@code schedule/change} 会话事件负载与
+ * 调度变更编解码器 —— 在 {@code schedule/change} 会话事件数据与
  * {@link ScheduleChange} 值对象之间转换。
- *
- * <p>原 TS 版直接以 {@code event.type === 'schedule/change'} 标识调度事件。
- * 本 Java 移植以 {@link SessionEvent.Type#COMMAND} 携带结构化负载，并用
- * {@code {"schedule":"change", ...}} 标记区分调度变更与其他命令事件。
  *
  * <p>设计模式：编解码器（Codec）—— 在持久边界做结构化转换。
  */
 public final class ScheduleChangeCodec {
 
-    /** 结构化负载中的调度标记键（避开与 create 操作的 {@code schedule} 记录字段冲突）。 */
+    public static final String EVENT_TYPE = "schedule/change";
     public static final String MARKER_KEY = "schedule_change";
-    /** 结构化负载中的调度标记值。 */
     public static final String MARKER_VALUE = "v1";
 
     private ScheduleChangeCodec() {
     }
 
-    /** 把一条 {@link ScheduleChange} 编码为 COMMAND 事件的结构化负载。 */
-    @SuppressWarnings("unchecked")
-    public static SessionEvent.Payload encode(ScheduleChange change) {
+    public static Map<String, Object> encode(ScheduleChange change) {
         Map<String, Object> payload = new java.util.LinkedHashMap<>();
         payload.put(MARKER_KEY, MARKER_VALUE);
         payload.put("version", change.version());
@@ -43,15 +36,13 @@ public final class ScheduleChangeCodec {
                 }
             }
         }
-        return new SessionEvent.Payload(null, payload, null, null, null);
+        return payload;
     }
 
-    /** 从 COMMAND 事件的结构化负载解码一条 {@link ScheduleChange}（若为调度变更）。 */
-    public static ScheduleChange decode(SessionEvent.Payload payload) {
-        if (payload == null || payload.structured() == null) {
+    public static ScheduleChange decode(Map<String, Object> data) {
+        if (data == null) {
             throw badPayload("schedule/change payload must be an object");
         }
-        Map<String, Object> data = payload.structured();
         if (!MARKER_VALUE.equals(data.get(MARKER_KEY))) {
             throw badPayload("not a schedule/change event");
         }
@@ -74,33 +65,28 @@ public final class ScheduleChangeCodec {
         };
     }
 
-    /** 从会话事件流中提取并解码所有调度变更（保持顺序）。 */
     public static List<ScheduleChange> extract(List<SessionEvent> events) {
         List<ScheduleChange> changes = new ArrayList<>();
         for (SessionEvent e : events) {
-            if (e.type() != SessionEvent.Type.COMMAND) {
+            if (!EVENT_TYPE.equals(e.type())) {
                 continue;
             }
-            if (e.payload() == null || e.payload().structured() == null) {
+            if (e.data() == null) {
                 continue;
             }
-            if (!MARKER_VALUE.equals(e.payload().structured().get(MARKER_KEY))) {
+            if (!MARKER_VALUE.equals(e.data().get(MARKER_KEY))) {
                 continue;
             }
-            changes.add(decode(e.payload()));
+            changes.add(decode(e.data()));
         }
         return changes;
     }
 
-    /** 判断 COMMAND 事件是否为调度变更。 */
     public static boolean isScheduleChange(SessionEvent event) {
-        return event.type() == SessionEvent.Type.COMMAND
-                && event.payload() != null
-                && event.payload().structured() != null
-                && MARKER_VALUE.equals(event.payload().structured().get(MARKER_KEY));
+        return EVENT_TYPE.equals(event.type())
+                && event.data() != null
+                && MARKER_VALUE.equals(event.data().get(MARKER_KEY));
     }
-
-    // ---- 记录编解码 -------------------------------------------------------
 
     @SuppressWarnings("unchecked")
     private static ScheduleRecord decodeRecord(Object value) {

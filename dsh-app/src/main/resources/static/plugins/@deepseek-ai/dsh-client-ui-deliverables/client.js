@@ -4,36 +4,101 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
+		//#region ../../core/session/src/surface.ts
+		/** Runtime counterpart of the message-producing event union. */
+		const SURFACE_EVENT_TYPES = new Set([
+			"user/message",
+			"assistant/message",
+			"tool/result"
+		]);
+		/**
+		* Narrow an event to a surface-eligible event carrying its required marker.
+		* @param event - event to test.
+		* @returns true when both the type and marker identify a surface event.
+		*/
+		function isSurfaceEvent(event) {
+			if (!SURFACE_EVENT_TYPES.has(event.type)) return false;
+			return event.surfaceOp !== void 0;
+		}
+		/**
+		* Narrow an event to an append-origin surface event: one that entered the
+		* surface at its own log position and was never itself a replacement copy.
+		*
+		* The model-visible surface deliberately shadows replaced ranges, so it is the
+		* wrong source for a human transcript — a landed replacement would erase
+		* conversation the user already saw. Append-origin events are that transcript's
+		* durable source material; replacement copies stay model-only.
+		* @param event - event to test.
+		* @returns true when the event appended to the surface tail.
+		*/
+		function isAppendSurfaceEvent(event) {
+			return isSurfaceEvent(event) && event.surfaceOp === "append";
+		}
+		//#endregion
 		//#region lib/types/client/turn-deliverables.js
 		/**
-		* Paths a call view reports having created or changed, by render intent rather
-		* than tool name: a diff card, or a generic card whose kind is `edit` (the
-		* shape `str_replace_editor`'s insert presents). Every other card produces
-		* nothing to open — a read looked, a delete removed, a terminal ran. Only
-		* root call views enter this Turn accumulator; nested Code Mode dispatches
-		* preserve the pre-assembly behavior and do not contribute independently.
+		* Turn-scoped produced-file Definition and readers. Client-only and
+		* model-free: the vocabulary comes from successful first-party mutation
+		* calls, never presentation data or the closing prose.
 		*/
-		function producedPaths(view) {
-			if (view === null) return [];
-			if (view.card === "diff") return (view.locations ?? []).map((location) => location.path);
-			if (view.card === "generic" && view.kind === "edit") return (view.locations ?? []).map((location) => location.path);
-			return [];
+		/**
+		* Extract the path from a supported first-party mutation call. Session
+		* `tool/call` events are root calls; Code Dispatch children do not enter this
+		* Definition independently.
+		* @param name - wire tool name.
+		* @param argsRaw - model-produced JSON arguments.
+		* @returns the mutation path, or null when the call is not a supported mutation.
+		*/
+		function mutationPath(name, argsRaw) {
+			let args;
+			try {
+				args = JSON.parse(argsRaw);
+			} catch {
+				return null;
+			}
+			if (!isRecord(args)) return null;
+			switch (name) {
+				case "write": return typeof args.content === "string" ? pathValue(args.file_path) : null;
+				case "edit": return validEditArgs(args) ? pathValue(args.file_path) : null;
+				case "str_replace_editor": return editorMutationPath(args);
+				default: return null;
+			}
+		}
+		/** Validate the fields that an `edit` execution requires. */
+		function validEditArgs(args) {
+			return typeof args.old_string === "string" && args.old_string.length > 0 && typeof args.new_string === "string" && args.old_string !== args.new_string && (args.replace_all === void 0 || typeof args.replace_all === "boolean");
+		}
+		/** Extract a path only from a complete mutating editor command. */
+		function editorMutationPath(args) {
+			const path = pathValue(args.path);
+			if (path === null) return null;
+			switch (args.command) {
+				case "create": return typeof args.file_text === "string" ? path : null;
+				case "str_replace": return typeof args.old_str === "string" && args.old_str.length > 0 && (args.new_str === void 0 || typeof args.new_str === "string") ? path : null;
+				case "insert": return typeof args.insert_line === "number" && Number.isInteger(args.insert_line) && args.insert_line >= 0 && typeof args.new_str === "string" ? path : null;
+				default: return null;
+			}
+		}
+		/** A non-blank path preserves the exact spelling supplied to the tool. */
+		function pathValue(value) {
+			return typeof value === "string" && value.trim().length > 0 ? value : null;
+		}
+		/** Narrow parsed JSON to an argument object. */
+		function isRecord(value) {
+			return typeof value === "object" && value !== null && !Array.isArray(value);
 		}
 		/**
 		* Files produced by one Turn data value.
 		*
-		* The source is the mutation tools' own follow-along `locations`, not the
-		* closing prose: a produced file must be listed whether or not the model
-		* remembered to name it. A mutation is recognized by render intent, not by
-		* tool name — a diff card, or a generic card whose `kind` is `edit` (the shape
-		* `str_replace_editor`'s insert presents) — so a new mutation tool joins by
-		* declaring what it does. Reads contribute nothing (looking at a file does not
-		* produce it), and neither do deletes (there is nothing left to open) or
-		* failed calls. Paths keep first-seen order and appear once, so a file written
-		* and then edited in the same turn is one entry.
+		* The source is the arguments of successful `write`, `edit`, and mutating
+		* `str_replace_editor` calls, not the closing prose: a produced file must be
+		* listed whether or not the model remembered to name it. Reads, unsupported
+		* tools, malformed calls, and failed results contribute nothing. Paths keep
+		* first-seen order and appear once, so a file written and then edited in the
+		* same turn is one entry.
 		*
 		* The Conversation Location index owns turn membership before this function
 		* runs, so paths cannot spill across turns and this derivation does not infer
@@ -74,7 +139,7 @@ window.__ModuleLoader__.load({
 					id: String(event.data.turn),
 					role: "update"
 				};
-				if (event.type === "tool/result" && (0, _deepseek_ai_dsh_client_runtime_client.isAppendSurfaceEvent)(event)) return {
+				if (event.type === "tool/result" && isAppendSurfaceEvent(event)) return {
 					id: String(event.data.turn),
 					role: "update"
 				};
@@ -91,7 +156,7 @@ window.__ModuleLoader__.load({
 			update: (context, match) => {
 				if (match.event.type === "tool/call") {
 					const calls = new Map(context.state.calls);
-					calls.set(String(match.event.data.callId), match.view?.for === "call" ? match.view.view : null);
+					calls.set(String(match.event.data.callId), mutationPath(match.event.data.name, match.event.data.arguments));
 					return {
 						...context.state,
 						calls
@@ -100,13 +165,13 @@ window.__ModuleLoader__.load({
 				if (match.event.type !== "tool/result") return context.state;
 				if (match.event.data.message.content[0].isError === true) return context.state;
 				const callId = String(match.event.data.message.source.callId);
-				const additions = producedPaths(context.state.calls.get(callId) ?? null).map((path) => ({
-					seq: match.event.seq,
-					path
-				}));
-				return additions.length === 0 ? context.state : {
+				const path = context.state.calls.get(callId);
+				return path === null || path === void 0 ? context.state : {
 					...context.state,
-					produced: [...context.state.produced, ...additions]
+					produced: [...context.state.produced, {
+						seq: match.event.seq,
+						path
+					}]
 				};
 			},
 			buildLocationData: (context, scope) => scope !== "turn" || context.state === void 0 ? null : {
@@ -156,8 +221,8 @@ window.__ModuleLoader__.load({
 			return matches.length === 1 ? matches[0] : void 0;
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-deliverables/src/client/ProducedFiles.module.css.mjs
-		const css = ".NpaGGq_root{grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:6px 8px;margin-top:16px;font-size:13px;line-height:22px;display:grid;position:relative}.NpaGGq_label{color:var(--dsw-alias-label-tertiary);grid-area:1/1}.NpaGGq_row{flex-wrap:nowrap;grid-area:1/2;align-items:center;gap:8px;min-width:0;display:flex;overflow:hidden}.NpaGGq_file{text-overflow:ellipsis;white-space:nowrap;background:var(--dsw-alias-interactive-bg-hover);max-width:320px;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;border:none;border-radius:6px;flex:none;margin:0;padding:0 8px;overflow:hidden}.NpaGGq_file:hover{color:var(--dsw-alias-label-primary);text-decoration:underline}.NpaGGq_file:focus-visible,.NpaGGq_showFolder:focus-visible{box-shadow:inset 0 0 0 2px var(--dsw-alias-border-l3);outline:none}.NpaGGq_more{white-space:nowrap;color:var(--dsw-alias-label-tertiary);flex:none}.NpaGGq_showFolder{color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:none;border-radius:4px;grid-area:2/2;justify-self:start;margin:0;padding:0 2px;line-height:20px}.NpaGGq_showFolder:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}.NpaGGq_measure{visibility:hidden;pointer-events:none;contain:strict;width:0;height:0;position:absolute;overflow:hidden}.NpaGGq_probe{width:max-content;position:absolute;inset:0 auto auto 0}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-deliverables/src/client/ProducedFiles.module.css.mjs
+		const css = ".-fGs2q_root{grid-template-columns:max-content minmax(0,1fr);align-items:center;gap:6px 8px;margin-top:16px;font-size:13px;line-height:22px;display:grid;position:relative}.-fGs2q_label{color:var(--dsw-alias-label-tertiary);grid-area:1/1}.-fGs2q_row{flex-wrap:nowrap;grid-area:1/2;align-items:center;gap:8px;min-width:0;display:flex;overflow:hidden}.-fGs2q_file{text-overflow:ellipsis;white-space:nowrap;background:var(--dsw-alias-interactive-bg-hover);max-width:320px;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;border:none;border-radius:6px;flex:none;margin:0;padding:0 8px;overflow:hidden}.-fGs2q_file:hover{color:var(--dsw-alias-label-primary);text-decoration:underline}.-fGs2q_file:focus-visible,.-fGs2q_showFolder:focus-visible{box-shadow:inset 0 0 0 2px var(--dsw-alias-border-l3);outline:none}.-fGs2q_more{white-space:nowrap;color:var(--dsw-alias-label-tertiary);flex:none}.-fGs2q_showFolder{color:var(--dsw-alias-label-tertiary);font:inherit;cursor:pointer;background:0 0;border:none;border-radius:4px;grid-area:2/2;justify-self:start;margin:0;padding:0 2px;line-height:20px}.-fGs2q_showFolder:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}.-fGs2q_measure{visibility:hidden;pointer-events:none;contain:strict;width:0;height:0;position:absolute;overflow:hidden}.-fGs2q_probe{width:max-content;position:absolute;inset:0 auto auto 0}";
 		const tagId = "@deepseek-ai/dsh-client-ui-deliverables/ProducedFiles.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -167,14 +232,14 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ProducedFiles_module_css_default = {
-			"file": "NpaGGq_file",
-			"label": "NpaGGq_label",
-			"measure": "NpaGGq_measure",
-			"more": "NpaGGq_more",
-			"probe": "NpaGGq_probe",
-			"root": "NpaGGq_root",
-			"row": "NpaGGq_row",
-			"showFolder": "NpaGGq_showFolder"
+			"file": "-fGs2q_file",
+			"label": "-fGs2q_label",
+			"measure": "-fGs2q_measure",
+			"more": "-fGs2q_more",
+			"probe": "-fGs2q_probe",
+			"root": "-fGs2q_root",
+			"row": "-fGs2q_row",
+			"showFolder": "-fGs2q_showFolder"
 		};
 		//#endregion
 		//#region lib/types/client/ProducedFiles.js
@@ -212,8 +277,11 @@ window.__ModuleLoader__.load({
 		* @param props - selector-matched paths, the chat view's file opener, and the locale seat.
 		* @returns The produced-files row.
 		*/
-		function ProducedFiles({ matched: paths, openFile, isLoopback, useHostDescription, t }) {
-			const hostCanOpenPath = useHostDescription((description) => description?.canOpenPath === true);
+		function ProducedFiles({ matched: paths, openFile, isLoopback, ensureWorkspacePathOpen, useWorkspacePathOpen, t }) {
+			(0, react.useEffect)(() => {
+				ensureWorkspacePathOpen();
+			}, [ensureWorkspacePathOpen]);
+			const hostCanOpenPath = useWorkspacePathOpen((available) => available === true);
 			const canOpenPath = isLoopback && hostCanOpenPath;
 			const limit = Math.min(paths.length, SHOWN_LIMIT);
 			const [shownCount, setShownCount] = (0, react.useState)(limit);
@@ -331,8 +399,10 @@ window.__ModuleLoader__.load({
 		const inject = [
 			"slots",
 			"locale",
-			"conversationEvents",
-			"connection"
+			"uiConversation",
+			"connection",
+			"remote",
+			"remote.session"
 		];
 		/**
 		* Client plugin body: register the dictionaries and the turn-tail entry.
@@ -340,7 +410,33 @@ window.__ModuleLoader__.load({
 		*/
 		function apply(ctx) {
 			const connection = ctx.get("connection");
-			ctx.conversationEvents.register(deliverablesDefinition);
+			const workspacePathOpen = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(void 0);
+			let requestedWorkspacePathOpen = false;
+			let capabilityRevision = 0;
+			let pendingCapability;
+			const loadWorkspacePathOpen = () => {
+				if (pendingCapability !== void 0) return;
+				const revision = capabilityRevision;
+				const pending = ctx.remote.session.canOpenWorkspacePath().then((result) => {
+					if (revision === capabilityRevision) workspacePathOpen.set(result.ok && result.value);
+				}, () => {
+					if (revision === capabilityRevision) workspacePathOpen.set(false);
+				}).finally(() => {
+					if (pendingCapability === pending) pendingCapability = void 0;
+				});
+				pendingCapability = pending;
+			};
+			const ensureWorkspacePathOpen = () => {
+				requestedWorkspacePathOpen = true;
+				if (workspacePathOpen.getSnapshot() === void 0) loadWorkspacePathOpen();
+			};
+			ctx.on("connection/reset", () => {
+				capabilityRevision++;
+				pendingCapability = void 0;
+				workspacePathOpen.set(void 0);
+				if (requestedWorkspacePathOpen) loadWorkspacePathOpen();
+			});
+			ctx.uiConversation.events.register(deliverablesDefinition);
 			ctx.effect(() => ctx.locale.register(NS, {
 				zh,
 				en
@@ -351,7 +447,8 @@ window.__ModuleLoader__.load({
 				locale: NS,
 				inject: () => ({
 					isLoopback: connection.isLoopback,
-					hooks: { hostDescription: connection.hostDescription }
+					ensureWorkspacePathOpen,
+					hooks: { workspacePathOpen }
 				})
 			}, ProducedFiles));
 			const t = ctx.locale.bind(NS);

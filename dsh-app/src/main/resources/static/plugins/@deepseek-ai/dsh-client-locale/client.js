@@ -7,7 +7,7 @@ window.__ModuleLoader__.load({
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
+		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		//#region ../../../vendor/cosmokit/src/misc.ts
 		/** Return true when a value is `null` or `undefined`. */
 		function isNullable(value) {
@@ -806,9 +806,11 @@ window.__ModuleLoader__.load({
 		const LOCALE_SETTINGS_NAMESPACE = "locale";
 		/** Field carrying an explicit locale selection; absence delegates to the browser. */
 		const LOCALE_PREFERENCE_FIELD = "preference";
+		/** Accepted BCP 47-style language ids. */
+		const LOCALE_ID_PATTERN = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/u;
 		/** Locale identifiers shipped by the browser client. */
 		const LOCALE_IDS = ["zh", "en"];
-		Schema.object({ [LOCALE_PREFERENCE_FIELD]: Schema.union([...LOCALE_IDS]).required(false) });
+		Schema.object({ [LOCALE_PREFERENCE_FIELD]: Schema.string().pattern(LOCALE_ID_PATTERN).required(false) });
 		//#endregion
 		//#region lib/types/locales/zh.js
 		/** zh base dictionary for the common namespace: cross-feature standard words. */
@@ -818,6 +820,13 @@ window.__ModuleLoader__.load({
 			"close": "关闭",
 			"copy": "复制",
 			"copied": "复制成功",
+			"copy.failed": "复制失败",
+			"copy.value": "复制值",
+			"copy.json": "复制 JSON",
+			"copy.path": "复制属性路径",
+			"copy.prettyJson": "复制格式化 JSON",
+			"copy.compactJson": "复制紧凑 JSON",
+			"copy.optionsHint": "{action}；右键点击可选择复制方式",
 			"retry": "重试",
 			"loading": "加载中…",
 			"load.failed": "加载失败",
@@ -834,9 +843,18 @@ window.__ModuleLoader__.load({
 			"collapse": "收起",
 			"expand": "展开",
 			"back": "返回",
+			"brand.localBuild": "DSH 本地构建",
 			"unknown": "未知",
 			"none": "无",
-			"truncated": "已截断"
+			"truncated": "已截断",
+			"connection.reconnecting": "连接已断开，正在重连…",
+			"json.collapseNode": "收起 JSON 节点",
+			"json.expandNode": "展开 JSON 节点",
+			"json.label": "JSON",
+			"markdown.footnotes": "脚注",
+			"markdown.truncatedCharacters": "… 已截断，共 {total} 字符",
+			"number.thousand": "{value}K",
+			"number.million": "{value}M"
 		};
 		//#endregion
 		//#region lib/types/locales/en.js
@@ -847,6 +865,13 @@ window.__ModuleLoader__.load({
 			"close": "Close",
 			"copy": "Copy",
 			"copied": "Copied",
+			"copy.failed": "Copy failed",
+			"copy.value": "Copy value",
+			"copy.json": "Copy JSON",
+			"copy.path": "Copy property path",
+			"copy.prettyJson": "Copy pretty JSON",
+			"copy.compactJson": "Copy compact JSON",
+			"copy.optionsHint": "{action}; right-click for copy options",
 			"retry": "Retry",
 			"loading": "Loading…",
 			"load.failed": "Failed to load",
@@ -863,9 +888,18 @@ window.__ModuleLoader__.load({
 			"collapse": "Collapse",
 			"expand": "Expand",
 			"back": "Back",
+			"brand.localBuild": "DSH Local Build",
 			"unknown": "Unknown",
 			"none": "None",
-			"truncated": "Truncated"
+			"truncated": "Truncated",
+			"connection.reconnecting": "Connection lost; reconnecting…",
+			"json.collapseNode": "Collapse JSON node",
+			"json.expandNode": "Expand JSON node",
+			"json.label": "JSON",
+			"markdown.footnotes": "Footnotes",
+			"markdown.truncatedCharacters": "… truncated at {total} characters",
+			"number.thousand": "{value}K",
+			"number.million": "{value}M"
 		};
 		//#endregion
 		//#region lib/types/locales/settings.js
@@ -875,8 +909,8 @@ window.__ModuleLoader__.load({
 		/** English dictionary, checked complete against the zh key set. */
 		const en = { "language.title": "Language" };
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/locale/src/client/LanguageRow.module.css.mjs
-		const css = ".TqQeQa_row{border-bottom:1px solid var(--dsw-alias-border-l2);align-items:center;gap:8px;padding:16px 0;display:flex}.TqQeQa_rowText{flex-direction:column;flex:1;gap:4px;min-width:0;padding-right:48px;display:flex}.TqQeQa_title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}.TqQeQa_selector{background:var(--dsw-alias-bg-module-platform);height:36px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;border-radius:18px;align-items:center;gap:12px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}.TqQeQa_selector:hover{background:var(--dsw-alias-interactive-bg-hover)}.TqQeQa_chevron{flex:none}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/locale/src/client/LanguageRow.module.css.mjs
+		const css = ".cDrQzW_row{border-bottom:1px solid var(--dsw-alias-border-l2);align-items:center;gap:8px;padding:16px 0;display:flex}.cDrQzW_rowText{flex-direction:column;flex:1;gap:4px;min-width:0;padding-right:48px;display:flex}.cDrQzW_title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}.cDrQzW_selector{background:var(--dsw-alias-bg-module-platform);height:36px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;border-radius:18px;align-items:center;gap:12px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}.cDrQzW_selector:hover{background:var(--dsw-alias-interactive-bg-hover)}.cDrQzW_chevron{flex:none}";
 		const tagId = "@deepseek-ai/dsh-client-locale/LanguageRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -886,11 +920,11 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var LanguageRow_module_css_default = {
-			"chevron": "TqQeQa_chevron",
-			"row": "TqQeQa_row",
-			"rowText": "TqQeQa_rowText",
-			"selector": "TqQeQa_selector",
-			"title": "TqQeQa_title"
+			"chevron": "cDrQzW_chevron",
+			"row": "cDrQzW_row",
+			"rowText": "cDrQzW_rowText",
+			"selector": "cDrQzW_selector",
+			"title": "cDrQzW_title"
 		};
 		//#endregion
 		//#region lib/types/client/LanguageRow.js
@@ -959,7 +993,7 @@ window.__ModuleLoader__.load({
 		* @returns the store handle.
 		*/
 		function createLanguageRowStore() {
-			return (0, _deepseek_ai_dsh_client_runtime_client.defineStore)({
+			return (0, _deepseek_ai_dsh_client_store.defineStore)({
 				init: () => ({
 					active: "",
 					options: [],
@@ -976,12 +1010,12 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/types/client/index.js
 		/**
-		* English is both the locale the UI opens in when the browser names no shipped
+		* English is both the locale the UI opens in when the browser names no registered
 		* language (and for non-browser runs), and the dictionary consulted after the
 		* active locale misses a key. One constant serves both because the shipped
 		* `zh`/`en` dictionaries carry identical key sets, so neither direction can
 		* leave a key unresolved; the residual case points at English rather than
-		* zh because a browser naming neither shipped language is the reader least
+		* zh because a browser naming no registered language is the reader least
 		* likely to read Chinese.
 		*/
 		const FALLBACK_LOCALE = "en";
@@ -989,55 +1023,65 @@ window.__ModuleLoader__.load({
 		const COMMON_NS = "common";
 		/** Namespace owning this feature's settings-row copy. */
 		const SETTINGS_NS = "settings.locale";
-		/** The two shipped locales. */
-		const LOCALES = Object.freeze([{
-			id: "zh",
-			label: "中文"
-		}, {
-			id: "en",
-			label: "English"
-		}]);
-		/**
-		* `<html lang>` tag per shipped locale. The locale id is the app's own
-		* vocabulary (primary subtag); the document attribute wants a BCP 47 tag,
-		* which assistive technology and browser features (pronunciation rules,
-		* translation offers, font fallback, spell check) read to pick their own
-		* behavior. `zh` alone leaves the script ambiguous, so the shipped Chinese
-		* copy names the variant it actually is.
-		*/
-		const DOCUMENT_LANGUAGE = {
-			zh: "zh-CN",
-			en: "en"
+		/** The two locales and dictionaries shipped by this package. */
+		const BUILT_IN_LOCALE_METADATA = {
+			zh: {
+				label: "中文",
+				fallback: "en"
+			},
+			en: { label: "English" }
 		};
-		/**
-		* Point `<html lang>` at the active locale. Called on every locale change,
-		* so the attribute tracks the UI instead of standing at whatever the served
-		* markup happened to declare.
-		* @param active - the active locale id.
-		*/
-		function syncDocumentLanguage(active) {
-			if (typeof document === "undefined") return;
-			document.documentElement.lang = DOCUMENT_LANGUAGE[active];
+		const BUILT_IN_LOCALES = Object.freeze(LOCALE_IDS.map((id) => Object.freeze({
+			id,
+			...BUILT_IN_LOCALE_METADATA[id]
+		})));
+		/** Case-insensitive key for BCP 47-style ids. */
+		function localeKey(value) {
+			return value.toLowerCase();
+		}
+		/** Validate and detach a language-pack contribution from its mutable input. */
+		function normalizeLanguage(input) {
+			if (!LOCALE_ID_PATTERN.test(input.id)) throw new Error(`locale id "${input.id}" is not a BCP 47-style tag`);
+			if (input.label.trim() === "") throw new Error("locale label must not be empty");
+			if (!LOCALE_ID_PATTERN.test(input.fallback)) throw new Error(`locale fallback "${input.fallback}" is not a BCP 47-style tag`);
+			return Object.freeze({
+				id: input.id,
+				label: input.label,
+				fallback: input.fallback
+			});
 		}
 		/**
-		* Dictionary registry plus locale preference. Lookup chain per key: the
-		* entry's namespace in the active locale -> that namespace's en fallback ->
-		* the shared common namespace (active, then en) -> the key itself (missing
-		* text stays visible, fail loud in the UI rather than blank). Reads go
-		* through {@link getLocale}; writes only through {@link setLocale};
-		* continuous sync through the `locale/change` event, or through the
-		* LocaleFace getSnapshot/subscribe pair the render machinery consumes
-		* (installed via `ctx.slots.installLocale`).
+		* Point `<html lang>` at the active locale, keeping the served document in
+		* sync with locale snapshot changes.
+		* @param snapshot - current locale state, including the active definition.
+		*/
+		function syncDocumentLanguage(snapshot) {
+			if (typeof document === "undefined") return;
+			document.documentElement.lang = snapshot.active === "zh" ? "zh-CN" : snapshot.active;
+		}
+		/**
+		* Dictionary registry plus locale preference. Lookup walks the active
+		* language's declared fallback chain in the entry namespace, then repeats it
+		* in the shared common namespace before showing the key itself. Reads go
+		* through {@link getLocale}; preferences change only through
+		* {@link setLocale}, while language packs extend the catalog through
+		* {@link addLanguage}. Continuous sync uses the `locale/change` event or
+		* the LocaleFace getSnapshot/subscribe pair installed through
+		* `ctx.slots.installLocale`.
 		*/
 		var LocaleRuntime = class {
 			dicts = /* @__PURE__ */ new Map();
 			bound = /* @__PURE__ */ new Map();
+			catalog = /* @__PURE__ */ new Map();
+			fallbackChains = /* @__PURE__ */ new Map();
 			snapshot;
 			listeners = /* @__PURE__ */ new Set();
 			ctx;
 			host;
 			/** Browser-derived locale standing wherever no explicit Host selection does. */
 			provisional;
+			/** Last explicit selection, including one awaiting an external registration. */
+			preference;
 			/**
 			* @param ctx - owning context (change events are emitted on it; the scope
 			* listener is released through ctx.effect on dispose).
@@ -1047,10 +1091,12 @@ window.__ModuleLoader__.load({
 			constructor(ctx, host) {
 				this.ctx = ctx;
 				this.host = host;
-				this.provisional = resolveInitialLocale();
+				for (const locale of BUILT_IN_LOCALES) this.catalog.set(localeKey(locale.id), locale);
+				const locales = this.localeList();
+				this.provisional = resolveInitialLocale(locales);
 				this.snapshot = Object.freeze({
 					active: this.provisional,
-					locales: LOCALES,
+					locales,
 					revision: 0
 				});
 				if (host !== void 0) {
@@ -1078,7 +1124,7 @@ window.__ModuleLoader__.load({
 			/**
 			* LocaleFace subscribe: notified on every snapshot change (locale switch
 			* or dictionary registration — registrations bump the revision so already
-			* rendered outlets pick up late-arriving dictionaries).
+			* rendered outlets pick up late-arriving dictionaries and locale definitions).
 			* @param fn - change callback.
 			* @returns unsubscribe.
 			*/
@@ -1101,10 +1147,47 @@ window.__ModuleLoader__.load({
 			* @param id - a registered locale id; unknown ids throw.
 			*/
 			setLocale(id) {
-				const match = this.snapshot.locales.find((l) => l.id === id);
+				const match = this.catalog.get(localeKey(id));
 				if (match === void 0) throw new Error(`locale "${id}" is not registered`);
+				this.preference = match.id;
 				if (this.snapshot.active !== match.id) this.publish(match.id, true);
 				this.host?.set(LOCALE_PREFERENCE_FIELD, match.id);
+			}
+			/**
+			* Add one selectable language to the shared catalog. Its fallback must
+			* already be registered, and following fallback definitions must terminate
+			* at English. Dictionaries may register before or after this definition.
+			* Registration rechecks an unresolved Host preference and the browser's
+			* ordered language list. The caller owns the returned disposer; removing an
+			* active language falls back without clearing the stored id.
+			* @param input - stable id, self-described label, and fallback language id.
+			* @returns idempotent disposer removing this exact definition.
+			* @throws when fields are malformed, the id is occupied, or the fallback
+			* target is unknown or creates a cycle.
+			*/
+			addLanguage(input) {
+				const candidate = normalizeLanguage(input);
+				const key = localeKey(candidate.id);
+				if (this.catalog.has(key)) throw new Error(`locale "${candidate.id}" is already registered`);
+				const fallback = this.catalog.get(localeKey(candidate.fallback));
+				if (fallback === void 0) throw new Error(`locale fallback "${candidate.fallback}" is not registered`);
+				const language = Object.freeze({
+					...candidate,
+					fallback: fallback.id
+				});
+				this.catalog.set(key, language);
+				try {
+					this.assertFallbackChain(language.id);
+				} catch (error) {
+					this.catalog.delete(key);
+					throw error;
+				}
+				this.publishCatalog();
+				return () => {
+					if (this.catalog.get(key) !== language) return;
+					this.catalog.delete(key);
+					this.publishCatalog();
+				};
 			}
 			/**
 			* Adopt the scope's accepted durable selection without writing it back; an
@@ -1114,19 +1197,74 @@ window.__ModuleLoader__.load({
 			adopt(host) {
 				const section = host.getSnapshot().value;
 				if (section === void 0) return;
-				const target = section.preference ?? this.provisional;
+				this.preference = section.preference;
+				const target = this.resolveActive();
 				if (this.snapshot.active === target) return;
 				this.publish(target, true);
 			}
+			/** Recompute browser fallback and publish the current catalog. */
+			publishCatalog() {
+				this.fallbackChains.clear();
+				const locales = this.localeList();
+				this.provisional = resolveInitialLocale(locales);
+				const active = this.resolveActive();
+				this.publish(active, active !== this.snapshot.active, locales);
+			}
+			/** Resolve an explicit preference only while its definition is available. */
+			resolveActive() {
+				if (this.preference === void 0) return this.provisional;
+				return this.catalog.get(localeKey(this.preference))?.id ?? this.provisional;
+			}
+			/** Snapshot the catalog in registration order. */
+			localeList() {
+				return Object.freeze([...this.catalog.values()]);
+			}
+			/** Fail a new definition whose complete fallback path does not reach English. */
+			assertFallbackChain(start) {
+				const seen = /* @__PURE__ */ new Set();
+				let current = this.catalog.get(localeKey(start));
+				while (current !== void 0) {
+					const key = localeKey(current.id);
+					if (seen.has(key)) throw new Error(`locale fallback cycle includes "${current.id}"`);
+					seen.add(key);
+					if (key === localeKey("en")) return;
+					/* v8 ignore next -- English is the only built-in terminal and every
+					* language accepted by addLanguage has a required fallback. */
+					if (current.fallback === void 0) throw new Error(`locale "${current.id}" fallback chain does not reach "en"`);
+					const next = this.catalog.get(localeKey(current.fallback));
+					if (next === void 0) throw new Error(`locale fallback "${current.fallback}" is not registered`);
+					current = next;
+				}
+			}
+			/** Resolve a lookup chain, falling directly to English across an unload gap. */
+			fallbackChain(start) {
+				const startKey = localeKey(start);
+				const cached = this.fallbackChains.get(startKey);
+				if (cached !== void 0) return cached;
+				const chain = [];
+				const seen = /* @__PURE__ */ new Set();
+				let current = this.catalog.get(startKey);
+				while (current !== void 0 && !seen.has(localeKey(current.id))) {
+					const key = localeKey(current.id);
+					seen.add(key);
+					chain.push(current.id);
+					current = current.fallback === void 0 ? void 0 : this.catalog.get(localeKey(current.fallback));
+				}
+				if (!seen.has(localeKey("en"))) chain.push("en");
+				const resolved = Object.freeze(chain);
+				this.fallbackChains.set(startKey, resolved);
+				return resolved;
+			}
 			register(ns, localeOrDicts, dict) {
 				const pairs = typeof localeOrDicts === "string" ? [[localeOrDicts, dict]] : Object.entries(localeOrDicts);
+				for (const [locale] of pairs) if (!LOCALE_ID_PATTERN.test(locale)) throw new Error(`locale id "${locale}" is not a BCP 47-style tag`);
 				let locales = this.dicts.get(ns);
 				if (!locales) {
 					locales = /* @__PURE__ */ new Map();
 					this.dicts.set(ns, locales);
 				}
-				for (const [locale] of pairs) if (locales.has(locale)) throw new Error(`locale namespace "${ns}" already has locale "${locale}"`);
-				for (const [locale, entries] of pairs) locales.set(locale, entries);
+				for (const [locale] of pairs) if (locales.has(localeKey(locale))) throw new Error(`locale namespace "${ns}" already has locale "${locale}"`);
+				for (const [locale, entries] of pairs) locales.set(localeKey(locale), entries);
 				this.publish(this.snapshot.active, false);
 				return () => {
 					const owner = this.dicts.get(ns);
@@ -1134,9 +1272,12 @@ window.__ModuleLoader__.load({
 					* first register and never removed, so the disposer always finds it. */
 					if (!owner) return;
 					let removed = false;
-					for (const [locale, entries] of pairs) if (owner.get(locale) === entries) {
-						owner.delete(locale);
-						removed = true;
+					for (const [locale, entries] of pairs) {
+						const key = localeKey(locale);
+						if (owner.get(key) === entries) {
+							owner.delete(key);
+							removed = true;
+						}
 					}
 					if (removed) this.publish(this.snapshot.active, false);
 				};
@@ -1151,13 +1292,17 @@ window.__ModuleLoader__.load({
 				return t;
 			}
 			translate(ns, key, params) {
-				const template = this.lookup(ns, key) ?? (ns !== "common" ? this.lookup("common", key) : void 0) ?? key;
+				const chain = this.fallbackChain(this.snapshot.active);
+				const template = this.lookup(ns, key, chain) ?? (ns !== "common" ? this.lookup("common", key, chain) : void 0) ?? key;
 				if (!params) return template;
 				return template.replace(/\{(\w+)\}/g, (match, name) => name in params ? String(params[name]) : match);
 			}
-			lookup(ns, key) {
+			lookup(ns, key, chain) {
 				const locales = this.dicts.get(ns);
-				return locales?.get(this.snapshot.active)?.[key] ?? locales?.get("en")?.[key];
+				for (const locale of chain) {
+					const value = locales?.get(localeKey(locale))?.[key];
+					if (value !== void 0) return value;
+				}
 			}
 			/**
 			* Advance the snapshot revision and notify LocaleFace subscribers (render
@@ -1166,10 +1311,10 @@ window.__ModuleLoader__.load({
 			* registration-heavy boot cannot storm event listeners (which may
 			* re-register slots in response).
 			*/
-			publish(active, localeChanged) {
+			publish(active, localeChanged, locales = this.snapshot.locales) {
 				this.snapshot = Object.freeze({
 					active,
-					locales: this.snapshot.locales,
+					locales,
 					revision: this.snapshot.revision + 1
 				});
 				if (localeChanged) this.ctx.emit("locale/change", this.snapshot);
@@ -1184,24 +1329,30 @@ window.__ModuleLoader__.load({
 		* The browser's own language wins over {@link FALLBACK_LOCALE}; an explicit
 		* Host preference may replace this provisional value after plugin activation.
 		*/
-		function resolveInitialLocale() {
-			return detectBrowserLocale() ?? "en";
+		function resolveInitialLocale(locales) {
+			return detectBrowserLocale(locales) ?? "en";
 		}
 		/**
-		* The first shipped locale the browser asks for, matched on the primary
-		* subtag so every regional variant lands on its language (`zh-Hans-CN` -> zh,
-		* `en-GB` -> en). `window` is the browser test, not `navigator`: Node exposes
-		* a global `navigator` reporting the machine's own language, which would
-		* otherwise decide the locale for non-browser runs (node e2e booting the
-		* client tree). `navigator.language` trails the ordered `languages` list and
-		* covers its absence on hosts that expose only the single tag.
+		* The first registered locale the browser asks for. Each browser tag first
+		* matches a locale id exactly, then its primary subtag, so an exact regional
+		* registration wins before a language-wide fallback.
+		* `window` is the browser test, not `navigator`: Node exposes a global
+		* `navigator` reporting the machine's own language, which must not decide the
+		* locale for non-browser runs. `navigator.language` trails the ordered
+		* `languages` list and covers hosts exposing only the single tag.
+		* @param locales - definitions currently available to the browser.
+		* @returns the first matching locale id, or undefined.
 		*/
-		function detectBrowserLocale() {
+		function detectBrowserLocale(locales) {
 			if (typeof window === "undefined") return void 0;
-			for (const tag of [...navigator.languages ?? [], navigator.language]) {
-				const primary = tag.toLowerCase().split("-")[0];
-				const match = LOCALES.find((locale) => locale.id === primary);
-				if (match) return match.id;
+			const languages = navigator.languages;
+			for (const tag of [...languages ?? [], navigator.language]) {
+				const requested = localeKey(tag);
+				const exact = locales.find((locale) => localeKey(locale.id) === requested);
+				if (exact !== void 0) return exact.id;
+				const primary = requested.split("-")[0];
+				const match = locales.find((locale) => localeKey(locale.id).split("-")[0] === primary);
+				if (match !== void 0) return match.id;
 			}
 		}
 		/** Required services: slot registration plus the settings transport. */
@@ -1231,18 +1382,19 @@ window.__ModuleLoader__.load({
 			ctx.slots.installLocale(locale);
 			const store = createLanguageRowStore();
 			let bound;
-			const sync = (snapshot) => {
-				syncDocumentLanguage(snapshot.active);
+			const sync = () => {
+				const snapshot = locale.getSnapshot();
+				syncDocumentLanguage(snapshot);
 				bound?.sync(snapshot.active, snapshot.locales.map((l) => ({
 					id: l.id,
 					label: l.label
 				})), snapshot.revision);
 			};
-			ctx.on("locale/change", sync);
-			syncDocumentLanguage(locale.getLocale().active);
+			ctx.effect(() => locale.subscribe(sync), "locale: language row and document synchronization");
+			sync();
 			const injected = (actions) => {
 				bound = actions;
-				sync(locale.getLocale());
+				sync();
 				return { setLocale: (id) => {
 					locale.setLocale(id);
 				} };

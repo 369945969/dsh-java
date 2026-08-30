@@ -7,8 +7,8 @@ window.__ModuleLoader__.load({
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-skill/src/client/SkillRow.module.css.mjs
-		const css = ".d9Dtnq_card{flex-direction:column;display:flex}.d9Dtnq_row{align-items:center;min-width:0;height:24px;display:flex;position:relative;overflow:hidden}.d9Dtnq_row[data-expandable]{cursor:pointer}.d9Dtnq_card[data-state=running] .d9Dtnq_row:after{content:\"\";background:linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%, transparent 100%);pointer-events:none;width:300px;animation:2.6s ease-out infinite d9Dtnq_dsh-skill-row-sweep;position:absolute;inset:0 auto 0 0}@keyframes d9Dtnq_dsh-skill-row-sweep{0%{left:-300px}90%,to{left:100%}}.d9Dtnq_leading{width:16px;height:16px;color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;margin-right:6px;display:inline-flex;position:relative}.d9Dtnq_chevron{color:var(--dsw-alias-label-secondary)}.d9Dtnq_iconIdle{opacity:1;transition:opacity .1s;display:inline-flex}.d9Dtnq_chevronHover{opacity:0;margin:auto;transition:opacity .1s;position:absolute;inset:0}.d9Dtnq_row:hover .d9Dtnq_iconIdle{opacity:0}.d9Dtnq_row:hover .d9Dtnq_chevronHover{opacity:1}.d9Dtnq_title{color:var(--dsw-alias-label-secondary);flex:none;font-size:14px;line-height:24px}.d9Dtnq_separator{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.d9Dtnq_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary);flex:auto;font-size:14px;line-height:24px;overflow:hidden}.d9Dtnq_errorSummary{color:var(--dsw-alias-state-error-primary)}.d9Dtnq_bodyWrap{flex-direction:column;display:flex}.d9Dtnq_instructionsCard{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-markdown-code-block);border-radius:12px;flex-direction:column;max-height:260px;margin:4px 0 4px 4px;display:flex;overflow:hidden}.d9Dtnq_instructionsHeader{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-markdown-code-block-banner);color:var(--dsw-alias-label-caption);text-transform:uppercase;letter-spacing:.04em;flex:none;padding:8px 12px;font-size:11px;font-weight:500;line-height:16px}.d9Dtnq_instructions{white-space:pre-wrap;overflow-wrap:anywhere;min-height:0;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-secondary);margin:0;padding:10px 12px 12px;overflow:auto}.d9Dtnq_instructions[data-error]{color:var(--dsw-alias-state-error-primary)}.d9Dtnq_instructions::-webkit-scrollbar-thumb{background-clip:padding-box;border:2px solid #0000;border-radius:6px}.d9Dtnq_instructions::-webkit-scrollbar-track{margin:6px 0}.d9Dtnq_inspectButton{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.d9Dtnq_card:hover .d9Dtnq_inspectButton,.d9Dtnq_inspectButton:focus-visible{opacity:1}.d9Dtnq_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.d9Dtnq_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){.d9Dtnq_card[data-state=running] .d9Dtnq_row:after{animation:none;display:none}.d9Dtnq_iconIdle,.d9Dtnq_chevronHover,.d9Dtnq_inspectButton{transition:none}}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-skill/src/client/SkillRow.module.css.mjs
+		const css = ".NANkCG_card{flex-direction:column;display:flex}.NANkCG_row{align-items:center;min-width:0;height:24px;display:flex;position:relative;overflow:hidden}.NANkCG_row[data-expandable]{cursor:pointer}.NANkCG_card[data-state=running] .NANkCG_row:after{content:\"\";background:linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%, transparent 100%);pointer-events:none;width:300px;animation:2.6s ease-out infinite NANkCG_dsh-skill-row-sweep;position:absolute;inset:0 auto 0 0}@keyframes NANkCG_dsh-skill-row-sweep{0%{left:-300px}90%,to{left:100%}}.NANkCG_leading{width:16px;height:16px;color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;margin-right:6px;display:inline-flex;position:relative}.NANkCG_chevron{color:var(--dsw-alias-label-secondary)}.NANkCG_iconIdle{opacity:1;transition:opacity .1s;display:inline-flex}.NANkCG_chevronHover{opacity:0;margin:auto;transition:opacity .1s;position:absolute;inset:0}.NANkCG_row:hover .NANkCG_iconIdle{opacity:0}.NANkCG_row:hover .NANkCG_chevronHover{opacity:1}.NANkCG_title{color:var(--dsw-alias-label-secondary);flex:none;font-size:14px;line-height:24px}.NANkCG_separator{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.NANkCG_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary);flex:auto;font-size:14px;line-height:24px;overflow:hidden}.NANkCG_errorSummary{color:var(--dsw-alias-state-error-primary)}.NANkCG_bodyWrap{flex-direction:column;display:flex}.NANkCG_instructionsCard{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-markdown-code-block);border-radius:12px;flex-direction:column;max-height:260px;margin:4px 0 4px 4px;display:flex;overflow:hidden}.NANkCG_instructionsHeader{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-markdown-code-block-banner);color:var(--dsw-alias-label-caption);text-transform:uppercase;letter-spacing:.04em;flex:none;padding:8px 12px;font-size:11px;font-weight:500;line-height:16px}.NANkCG_instructions{white-space:pre-wrap;overflow-wrap:anywhere;min-height:0;font:var(--dsw-font-markdown-code-block-small);color:var(--dsw-alias-label-secondary);margin:0;padding:10px 12px 12px;overflow:auto}.NANkCG_instructions[data-error]{color:var(--dsw-alias-state-error-primary)}.NANkCG_instructions::-webkit-scrollbar-thumb{background-clip:padding-box;border:2px solid #0000;border-radius:6px}.NANkCG_instructions::-webkit-scrollbar-track{margin:6px 0}.NANkCG_inspectButton{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.NANkCG_card:hover .NANkCG_inspectButton,.NANkCG_inspectButton:focus-visible{opacity:1}.NANkCG_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.NANkCG_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}@media (prefers-reduced-motion:reduce){.NANkCG_card[data-state=running] .NANkCG_row:after{animation:none;display:none}.NANkCG_iconIdle,.NANkCG_chevronHover,.NANkCG_inspectButton{transition:none}}";
 		const tagId = "@deepseek-ai/dsh-client-ui-skill/SkillRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -18,23 +18,23 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var SkillRow_module_css_default = {
-			"bodyWrap": "d9Dtnq_bodyWrap",
-			"card": "d9Dtnq_card",
-			"chevron": "d9Dtnq_chevron",
-			"chevronHover": "d9Dtnq_chevronHover",
-			"dsh-skill-row-sweep": "d9Dtnq_dsh-skill-row-sweep",
-			"errorSummary": "d9Dtnq_errorSummary",
-			"iconIdle": "d9Dtnq_iconIdle",
-			"inspectButton": "d9Dtnq_inspectButton",
-			"instructions": "d9Dtnq_instructions",
-			"instructionsCard": "d9Dtnq_instructionsCard",
-			"instructionsHeader": "d9Dtnq_instructionsHeader",
-			"leading": "d9Dtnq_leading",
-			"row": "d9Dtnq_row",
-			"separator": "d9Dtnq_separator",
-			"summary": "d9Dtnq_summary",
-			"title": "d9Dtnq_title",
-			"visuallyHidden": "d9Dtnq_visuallyHidden"
+			"bodyWrap": "NANkCG_bodyWrap",
+			"card": "NANkCG_card",
+			"chevron": "NANkCG_chevron",
+			"chevronHover": "NANkCG_chevronHover",
+			"dsh-skill-row-sweep": "NANkCG_dsh-skill-row-sweep",
+			"errorSummary": "NANkCG_errorSummary",
+			"iconIdle": "NANkCG_iconIdle",
+			"inspectButton": "NANkCG_inspectButton",
+			"instructions": "NANkCG_instructions",
+			"instructionsCard": "NANkCG_instructionsCard",
+			"instructionsHeader": "NANkCG_instructionsHeader",
+			"leading": "NANkCG_leading",
+			"row": "NANkCG_row",
+			"separator": "NANkCG_separator",
+			"summary": "NANkCG_summary",
+			"title": "NANkCG_title",
+			"visuallyHidden": "NANkCG_visuallyHidden"
 		};
 		//#endregion
 		//#region lib/types/client/SkillRow.js
@@ -150,7 +150,7 @@ window.__ModuleLoader__.load({
 						}) : null,
 						(0, react_jsx_runtime.jsx)("span", {
 							className: SkillRow_module_css_default.title,
-							children: "Skill"
+							children: t("row.title")
 						}),
 						(0, react_jsx_runtime.jsx)("span", {
 							className: SkillRow_module_css_default.separator,
@@ -178,7 +178,7 @@ window.__ModuleLoader__.load({
 						type: "button",
 						className: SkillRow_module_css_default.inspectButton,
 						onClick: inspect,
-						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutline12, {}), "Inspect"]
+						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutline12, {}), t("row.inspect")]
 					}) : null]
 				}) : null]
 			});
@@ -190,18 +190,22 @@ window.__ModuleLoader__.load({
 		const NS = "skill";
 		/** Simplified Chinese dictionary (the key-set source of truth). */
 		const zh = {
+			"row.title": "Skill",
 			"row.running": "正在加载 skill",
 			"row.failed": "skill 加载失败",
 			"row.stopped": "skill 加载已中止",
 			"row.instructions": "说明",
+			"row.inspect": "查看",
 			"menu.userOnly": "仅用户"
 		};
 		/** English dictionary, checked complete against the zh key set. */
 		const en = {
+			"row.title": "Skill",
 			"row.running": "Loading skill",
 			"row.failed": "Skill load failed",
 			"row.stopped": "Skill load stopped",
 			"row.instructions": "Instructions",
+			"row.inspect": "Inspect",
 			"menu.userOnly": "user-only"
 		};
 		//#endregion
@@ -213,7 +217,8 @@ window.__ModuleLoader__.load({
 			"sessions",
 			"slots",
 			"locale",
-			"remote"
+			"remote",
+			"remote.skills"
 		];
 		/**
 		* Client plugin body: register the '/' source, dictionaries, and keyed tool row.
@@ -229,8 +234,8 @@ window.__ModuleLoader__.load({
 				key: "skill",
 				locale: NS
 			}, SkillRow));
-			const skills = ctx.get("connection").api.skills;
-			const sessions = ctx.get("sessions");
+			const skills = ctx.remote.skills;
+			const sessions = ctx.sessions;
 			const fetches = /* @__PURE__ */ new Map();
 			const lexiconListeners = /* @__PURE__ */ new Map();
 			const notifyLexicon = (sessionId) => {
@@ -246,8 +251,8 @@ window.__ModuleLoader__.load({
 				if (existing !== void 0) return existing.promise;
 				const abort = new AbortController();
 				const promise = (async () => {
-					const { result } = await skills.list({ sessionId }, abort.signal);
-					if (!result.ok) throw new Error(`skill.list failed: ${result.error.code}: ${result.error.message}`);
+					const result = await skills.list({ sessionId }, abort.signal);
+					if (!result.ok) throw new Error(`skills/list failed: ${result.error.code}: ${result.error.message}`);
 					return result.value.skills;
 				})();
 				const entry = {

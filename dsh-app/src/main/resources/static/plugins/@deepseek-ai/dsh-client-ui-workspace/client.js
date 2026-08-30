@@ -4,10 +4,160 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
+		let _deepseek_ai_cordis = require("@deepseek-ai/cordis");
+		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
+		//#region lib/types/client/navigation.js
+		/** Workspace archive and directory UI capability. */
+		/** Structured directory failure exposed to directory UI consumers. */
+		var DirectoryBrowseError = class extends Error {
+			rpcError;
+			name = "DirectoryBrowseError";
+			/** @param rpcError - Host directory business failure. */
+			constructor(rpcError) {
+				super(`directory browse failed: ${rpcError.code}: ${rpcError.message}`);
+				this.rpcError = rpcError;
+			}
+		};
+		/** Implements Workspace archive and directory UI operations. */
+		var UiWorkspaceService = class extends _deepseek_ai_cordis.Service {
+			directoryPicker;
+			workspaces;
+			sessions;
+			connecting = /* @__PURE__ */ new Map();
+			/**
+			* @param ctx - Client root Context.
+			* @param directoryPicker - the directory-picking Remote namespace.
+			* @param workspaces - pure Workspace Controller.
+			* @param sessions - pure Session Controller.
+			*/
+			constructor(ctx, directoryPicker, workspaces, sessions) {
+				super(ctx, "uiWorkspace");
+				this.directoryPicker = directoryPicker;
+				this.workspaces = workspaces;
+				this.sessions = sessions;
+				ctx.effect(() => this.watchNavigation(), "ui-workspace: Workspace navigation policy");
+			}
+			async connectWorkspace(workspaceId) {
+				const workspace = this.workspaces.list.getSnapshot().items.find((item) => item.workspaceId === workspaceId);
+				if (workspace === void 0) throw new Error(`uiWorkspace.connectWorkspace: unknown workspace ${workspaceId}`);
+				const inflight = this.connecting.get(workspaceId);
+				if (inflight !== void 0) return inflight;
+				const archived = this.workspaces.list.getSnapshot().archivedSessionIds;
+				const sessions = this.sessions.list.getSnapshot();
+				for (const id of sessions.ids) {
+					const summary = sessions.byId[id];
+					if (summary !== void 0 && summary.blank && summary.cwd === workspace.path && workspace.sessionIds.includes(summary.id) && !archived.includes(summary.id)) return summary.id;
+				}
+				const attempt = this.sessions.create({ workspaceId }).finally(() => {
+					this.connecting.delete(workspaceId);
+				});
+				this.connecting.set(workspaceId, attempt);
+				return attempt;
+			}
+			startSession(workspaceId) {
+				const workspace = this.workspaces.list.getSnapshot();
+				const sessions = this.sessions.list.getSnapshot();
+				const current = sessions.current;
+				const currentWorkspaceId = current === void 0 ? void 0 : workspace.items.find((item) => item.sessionIds.includes(current))?.workspaceId;
+				const recent = workspace.phase === "ready" && sessions.phase === "ready" ? recentWorkspace(workspace.items, sessions.byId) : void 0;
+				const target = workspaceId ?? currentWorkspaceId ?? recent;
+				if (target === void 0) {
+					this.sessions.clear();
+					return;
+				}
+				this.connectWorkspace(target).then((sessionId) => {
+					this.sessions.open(sessionId);
+				}, (reason) => {
+					console.warn("new session failed:", reason);
+				});
+			}
+			async archiveSession(sessionId) {
+				await this.workspaces.archiveSession(sessionId);
+			}
+			async pickDirectory() {
+				const result = await this.directoryPicker.pick();
+				if (!result.ok) throw new Error(`directory picker failed: ${result.error.message}`);
+				return result.value;
+			}
+			async listDirectory(path, signal) {
+				const result = await this.directoryPicker.list(path, signal);
+				if (!result.ok) throw new DirectoryBrowseError(result.error);
+				return result.value;
+			}
+			async createDirectory(path, name) {
+				const result = await this.directoryPicker.createDirectory(path, name);
+				if (!result.ok) throw new DirectoryBrowseError(result.error);
+				return result.value;
+			}
+			watchNavigation() {
+				let initial = "waiting";
+				let disposed = false;
+				const reconcile = () => {
+					if (disposed) return;
+					if (this.clearArchivedCurrent()) return;
+					if (initial !== "waiting") return;
+					const workspace = this.workspaces.list.getSnapshot();
+					const sessions = this.sessions.list.getSnapshot();
+					if (workspace.phase !== "ready" || sessions.phase !== "ready") return;
+					if (sessions.current !== void 0) {
+						initial = "done";
+						return;
+					}
+					const target = recentWorkspace(workspace.items, sessions.byId);
+					if (target === void 0) {
+						initial = "done";
+						return;
+					}
+					initial = "connecting";
+					this.connectWorkspace(target).then((sessionId) => {
+						if (disposed) return;
+						if (this.sessions.list.getSnapshot().current === void 0) this.sessions.open(sessionId);
+						initial = "done";
+					}, (reason) => {
+						if (disposed) return;
+						initial = "waiting";
+						console.warn("initial workspace selection failed:", reason);
+					});
+				};
+				const disposeWorkspaces = this.workspaces.list.subscribe(reconcile);
+				const disposeSessions = this.sessions.list.subscribe(reconcile);
+				reconcile();
+				return () => {
+					disposed = true;
+					disposeSessions();
+					disposeWorkspaces();
+				};
+			}
+			/** @returns true when an archived current selection was cleared. */
+			clearArchivedCurrent() {
+				const current = this.sessions.list.getSnapshot().current;
+				if (current === void 0 || !this.workspaces.list.getSnapshot().archivedSessionIds.includes(current)) return false;
+				this.sessions.clear();
+				return true;
+			}
+		};
+		/** Stable tie-breaking follows Host Workspace order. */
+		function recentWorkspace(workspaces, sessions) {
+			let selected;
+			let selectedTime = Number.NEGATIVE_INFINITY;
+			for (const workspace of workspaces) {
+				let latest = Number.NEGATIVE_INFINITY;
+				for (const sessionId of workspace.sessionIds) {
+					const session = sessions[sessionId];
+					if (session !== void 0) latest = Math.max(latest, session.updatedAt);
+				}
+				if (latest === Number.NEGATIVE_INFINITY) latest = Date.parse(workspace.createdAt);
+				if (selected === void 0 || latest > selectedTime) {
+					selected = workspace.workspaceId;
+					selectedTime = latest;
+				}
+			}
+			return selected;
+		}
+		//#endregion
 		//#region lib/types/client/stores.js
 		/**
 		* The workspace browser's viewing store: the session-list grouping mode,
@@ -23,7 +173,7 @@ window.__ModuleLoader__.load({
 		* @returns the store handle (spec + type + identity + factory in one).
 		*/
 		function createWorkspaceViewStore() {
-			return (0, _deepseek_ai_dsh_client_runtime_client.defineStore)({
+			return (0, _deepseek_ai_dsh_client_store.defineStore)({
 				init: () => ({
 					groupBy: "workspace",
 					orderBy: "updated",
@@ -73,18 +223,82 @@ window.__ModuleLoader__.load({
 			for (var e, t, f = 0, n = "", o = arguments.length; f < o; f++) (e = arguments[f]) && (t = r(e)) && (n && (n += " "), n += t);
 			return n;
 		}
-		/** Display label for the ungrouped bucket row. */
-		const UNGROUPED_LABEL = "Ungrouped";
+		//#endregion
+		//#region ../../util/workspace-path/src/index.ts
+		/**
+		* Browser-safe Workspace path and display helpers.
+		* @module @deepseek-ai/dsh-util-workspace-path
+		*/
+		/** Whether a path uses a Windows drive or UNC prefix. */
+		function isWindowsStylePath(value) {
+			return /^[A-Za-z]:[/\\]/.test(value) || value.startsWith("\\\\");
+		}
+		/**
+		* Abbreviate a POSIX home directory for display.
+		* @param path - Absolute or already-short display path.
+		* @param home - Host account home; absent skips abbreviation.
+		* @returns `~` or `~/…` for the POSIX home and its descendants, otherwise `path`.
+		*/
+		function abbreviateHomePath(path, home) {
+			if (home === void 0 || home === "") return path;
+			if (isWindowsStylePath(path) || isWindowsStylePath(home)) return path;
+			const root = home.replace(/\/+$/, "");
+			if (root === "" || root === "/") return path;
+			if (path.replace(/\/+$/, "") === root) return "~";
+			if (path.startsWith(`${root}/`)) return `~${path.slice(root.length)}`;
+			return path;
+		}
+		/**
+		* Read the final non-empty segment of a Workspace path for display.
+		* Workspace-label surfaces use this helper instead of deriving another basename.
+		* @param path - Workspace directory path using POSIX or Windows separators.
+		* @returns the final segment, or an empty string for a separator-only path.
+		*/
+		function workspaceTitleOf(path) {
+			const trimmed = path.replace(/[/\\]+$/, "");
+			const separator = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+			return trimmed.slice(separator + 1);
+		}
+		//#endregion
+		//#region lib/types/client/subagent-lineage.js
+		/** UI Workspace-owned projection of descendant counts from Session summaries. */
+		/**
+		* Index uninterrupted subagent descendants under each ancestor.
+		* @param summaries - Session summaries keyed by id.
+		* @returns descendant totals keyed by possible parent id.
+		*/
+		function indexSubagentDescendants(summaries) {
+			const indexed = /* @__PURE__ */ new Map();
+			for (const descendant of Object.values(summaries)) {
+				if (descendant.origin !== "subagent") continue;
+				const seen = /* @__PURE__ */ new Set();
+				let current = descendant;
+				while (current?.origin === "subagent" && current.parentId !== void 0 && !seen.has(current.id)) {
+					seen.add(current.id);
+					const aggregate = indexed.get(current.parentId);
+					if (aggregate === void 0) indexed.set(current.parentId, {
+						count: 1,
+						runningCount: descendant.running ? 1 : 0
+					});
+					else {
+						aggregate.count += 1;
+						if (descendant.running) aggregate.runningCount += 1;
+					}
+					current = summaries[current.parentId];
+				}
+			}
+			return indexed;
+		}
 		/**
 		* Directory display label: basename of the path (both separators accepted).
 		* Ungrouped-bucket fallback for surfaces without a workspace title.
 		* @param cwd - directory path, or undefined for the ungrouped bucket.
-		* @returns basename, the raw cwd when it has no basename, or the ungrouped label.
+		* @returns basename, the raw cwd when it has no basename, or an empty ungrouped marker.
 		*/
 		function workspaceLabel(cwd) {
-			if (cwd === void 0 || cwd === "") return UNGROUPED_LABEL;
-			const base = cwd.replace(/[/\\]+$/, "").split(/[/\\]/).pop();
-			return base !== void 0 && base !== "" ? base : cwd;
+			if (cwd === void 0 || cwd === "") return "";
+			const base = workspaceTitleOf(cwd);
+			return base !== "" ? base : cwd;
 		}
 		/** Recency comparator: newest first, id as the deterministic tiebreak (ids are unique per group). */
 		function byRecency(a, b) {
@@ -106,7 +320,7 @@ window.__ModuleLoader__.load({
 		* and the renderer localizes its display label.
 		*/
 		function sessionTitle(session) {
-			return session.blank ? "New Session" : session.displayTitle;
+			return session.blank ? "" : session.displayTitle;
 		}
 		/** Build one group without projecting session lineage into presentation. */
 		function buildGroup(key, workspaceId, cwd, createdAt, label, members, order) {
@@ -159,10 +373,20 @@ window.__ModuleLoader__.load({
 				groups.push(buildGroup(workspace.workspaceId, workspace.workspaceId, workspace.path, Date.parse(workspace.createdAt), workspace.title, members, "account"));
 			}
 			const stray = list.ids.map((id) => list.byId[id]).filter((s) => s !== void 0 && !accounted.has(s.id) && sessionVisible(s, list.current, archived));
-			if (stray.length > 0) groups.push(buildGroup("", void 0, void 0, void 0, UNGROUPED_LABEL, ungroupedOrder === void 0 ? stray : orderedUngrouped(stray, ungroupedOrder), ungroupedOrder === void 0 ? "recency" : "account"));
+			if (stray.length > 0) groups.push(buildGroup("", void 0, void 0, void 0, "", ungroupedOrder === void 0 ? stray : orderedUngrouped(stray, ungroupedOrder), ungroupedOrder === void 0 ? "recency" : "account"));
 			return groups;
 		}
-		function sessionNode(s, descendants) {
+		/** Keep navigation presentation independent from domain-owned interaction objects. */
+		function visiblePendingKind(kind) {
+			switch (kind) {
+				case "approval":
+				case "plan-review":
+				case "question": return kind;
+				default: return;
+			}
+		}
+		function sessionNode(s, descendants, pendingInteractions) {
+			const pendingInteraction = visiblePendingKind(pendingInteractions.get(s.id)?.kind);
 			return {
 				id: s.id,
 				title: sessionTitle(s),
@@ -171,7 +395,7 @@ window.__ModuleLoader__.load({
 				runningSubagentCount: descendants.get(s.id)?.runningCount ?? 0,
 				completed: s.completed === true,
 				updatedAt: s.updatedAt,
-				...s.pendingInteraction === void 0 ? {} : { pendingInteraction: s.pendingInteraction }
+				...pendingInteraction === void 0 ? {} : { pendingInteraction }
 			};
 		}
 		/**
@@ -185,13 +409,14 @@ window.__ModuleLoader__.load({
 		* @param list - sessions list snapshot (`current` feeds containsCurrent).
 		* @param workspaces - real workspaces in stable Host order.
 		* @param archivedSessionIds - registry-global archive set.
+		* @param pendingInteractions - pending UI interactions by Session.
 		* @param view - local expansion arrays.
 		* @returns group sections in render order.
 		*/
-		function deriveGroups(list, workspaces, archivedSessionIds, view) {
+		function deriveGroups(list, workspaces, archivedSessionIds, pendingInteractions, view) {
 			const archived = new Set(archivedSessionIds);
 			const expandedGroups = new Set(view.expandedGroups);
-			const descendants = (0, _deepseek_ai_dsh_client_runtime_client.indexSubagentDescendants)(list.byId);
+			const descendants = indexSubagentDescendants(list.byId);
 			const currentGroup = list.current === void 0 ? void 0 : workspaces.find((w) => w.sessionIds.includes(list.current))?.workspaceId ?? "";
 			const groups = [];
 			for (const g of groupByWorkspace(list, workspaces, archived, view.ungroupedOrder)) {
@@ -205,7 +430,7 @@ window.__ModuleLoader__.load({
 					sessionCount: g.sessions.length,
 					expanded,
 					containsCurrent: g.key === currentGroup,
-					sessions: expanded ? g.sessions.map((session) => sessionNode(session, descendants)) : []
+					sessions: expanded ? g.sessions.map((session) => sessionNode(session, descendants, pendingInteractions)) : []
 				});
 			}
 			return groups;
@@ -217,11 +442,12 @@ window.__ModuleLoader__.load({
 		* (see {@link deriveSearchResults}).
 		* @param list - sessions list snapshot.
 		* @param archivedSessionIds - registry-global archive set.
+		* @param pendingInteractions - pending UI interactions by Session.
 		* @returns flat rows in render order.
 		*/
-		function deriveFlat(list, archivedSessionIds) {
+		function deriveFlat(list, archivedSessionIds, pendingInteractions) {
 			const archived = new Set(archivedSessionIds);
-			const descendants = (0, _deepseek_ai_dsh_client_runtime_client.indexSubagentDescendants)(list.byId);
+			const descendants = indexSubagentDescendants(list.byId);
 			const rows = [];
 			for (const id of list.ids) {
 				const s = list.byId[id];
@@ -229,7 +455,7 @@ window.__ModuleLoader__.load({
 				rows.push(s);
 			}
 			rows.sort(byRecency);
-			return rows.map((session) => sessionNode(session, descendants));
+			return rows.map((session) => sessionNode(session, descendants, pendingInteractions));
 		}
 		/**
 		* Merge immediate title/Workspace substring matches with ranked Host content
@@ -239,18 +465,19 @@ window.__ModuleLoader__.load({
 		* @param workspaces - Workspace membership and display labels.
 		* @param query - caller text; surrounding whitespace is ignored.
 		* @param archivedSessionIds - registry-global archive set (members never match).
+		* @param pendingInteractions - pending UI interactions by Session.
 		* @param content - ranked Host content-search page.
 		* @param limit - protocol-owned maximum merged row count.
 		* @returns bounded deduplicated flat rows and a refine-query hint bit.
 		*/
-		function deriveSearchResults(list, workspaces, query, archivedSessionIds, content, limit) {
+		function deriveSearchResults(list, workspaces, query, archivedSessionIds, pendingInteractions, content, limit) {
 			const q = query.trim().toLowerCase();
 			if (q === "") return {
 				items: [],
 				hasMore: false
 			};
 			const archived = new Set(archivedSessionIds);
-			const descendants = (0, _deepseek_ai_dsh_client_runtime_client.indexSubagentDescendants)(list.byId);
+			const descendants = indexSubagentDescendants(list.byId);
 			const workspaceBySession = /* @__PURE__ */ new Map();
 			for (const workspace of workspaces) for (const sessionId of workspace.sessionIds) if (!workspaceBySession.has(sessionId)) workspaceBySession.set(sessionId, workspace.title);
 			const labelOf = (summary) => workspaceBySession.get(summary.id) ?? workspaceLabel(summary.cwd);
@@ -278,13 +505,14 @@ window.__ModuleLoader__.load({
 			return {
 				items: ordered.slice(0, limit).map((summary) => {
 					const match = contentBySession.get(summary.id);
+					const pendingInteraction = visiblePendingKind(pendingInteractions.get(summary.id)?.kind);
 					return {
 						id: summary.id,
 						title: sessionTitle(summary),
 						workspace: labelOf(summary),
 						running: summary.running,
 						runningSubagentCount: descendants.get(summary.id)?.runningCount ?? 0,
-						...summary.pendingInteraction === void 0 ? {} : { pendingInteraction: summary.pendingInteraction },
+						...pendingInteraction === void 0 ? {} : { pendingInteraction },
 						completed: summary.completed === true,
 						...match === void 0 ? {} : { snippet: match.snippet }
 					};
@@ -292,46 +520,9 @@ window.__ModuleLoader__.load({
 				hasMore: content.hasMore || ordered.length > limit
 			};
 		}
-		/**
-		* Compact relative time for session rows, as a structured bucket the
-		* renderer localizes ("now"/"5min"/"3h"/"2d"/"4mo"/"1y" in en).
-		* @param updatedAt - epoch ms of the session's last activity.
-		* @param now - current epoch ms (injected for pure rendering).
-		* @returns the row's trailing time bucket and magnitude.
-		*/
-		function relativeTime(updatedAt, now) {
-			const MIN = 6e4;
-			const HOUR = 36e5;
-			const DAY = 864e5;
-			const diff = Math.max(0, now - updatedAt);
-			if (diff < MIN) return {
-				unit: "now",
-				n: 0
-			};
-			if (diff < HOUR) return {
-				unit: "minutes",
-				n: Math.floor(diff / MIN)
-			};
-			if (diff < DAY) return {
-				unit: "hours",
-				n: Math.floor(diff / HOUR)
-			};
-			if (diff < 30 * DAY) return {
-				unit: "days",
-				n: Math.floor(diff / DAY)
-			};
-			if (diff < 365 * DAY) return {
-				unit: "months",
-				n: Math.floor(diff / (30 * DAY))
-			};
-			return {
-				unit: "years",
-				n: Math.floor(diff / (365 * DAY))
-			};
-		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-workspace/src/client/rows/Rows.module.css.mjs
-		const css$2 = ".Qj2wWa_projectRow,.Qj2wWa_sessionRow{cursor:pointer;user-select:none;color:var(--dsw-alias-label-primary);border-radius:8px;align-items:center;gap:6px;padding:0 8px;display:flex}.Qj2wWa_projectRow:hover,.Qj2wWa_sessionRow:hover,.Qj2wWa_sessionRow.Qj2wWa_selected{background:var(--dsw-alias-interactive-bg-hover)}.Qj2wWa_searchResultRow{box-sizing:border-box;cursor:pointer;text-align:left;width:100%;min-height:48px;color:var(--dsw-alias-label-primary);background:0 0;border:none;border-radius:8px;flex-direction:column;align-items:stretch;padding:4px 8px;display:flex}.Qj2wWa_searchResultRow:hover,.Qj2wWa_searchResultRow.Qj2wWa_selected{background:var(--dsw-alias-interactive-bg-hover)}.Qj2wWa_searchResultHeading{align-items:center;min-width:0;display:flex}.Qj2wWa_searchResultTitle{text-overflow:ellipsis;white-space:nowrap;min-width:0;margin-left:4px;font-size:14px;line-height:20px;overflow:hidden}.Qj2wWa_searchResultMeta{align-items:center;gap:6px;min-width:0;margin-left:20px;display:flex}.Qj2wWa_searchResultWorkspace,.Qj2wWa_searchResultSnippet{text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:17px;overflow:hidden}.Qj2wWa_searchResultWorkspace{max-width:40%;color:var(--dsw-alias-label-tertiary);flex:none}.Qj2wWa_searchResultSnippet{min-width:0;color:var(--dsw-alias-label-secondary);flex:1}.Qj2wWa_projectRow{box-sizing:border-box;align-items:center;height:34px}.Qj2wWa_projectRow .Qj2wWa_rowActions{height:20px}.Qj2wWa_sessionRow{height:32px;animation:Qj2wWa_row-in .15s var(--ds-ease-in-out);gap:0}.Qj2wWa_sessionRow .Qj2wWa_title{margin:0 6px 0 4px}.Qj2wWa_flatSessionRowWithoutStatus .Qj2wWa_title{margin-left:0}@keyframes Qj2wWa_row-in{0%{opacity:0}}.Qj2wWa_slot{width:16px;height:20px;color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;display:inline-flex}.Qj2wWa_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}.Qj2wWa_folderActive{color:var(--dsw-alias-state-business-primary)}.Qj2wWa_projectRow .Qj2wWa_chevron{display:none}.Qj2wWa_projectRow:hover .Qj2wWa_chevron{display:inline-flex}.Qj2wWa_projectRow:hover .Qj2wWa_folder{display:none}.Qj2wWa_arrow{transition:transform .15s var(--ds-ease-in-out)}.Qj2wWa_arrowOpen{transform:rotate(90deg)}.Qj2wWa_projectText{flex-direction:column;flex:1;gap:2px;min-width:0;display:flex}.Qj2wWa_title{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:14px;line-height:20px;overflow:hidden}.Qj2wWa_renameInput{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-button-elevated-fill);min-width:0;color:inherit;border-radius:4px;outline:none;padding:0 2px;font-size:14px;line-height:20px}.Qj2wWa_sessionRow .Qj2wWa_title{flex:1}.Qj2wWa_meta{text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px;overflow:hidden}.Qj2wWa_time{color:var(--dsw-alias-label-tertiary);flex:none;font-size:12px;line-height:20px}.Qj2wWa_dot{flex:none}.Qj2wWa_rowActions{flex:none;align-items:center;gap:12px;display:none}.Qj2wWa_projectRow:hover .Qj2wWa_rowActions,.Qj2wWa_sessionRow:hover .Qj2wWa_rowActions,.Qj2wWa_projectRow.Qj2wWa_menuOpen .Qj2wWa_rowActions,.Qj2wWa_sessionRow.Qj2wWa_menuOpen .Qj2wWa_rowActions{display:inline-flex}.Qj2wWa_sessionRow:hover .Qj2wWa_time,.Qj2wWa_sessionRow.Qj2wWa_menuOpen .Qj2wWa_time{display:none}.Qj2wWa_projectRow.Qj2wWa_menuOpen,.Qj2wWa_sessionRow.Qj2wWa_menuOpen{background:var(--dsw-alias-interactive-bg-hover)}.Qj2wWa_sessionRow.Qj2wWa_dropBefore,.Qj2wWa_sessionRow.Qj2wWa_dropAfter{position:relative}.Qj2wWa_sessionRow.Qj2wWa_dropBefore:before,.Qj2wWa_sessionRow.Qj2wWa_dropAfter:after{content:\"\";z-index:1;background:linear-gradient(55deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 0 / 5px 7px no-repeat, linear-gradient(125deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 5px / 5px 7px no-repeat, linear-gradient(var(--dsw-alias-state-business-primary) 0 0) 4px 5px / calc(100% - 4px) 2px no-repeat;pointer-events:none;height:12px;position:absolute;left:0;right:4px}.Qj2wWa_sessionRow.Qj2wWa_dropBefore:before{top:-7px}.Qj2wWa_sessionRow.Qj2wWa_dropAfter:after{bottom:-7px}.Qj2wWa_hoverContent{flex-direction:column;gap:8px;display:flex}.Qj2wWa_hoverTitle{color:#fff;overflow-wrap:break-word;font-size:14px;line-height:20px}.Qj2wWa_hoverPath{color:#cfd3d6;word-break:break-all;font-size:12px;line-height:16px}.Qj2wWa_hoverTime{color:#cfd3d6;font-size:12px;line-height:16px}.Qj2wWa_hoverStatus{color:#adb2b8;align-items:center;gap:8px;font-size:12px;line-height:20px;display:flex}.Qj2wWa_iconButton{cursor:pointer;width:16px;height:16px;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;border-radius:4px;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.Qj2wWa_iconButton:hover{color:var(--dsw-alias-label-primary)}.Qj2wWa_chevron{color:var(--dsw-alias-label-caption)}@media (prefers-reduced-motion:reduce){.Qj2wWa_sessionRow,.Qj2wWa_arrow{transition:none;animation:none}}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-workspace/src/client/rows/Rows.module.css.mjs
+		const css$2 = ".ajucfa_projectRow,.ajucfa_sessionRow{cursor:pointer;user-select:none;color:var(--dsw-alias-label-primary);border-radius:8px;align-items:center;gap:6px;padding:0 8px;display:flex}.ajucfa_projectRow:hover,.ajucfa_sessionRow:hover,.ajucfa_sessionRow.ajucfa_selected{background:var(--dsw-alias-interactive-bg-hover)}.ajucfa_searchResultRow{box-sizing:border-box;cursor:pointer;text-align:left;width:100%;min-height:48px;color:var(--dsw-alias-label-primary);background:0 0;border:none;border-radius:8px;flex-direction:column;align-items:stretch;padding:4px 8px;display:flex}.ajucfa_searchResultRow:hover,.ajucfa_searchResultRow.ajucfa_selected{background:var(--dsw-alias-interactive-bg-hover)}.ajucfa_searchResultHeading{align-items:center;min-width:0;display:flex}.ajucfa_searchResultTitle{text-overflow:ellipsis;white-space:nowrap;min-width:0;margin-left:4px;font-size:14px;line-height:20px;overflow:hidden}.ajucfa_searchResultMeta{align-items:center;gap:6px;min-width:0;margin-left:20px;display:flex}.ajucfa_searchResultWorkspace,.ajucfa_searchResultSnippet{text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:17px;overflow:hidden}.ajucfa_searchResultWorkspace{max-width:40%;color:var(--dsw-alias-label-tertiary);flex:none}.ajucfa_searchResultSnippet{min-width:0;color:var(--dsw-alias-label-secondary);flex:1}.ajucfa_projectRow{box-sizing:border-box;align-items:center;height:34px}.ajucfa_projectRow .ajucfa_rowActions{height:20px}.ajucfa_sessionRow{height:32px;animation:ajucfa_row-in .15s var(--ds-ease-in-out);gap:0}.ajucfa_sessionRow .ajucfa_title{margin:0 6px 0 4px}.ajucfa_flatSessionRowWithoutStatus .ajucfa_title{margin-left:0}@keyframes ajucfa_row-in{0%{opacity:0}}.ajucfa_slot{width:16px;height:20px;color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;display:inline-flex}.ajucfa_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}.ajucfa_folderActive{color:var(--dsw-alias-state-business-primary)}.ajucfa_projectRow .ajucfa_chevron{display:none}.ajucfa_projectRow:hover .ajucfa_chevron{display:inline-flex}.ajucfa_projectRow:hover .ajucfa_folder{display:none}.ajucfa_arrow{transition:transform .15s var(--ds-ease-in-out)}.ajucfa_arrowOpen{transform:rotate(90deg)}.ajucfa_projectText{flex-direction:column;flex:1;gap:2px;min-width:0;display:flex}.ajucfa_title{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:14px;line-height:20px;overflow:hidden}.ajucfa_renameInput{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-button-elevated-fill);min-width:0;color:inherit;border-radius:4px;outline:none;padding:0 2px;font-size:14px;line-height:20px}.ajucfa_sessionRow .ajucfa_title{flex:1}.ajucfa_meta{text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px;overflow:hidden}.ajucfa_time{color:var(--dsw-alias-label-tertiary);flex:none;font-size:12px;line-height:20px}.ajucfa_dot{flex:none}.ajucfa_rowActions{flex:none;align-items:center;gap:12px;display:none}.ajucfa_projectRow:hover .ajucfa_rowActions,.ajucfa_sessionRow:hover .ajucfa_rowActions,.ajucfa_projectRow.ajucfa_menuOpen .ajucfa_rowActions,.ajucfa_sessionRow.ajucfa_menuOpen .ajucfa_rowActions{display:inline-flex}.ajucfa_sessionRow:hover .ajucfa_time,.ajucfa_sessionRow.ajucfa_menuOpen .ajucfa_time{display:none}.ajucfa_projectRow.ajucfa_menuOpen,.ajucfa_sessionRow.ajucfa_menuOpen{background:var(--dsw-alias-interactive-bg-hover)}.ajucfa_sessionRow.ajucfa_dropBefore,.ajucfa_sessionRow.ajucfa_dropAfter{position:relative}.ajucfa_sessionRow.ajucfa_dropBefore:before,.ajucfa_sessionRow.ajucfa_dropAfter:after{content:\"\";z-index:1;background:linear-gradient(55deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 0 / 5px 7px no-repeat, linear-gradient(125deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 5px / 5px 7px no-repeat, linear-gradient(var(--dsw-alias-state-business-primary) 0 0) 4px 5px / calc(100% - 4px) 2px no-repeat;pointer-events:none;height:12px;position:absolute;left:0;right:4px}.ajucfa_sessionRow.ajucfa_dropBefore:before{top:-7px}.ajucfa_sessionRow.ajucfa_dropAfter:after{bottom:-7px}.ajucfa_hoverContent{flex-direction:column;gap:8px;display:flex}.ajucfa_hoverTitle{color:#fff;overflow-wrap:break-word;font-size:14px;line-height:20px}.ajucfa_hoverPath{color:#cfd3d6;word-break:break-all;font-size:12px;line-height:16px}.ajucfa_hoverTime{color:#cfd3d6;font-size:12px;line-height:16px}.ajucfa_hoverStatus{color:#adb2b8;align-items:center;gap:8px;font-size:12px;line-height:20px;display:flex}.ajucfa_iconButton{cursor:pointer;width:16px;height:16px;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;border-radius:4px;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.ajucfa_iconButton:hover{color:var(--dsw-alias-label-primary)}.ajucfa_chevron{color:var(--dsw-alias-label-caption)}@media (prefers-reduced-motion:reduce){.ajucfa_sessionRow,.ajucfa_arrow{transition:none;animation:none}}";
 		const tagId$2 = "@deepseek-ai/dsh-client-ui-workspace/Rows.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
@@ -341,40 +532,40 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var Rows_module_css_default = {
-			"arrow": "Qj2wWa_arrow",
-			"arrowOpen": "Qj2wWa_arrowOpen",
-			"chevron": "Qj2wWa_chevron",
-			"dot": "Qj2wWa_dot",
-			"dropAfter": "Qj2wWa_dropAfter",
-			"dropBefore": "Qj2wWa_dropBefore",
-			"flatSessionRowWithoutStatus": "Qj2wWa_flatSessionRowWithoutStatus",
-			"folder": "Qj2wWa_folder",
-			"folderActive": "Qj2wWa_folderActive",
-			"hoverContent": "Qj2wWa_hoverContent",
-			"hoverPath": "Qj2wWa_hoverPath",
-			"hoverStatus": "Qj2wWa_hoverStatus",
-			"hoverTime": "Qj2wWa_hoverTime",
-			"hoverTitle": "Qj2wWa_hoverTitle",
-			"iconButton": "Qj2wWa_iconButton",
-			"menuOpen": "Qj2wWa_menuOpen",
-			"meta": "Qj2wWa_meta",
-			"projectRow": "Qj2wWa_projectRow",
-			"projectText": "Qj2wWa_projectText",
-			"renameInput": "Qj2wWa_renameInput",
-			"row-in": "Qj2wWa_row-in",
-			"rowActions": "Qj2wWa_rowActions",
-			"searchResultHeading": "Qj2wWa_searchResultHeading",
-			"searchResultMeta": "Qj2wWa_searchResultMeta",
-			"searchResultRow": "Qj2wWa_searchResultRow",
-			"searchResultSnippet": "Qj2wWa_searchResultSnippet",
-			"searchResultTitle": "Qj2wWa_searchResultTitle",
-			"searchResultWorkspace": "Qj2wWa_searchResultWorkspace",
-			"selected": "Qj2wWa_selected",
-			"sessionRow": "Qj2wWa_sessionRow",
-			"slot": "Qj2wWa_slot",
-			"time": "Qj2wWa_time",
-			"title": "Qj2wWa_title",
-			"visuallyHidden": "Qj2wWa_visuallyHidden"
+			"arrow": "ajucfa_arrow",
+			"arrowOpen": "ajucfa_arrowOpen",
+			"chevron": "ajucfa_chevron",
+			"dot": "ajucfa_dot",
+			"dropAfter": "ajucfa_dropAfter",
+			"dropBefore": "ajucfa_dropBefore",
+			"flatSessionRowWithoutStatus": "ajucfa_flatSessionRowWithoutStatus",
+			"folder": "ajucfa_folder",
+			"folderActive": "ajucfa_folderActive",
+			"hoverContent": "ajucfa_hoverContent",
+			"hoverPath": "ajucfa_hoverPath",
+			"hoverStatus": "ajucfa_hoverStatus",
+			"hoverTime": "ajucfa_hoverTime",
+			"hoverTitle": "ajucfa_hoverTitle",
+			"iconButton": "ajucfa_iconButton",
+			"menuOpen": "ajucfa_menuOpen",
+			"meta": "ajucfa_meta",
+			"projectRow": "ajucfa_projectRow",
+			"projectText": "ajucfa_projectText",
+			"renameInput": "ajucfa_renameInput",
+			"row-in": "ajucfa_row-in",
+			"rowActions": "ajucfa_rowActions",
+			"searchResultHeading": "ajucfa_searchResultHeading",
+			"searchResultMeta": "ajucfa_searchResultMeta",
+			"searchResultRow": "ajucfa_searchResultRow",
+			"searchResultSnippet": "ajucfa_searchResultSnippet",
+			"searchResultTitle": "ajucfa_searchResultTitle",
+			"searchResultWorkspace": "ajucfa_searchResultWorkspace",
+			"selected": "ajucfa_selected",
+			"sessionRow": "ajucfa_sessionRow",
+			"slot": "ajucfa_slot",
+			"time": "ajucfa_time",
+			"title": "ajucfa_title",
+			"visuallyHidden": "ajucfa_visuallyHidden"
 		};
 		//#endregion
 		//#region lib/types/client/rows/Rows.js
@@ -391,12 +582,12 @@ window.__ModuleLoader__.load({
 		}
 		/** Localized compact relative time ("刚刚"/"5分钟" in zh, "now"/"5min" in en). */
 		function timeLabel(updatedAt, now, t) {
-			const { unit, n } = relativeTime(updatedAt, now);
+			const { unit, n } = (0, _deepseek_ai_dsh_client_ui_primitives.relativeTime)(updatedAt, now);
 			return unit === "now" ? t("time.now") : t(`time.${unit}`, { n });
 		}
 		/** Hover-card variant: distances wrap in the ago template; the now bucket stays bare (no "now ago"). */
 		function hoverTimeLabel(updatedAt, now, t) {
-			const { unit, n } = relativeTime(updatedAt, now);
+			const { unit, n } = (0, _deepseek_ai_dsh_client_ui_primitives.relativeTime)(updatedAt, now);
 			return unit === "now" ? t("time.now") : t("time.ago", { t: t(`time.${unit}`, { n }) });
 		}
 		/**
@@ -504,7 +695,7 @@ window.__ModuleLoader__.load({
 							items: workspaceMenuItems,
 							onSelect: (id) => {
 								setMenuOpen(false);
-								/* v8 ignore next -- workspaceMenuItems carries exactly these two rows today. */
+								/* v8 ignore next -- Menu can emit only the rename and delete rows supplied above. */
 								if (id !== "rename" && id !== "delete") return;
 								if (id === "rename") actions.rename();
 								else actions.delete();
@@ -539,7 +730,7 @@ window.__ModuleLoader__.load({
 				anchor: ownRow,
 				content: (0, react_jsx_runtime.jsx)(WorkspaceHoverContent, {
 					label: row.label,
-					cwd: row.cwd === void 0 ? void 0 : (0, _deepseek_ai_dsh_client_runtime_client.abbreviateHomePath)(row.cwd, home),
+					cwd: row.cwd === void 0 ? void 0 : abbreviateHomePath(row.cwd, home),
 					createdAt: row.createdAt,
 					t
 				}),
@@ -667,7 +858,7 @@ window.__ModuleLoader__.load({
 					className: Rows_module_css_default.searchResultMeta,
 					children: [(0, react_jsx_runtime.jsx)("span", {
 						className: Rows_module_css_default.searchResultWorkspace,
-						children: result.workspace
+						children: result.workspace || t("group.ungrouped")
 					}), result.snippet !== void 0 && (0, react_jsx_runtime.jsx)("span", {
 						className: Rows_module_css_default.searchResultSnippet,
 						children: result.snippet
@@ -795,8 +986,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-workspace/src/client/WorkspacePicker.module.css.mjs
-		const css$1 = ".DGPwpq_modalAction{min-width:72px}.DGPwpq_modalError,.DGPwpq_menuStatus{margin-top:8px;font-size:12px;line-height:18px}.DGPwpq_modalError{color:var(--dsw-alias-state-error-primary)}.DGPwpq_menuStatus{color:var(--dsw-alias-label-secondary)}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-workspace/src/client/WorkspacePicker.module.css.mjs
+		const css$1 = ".IILZOq_modalAction{min-width:72px}.IILZOq_modalError,.IILZOq_menuStatus{margin-top:8px;font-size:12px;line-height:18px}.IILZOq_modalError{color:var(--dsw-alias-state-error-primary)}.IILZOq_menuStatus{color:var(--dsw-alias-label-secondary)}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-workspace/WorkspacePicker.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -806,9 +997,9 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var WorkspacePicker_module_css_default = {
-			"menuStatus": "DGPwpq_menuStatus",
-			"modalAction": "DGPwpq_modalAction",
-			"modalError": "DGPwpq_modalError"
+			"menuStatus": "IILZOq_menuStatus",
+			"modalAction": "IILZOq_modalAction",
+			"modalError": "IILZOq_modalError"
 		};
 		//#endregion
 		//#region lib/types/client/WorkspacePicker.js
@@ -965,8 +1156,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-workspace/src/client/WorkspaceBrowser.module.css.mjs
-		const css = "._1eJYsa_root{--dsh-session-list-edge-inset:var(--dsh-sidebar-inline-padding);--dsh-session-list-scrollbar-width:8px;--dsh-session-list-scrollbar-offset:2px;box-sizing:border-box;min-height:0;padding-right:var(--dsh-session-list-edge-inset);flex-direction:column;flex:1;display:flex}._1eJYsa_root._1eJYsa_rail{padding-right:0}._1eJYsa_iconButton{cursor:pointer;width:28px;height:28px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:50%;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}._1eJYsa_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover)}._1eJYsa_sectionHeader{box-sizing:border-box;height:36px;color:var(--dsw-alias-label-tertiary);border-radius:12px;flex:none;justify-content:flex-end;align-items:center;gap:4px;margin-bottom:4px;padding-left:4px;display:flex;overflow:hidden}._1eJYsa_root:not(._1eJYsa_rail) ._1eJYsa_sectionHeader{margin-top:2px;margin-right:-4px}._1eJYsa_sectionLabel{white-space:nowrap;opacity:1;visibility:visible;min-width:0;max-width:45%;transition:max-width .18s var(--ds-ease-in-out), margin-right .18s var(--ds-ease-in-out), opacity .12s var(--ds-ease-in-out), transform .18s var(--ds-ease-in-out), visibility 0s linear;flex:none;line-height:20px;overflow:hidden}._1eJYsa_sectionLabelHidden{opacity:0;visibility:hidden;max-width:0;margin-right:-4px;transition-delay:0s,0s,0s,0s,.18s;transform:translate(-4px)}._1eJYsa_searchSlot{box-sizing:border-box;min-width:0;max-width:28px;transition:max-width .18s var(--ds-ease-in-out), padding-left .18s var(--ds-ease-in-out);flex:1;align-items:center;margin-left:auto;padding-left:0;display:flex}._1eJYsa_searchSlotExpanded{max-width:100%;padding-left:0}._1eJYsa_headerActions{opacity:1;visibility:visible;max-width:60px;transition:max-width .18s var(--ds-ease-in-out), opacity .12s var(--ds-ease-in-out), transform .18s var(--ds-ease-in-out), visibility 0s linear;flex:none;align-items:center;gap:4px;display:flex;overflow:hidden}._1eJYsa_headerActionsHidden{opacity:0;visibility:hidden;pointer-events:none;max-width:0;transition-delay:0s,0s,0s,.18s;transform:translate(4px)}._1eJYsa_search{box-sizing:border-box;cursor:text;width:100%;height:28px;color:var(--dsw-alias-label-secondary);transition:width .18s var(--ds-ease-in-out), padding .18s var(--ds-ease-in-out), border-color .18s var(--ds-ease-in-out), background-color .18s var(--ds-ease-in-out);background:0 0;border:none;border-radius:50%;flex:none;align-items:center;gap:0;margin:0;padding:0;display:flex;overflow:hidden}._1eJYsa_searchExpanded{border:1px solid var(--dsw-alias-border-l2);width:calc(100% + 4px);height:30px;color:var(--dsw-alias-label-caption);background:0 0;border-radius:10px;margin-inline:-2px;padding:0 4px 0 0}._1eJYsa_searchButton{cursor:pointer;width:28px;height:28px;color:inherit;background:0 0;border:none;border-radius:50%;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}._1eJYsa_searchExpanded ._1eJYsa_searchButton{width:28px;height:30px}._1eJYsa_searchButton:hover{background:var(--dsw-alias-interactive-bg-hover)}._1eJYsa_searchExpanded ._1eJYsa_searchButton:hover{background:0 0}._1eJYsa_searchInput{opacity:0;pointer-events:none;width:0;min-width:0;color:var(--dsw-alias-label-primary);transition:opacity .12s var(--ds-ease-in-out);background:0 0;border:none;outline:none;flex:1;font-size:13px;line-height:18px}._1eJYsa_searchExpanded ._1eJYsa_searchInput{opacity:1;pointer-events:auto;margin-left:-2px}._1eJYsa_searchInput::placeholder{color:var(--dsw-alias-label-tertiary)}._1eJYsa_clearButton{cursor:pointer;width:24px;height:24px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:50%;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}._1eJYsa_clearButton:hover{background:var(--dsw-alias-interactive-bg-hover)}._1eJYsa_rail ._1eJYsa_sectionHeader{justify-content:flex-start;gap:0;margin-bottom:12px;padding-left:0}._1eJYsa_rail ._1eJYsa_headerActions{max-width:none}._1eJYsa_rail ._1eJYsa_iconButton{width:36px;height:36px;color:var(--dsw-alias-label-primary)}._1eJYsa_rail ._1eJYsa_search{background:0 0;border-color:#0000;gap:0;width:36px;height:36px;margin:0 0 12px;padding:0}._1eJYsa_rail ._1eJYsa_searchButton{width:36px;height:36px;color:var(--dsw-alias-label-primary)}._1eJYsa_rail ._1eJYsa_searchButton:hover{background:var(--dsw-alias-interactive-bg-hover)}._1eJYsa_listArea{min-height:0;margin-left:-4px;margin-right:calc(-1 * var(--dsh-session-list-edge-inset));flex-direction:column;flex:1;padding-left:4px;display:flex;overflow:visible}._1eJYsa_rail ._1eJYsa_listArea{margin-left:0;margin-right:0;padding-left:0}._1eJYsa_treeBody{flex-direction:column;flex:1;min-height:0;display:flex;position:relative}._1eJYsa_fade{left:0;right:var(--dsh-session-list-edge-inset);background:linear-gradient(to bottom, transparent, var(--dsw-specific-sidebar-fill));pointer-events:none;height:24px;position:absolute;bottom:0}._1eJYsa_wide{animation:_1eJYsa_wide-in .2s var(--ds-ease-in-out)}@keyframes _1eJYsa_wide-in{0%{opacity:0}}._1eJYsa_list{min-height:0;margin-left:-4px;margin-right:var(--dsh-session-list-scrollbar-offset);padding-left:4px;padding-right:calc(var(--dsh-session-list-edge-inset) - var(--dsh-session-list-scrollbar-width) - var(--dsh-session-list-scrollbar-offset));scrollbar-gutter:stable;flex:1;padding-bottom:16px;overflow-y:auto}._1eJYsa_flatList>*+*,._1eJYsa_searchTree>[role=treeitem]+[role=treeitem],._1eJYsa_groupSection>*+*{margin-top:2px}._1eJYsa_searchStatus,._1eJYsa_searchWarning{color:var(--dsw-alias-label-tertiary);padding:10px 12px;font-size:12px;line-height:18px}._1eJYsa_searchWarning{color:var(--dsw-alias-label-secondary)}._1eJYsa_groupSection{position:relative}._1eJYsa_groupSection+._1eJYsa_groupSection{margin-top:4px}._1eJYsa_listTopDropIndicator,._1eJYsa_workspaceDropBefore:before,._1eJYsa_workspaceDropAfter:after{content:\"\";z-index:1;background:linear-gradient(55deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 0 / 5px 7px no-repeat, linear-gradient(125deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 5px / 5px 7px no-repeat, linear-gradient(var(--dsw-alias-state-business-primary) 0 0) 4px 5px / calc(100% - 4px) 2px no-repeat;pointer-events:none;height:12px;position:absolute;left:0;right:0}._1eJYsa_listTopDropIndicator{top:-8px;left:0;right:var(--dsh-session-list-edge-inset)}._1eJYsa_listTopDropActive>._1eJYsa_workspaceDropBefore:first-child:before{display:none}._1eJYsa_workspaceDropBefore:before{top:-8px}._1eJYsa_workspaceDropAfter:after{bottom:-8px}._1eJYsa_sessionOverflowButton{cursor:pointer;text-align:left;width:100%;height:28px;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;border-radius:8px;padding:0 12px 0 28px;font-size:12px}._1eJYsa_groupSection>._1eJYsa_sessionOverflowButton{margin-top:0}._1eJYsa_sessionOverflowButton:hover{color:var(--dsw-alias-label-secondary);background:0 0}._1eJYsa_empty{color:var(--dsw-alias-label-tertiary);padding:16px 12px;font-size:13px}._1eJYsa_renameInput{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);width:100%;height:44px;color:var(--dsw-alias-label-primary);background:0 0;border-radius:22px;outline:none;padding:7px 14px;font-size:14px;font-weight:400;line-height:22px}._1eJYsa_renameInput:disabled{color:var(--dsw-alias-label-dimmed)}._1eJYsa_renameError{color:var(--dsw-alias-state-error-primary);margin-top:8px;font-size:12px;line-height:18px}._1eJYsa_deleteAction:not(:disabled){color:var(--dsw-alias-state-error-primary)}._1eJYsa_deleteStatus{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}@media (prefers-reduced-motion:reduce){._1eJYsa_wide{animation:none}._1eJYsa_search,._1eJYsa_sectionLabel,._1eJYsa_searchSlot,._1eJYsa_searchInput,._1eJYsa_headerActions{transition:none}}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.module.css.mjs
+		const css = ".k8QESG_root{--dsh-session-list-edge-inset:var(--dsh-sidebar-inline-padding);--dsh-session-list-scrollbar-width:8px;--dsh-session-list-scrollbar-offset:2px;box-sizing:border-box;min-height:0;padding-right:var(--dsh-session-list-edge-inset);flex-direction:column;flex:1;display:flex}.k8QESG_root.k8QESG_rail{padding-right:0}.k8QESG_iconButton{cursor:pointer;width:28px;height:28px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:50%;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.k8QESG_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover)}.k8QESG_sectionHeader{box-sizing:border-box;height:36px;color:var(--dsw-alias-label-tertiary);border-radius:12px;flex:none;justify-content:flex-end;align-items:center;gap:4px;margin-bottom:4px;padding-left:4px;display:flex;overflow:hidden}.k8QESG_root:not(.k8QESG_rail) .k8QESG_sectionHeader{margin-top:2px;margin-right:-4px}.k8QESG_sectionLabel{white-space:nowrap;opacity:1;visibility:visible;min-width:0;max-width:45%;transition:max-width .18s var(--ds-ease-in-out), margin-right .18s var(--ds-ease-in-out), opacity .12s var(--ds-ease-in-out), transform .18s var(--ds-ease-in-out), visibility 0s linear;flex:none;line-height:20px;overflow:hidden}.k8QESG_sectionLabelHidden{opacity:0;visibility:hidden;max-width:0;margin-right:-4px;transition-delay:0s,0s,0s,0s,.18s;transform:translate(-4px)}.k8QESG_searchSlot{box-sizing:border-box;min-width:0;max-width:28px;transition:max-width .18s var(--ds-ease-in-out), padding-left .18s var(--ds-ease-in-out);flex:1;align-items:center;margin-left:auto;padding-left:0;display:flex}.k8QESG_searchSlotExpanded{max-width:100%;padding-left:0}.k8QESG_headerActions{opacity:1;visibility:visible;max-width:60px;transition:max-width .18s var(--ds-ease-in-out), opacity .12s var(--ds-ease-in-out), transform .18s var(--ds-ease-in-out), visibility 0s linear;flex:none;align-items:center;gap:4px;display:flex;overflow:hidden}.k8QESG_headerActionsHidden{opacity:0;visibility:hidden;pointer-events:none;max-width:0;transition-delay:0s,0s,0s,.18s;transform:translate(4px)}.k8QESG_search{box-sizing:border-box;cursor:text;width:100%;height:28px;color:var(--dsw-alias-label-secondary);transition:width .18s var(--ds-ease-in-out), padding .18s var(--ds-ease-in-out), border-color .18s var(--ds-ease-in-out), background-color .18s var(--ds-ease-in-out);background:0 0;border:none;border-radius:50%;flex:none;align-items:center;gap:0;margin:0;padding:0;display:flex;overflow:hidden}.k8QESG_searchExpanded{border:1px solid var(--dsw-alias-border-l2);width:calc(100% + 4px);height:30px;color:var(--dsw-alias-label-caption);background:0 0;border-radius:10px;margin-inline:-2px;padding:0 4px 0 0}.k8QESG_searchButton{cursor:pointer;width:28px;height:28px;color:inherit;background:0 0;border:none;border-radius:50%;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.k8QESG_searchExpanded .k8QESG_searchButton{width:28px;height:30px}.k8QESG_searchButton:hover{background:var(--dsw-alias-interactive-bg-hover)}.k8QESG_searchExpanded .k8QESG_searchButton:hover{background:0 0}.k8QESG_searchInput{opacity:0;pointer-events:none;width:0;min-width:0;color:var(--dsw-alias-label-primary);transition:opacity .12s var(--ds-ease-in-out);background:0 0;border:none;outline:none;flex:1;font-size:13px;line-height:18px}.k8QESG_searchExpanded .k8QESG_searchInput{opacity:1;pointer-events:auto;margin-left:-2px}.k8QESG_searchInput::placeholder{color:var(--dsw-alias-label-tertiary)}.k8QESG_clearButton{cursor:pointer;width:24px;height:24px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:50%;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.k8QESG_clearButton:hover{background:var(--dsw-alias-interactive-bg-hover)}.k8QESG_rail .k8QESG_sectionHeader{justify-content:flex-start;gap:0;margin-bottom:12px;padding-left:0}.k8QESG_rail .k8QESG_headerActions{max-width:none}.k8QESG_rail .k8QESG_iconButton{width:36px;height:36px;color:var(--dsw-alias-label-primary)}.k8QESG_rail .k8QESG_search{background:0 0;border-color:#0000;gap:0;width:36px;height:36px;margin:0 0 12px;padding:0}.k8QESG_rail .k8QESG_searchButton{width:36px;height:36px;color:var(--dsw-alias-label-primary)}.k8QESG_rail .k8QESG_searchButton:hover{background:var(--dsw-alias-interactive-bg-hover)}.k8QESG_listArea{min-height:0;margin-left:-4px;margin-right:calc(-1 * var(--dsh-session-list-edge-inset));flex-direction:column;flex:1;padding-left:4px;display:flex;overflow:visible}.k8QESG_rail .k8QESG_listArea{margin-left:0;margin-right:0;padding-left:0}.k8QESG_treeBody{flex-direction:column;flex:1;min-height:0;display:flex;position:relative}.k8QESG_fade{left:0;right:var(--dsh-session-list-edge-inset);background:linear-gradient(to bottom, transparent, var(--dsw-specific-sidebar-fill));pointer-events:none;height:24px;position:absolute;bottom:0}.k8QESG_wide{animation:k8QESG_wide-in .2s var(--ds-ease-in-out)}@keyframes k8QESG_wide-in{0%{opacity:0}}.k8QESG_list{min-height:0;margin-left:-4px;margin-right:var(--dsh-session-list-scrollbar-offset);padding-left:4px;padding-right:calc(var(--dsh-session-list-edge-inset) - var(--dsh-session-list-scrollbar-width) - var(--dsh-session-list-scrollbar-offset));scrollbar-gutter:stable;flex:1;padding-bottom:16px;overflow-y:auto}.k8QESG_flatList>*+*,.k8QESG_searchTree>[role=treeitem]+[role=treeitem],.k8QESG_groupSection>*+*{margin-top:2px}.k8QESG_searchStatus,.k8QESG_searchWarning{color:var(--dsw-alias-label-tertiary);padding:10px 12px;font-size:12px;line-height:18px}.k8QESG_searchWarning{color:var(--dsw-alias-label-secondary)}.k8QESG_groupSection{position:relative}.k8QESG_groupSection+.k8QESG_groupSection{margin-top:4px}.k8QESG_listTopDropIndicator,.k8QESG_workspaceDropBefore:before,.k8QESG_workspaceDropAfter:after{content:\"\";z-index:1;background:linear-gradient(55deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 0 / 5px 7px no-repeat, linear-gradient(125deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 5px / 5px 7px no-repeat, linear-gradient(var(--dsw-alias-state-business-primary) 0 0) 4px 5px / calc(100% - 4px) 2px no-repeat;pointer-events:none;height:12px;position:absolute;left:0;right:0}.k8QESG_listTopDropIndicator{top:-8px;left:0;right:var(--dsh-session-list-edge-inset)}.k8QESG_listTopDropActive>.k8QESG_workspaceDropBefore:first-child:before{display:none}.k8QESG_workspaceDropBefore:before{top:-8px}.k8QESG_workspaceDropAfter:after{bottom:-8px}.k8QESG_sessionOverflowButton{cursor:pointer;text-align:left;width:100%;height:28px;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;border-radius:8px;padding:0 12px 0 28px;font-size:12px}.k8QESG_groupSection>.k8QESG_sessionOverflowButton{margin-top:0}.k8QESG_sessionOverflowButton:hover{color:var(--dsw-alias-label-secondary);background:0 0}.k8QESG_empty{color:var(--dsw-alias-label-tertiary);padding:16px 12px;font-size:13px}.k8QESG_renameInput{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);width:100%;height:44px;color:var(--dsw-alias-label-primary);background:0 0;border-radius:22px;outline:none;padding:7px 14px;font-size:14px;font-weight:400;line-height:22px}.k8QESG_renameInput:disabled{color:var(--dsw-alias-label-dimmed)}.k8QESG_renameError{color:var(--dsw-alias-state-error-primary);margin-top:8px;font-size:12px;line-height:18px}.k8QESG_deleteAction:not(:disabled){color:var(--dsw-alias-state-error-primary)}.k8QESG_deleteStatus{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}@media (prefers-reduced-motion:reduce){.k8QESG_wide{animation:none}.k8QESG_search,.k8QESG_sectionLabel,.k8QESG_searchSlot,.k8QESG_searchInput,.k8QESG_headerActions{transition:none}}";
 		const tagId = "@deepseek-ai/dsh-client-ui-workspace/WorkspaceBrowser.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -976,45 +1167,45 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var WorkspaceBrowser_module_css_default = {
-			"clearButton": "_1eJYsa_clearButton",
-			"deleteAction": "_1eJYsa_deleteAction",
-			"deleteStatus": "_1eJYsa_deleteStatus",
-			"empty": "_1eJYsa_empty",
-			"fade": "_1eJYsa_fade",
-			"flatList": "_1eJYsa_flatList",
-			"groupSection": "_1eJYsa_groupSection",
-			"headerActions": "_1eJYsa_headerActions",
-			"headerActionsHidden": "_1eJYsa_headerActionsHidden",
-			"iconButton": "_1eJYsa_iconButton",
-			"list": "_1eJYsa_list",
-			"listArea": "_1eJYsa_listArea",
-			"listTopDropActive": "_1eJYsa_listTopDropActive",
-			"listTopDropIndicator": "_1eJYsa_listTopDropIndicator",
-			"rail": "_1eJYsa_rail",
-			"renameError": "_1eJYsa_renameError",
-			"renameInput": "_1eJYsa_renameInput",
-			"root": "_1eJYsa_root",
-			"search": "_1eJYsa_search",
-			"searchButton": "_1eJYsa_searchButton",
-			"searchExpanded": "_1eJYsa_searchExpanded",
-			"searchInput": "_1eJYsa_searchInput",
-			"searchSlot": "_1eJYsa_searchSlot",
-			"searchSlotExpanded": "_1eJYsa_searchSlotExpanded",
-			"searchStatus": "_1eJYsa_searchStatus",
-			"searchTree": "_1eJYsa_searchTree",
-			"searchWarning": "_1eJYsa_searchWarning",
-			"sectionHeader": "_1eJYsa_sectionHeader",
-			"sectionLabel": "_1eJYsa_sectionLabel",
-			"sectionLabelHidden": "_1eJYsa_sectionLabelHidden",
-			"sessionOverflowButton": "_1eJYsa_sessionOverflowButton",
-			"treeBody": "_1eJYsa_treeBody",
-			"wide": "_1eJYsa_wide",
-			"wide-in": "_1eJYsa_wide-in",
-			"workspaceDropAfter": "_1eJYsa_workspaceDropAfter",
-			"workspaceDropBefore": "_1eJYsa_workspaceDropBefore"
+			"clearButton": "k8QESG_clearButton",
+			"deleteAction": "k8QESG_deleteAction",
+			"deleteStatus": "k8QESG_deleteStatus",
+			"empty": "k8QESG_empty",
+			"fade": "k8QESG_fade",
+			"flatList": "k8QESG_flatList",
+			"groupSection": "k8QESG_groupSection",
+			"headerActions": "k8QESG_headerActions",
+			"headerActionsHidden": "k8QESG_headerActionsHidden",
+			"iconButton": "k8QESG_iconButton",
+			"list": "k8QESG_list",
+			"listArea": "k8QESG_listArea",
+			"listTopDropActive": "k8QESG_listTopDropActive",
+			"listTopDropIndicator": "k8QESG_listTopDropIndicator",
+			"rail": "k8QESG_rail",
+			"renameError": "k8QESG_renameError",
+			"renameInput": "k8QESG_renameInput",
+			"root": "k8QESG_root",
+			"search": "k8QESG_search",
+			"searchButton": "k8QESG_searchButton",
+			"searchExpanded": "k8QESG_searchExpanded",
+			"searchInput": "k8QESG_searchInput",
+			"searchSlot": "k8QESG_searchSlot",
+			"searchSlotExpanded": "k8QESG_searchSlotExpanded",
+			"searchStatus": "k8QESG_searchStatus",
+			"searchTree": "k8QESG_searchTree",
+			"searchWarning": "k8QESG_searchWarning",
+			"sectionHeader": "k8QESG_sectionHeader",
+			"sectionLabel": "k8QESG_sectionLabel",
+			"sectionLabelHidden": "k8QESG_sectionLabelHidden",
+			"sessionOverflowButton": "k8QESG_sessionOverflowButton",
+			"treeBody": "k8QESG_treeBody",
+			"wide": "k8QESG_wide",
+			"wide-in": "k8QESG_wide-in",
+			"workspaceDropAfter": "k8QESG_workspaceDropAfter",
+			"workspaceDropBefore": "k8QESG_workspaceDropBefore"
 		};
 		//#endregion
-		//#region lib/types/client/WorkspaceBrowser.js
+		//#region lib/types/client/rows/WorkspaceBrowser.js
 		/**
 		* The workspace/session browsing region filling the sidebar shell's
 		* `sidebar.workspaces` hole: section header (title + view options + add
@@ -1037,6 +1228,20 @@ window.__ModuleLoader__.load({
 		const SEARCH_QUERY_MAX_CODE_UNITS = 500;
 		/** Session rows visible per Workspace before the local overflow control. */
 		const COLLAPSED_SESSION_LIMIT = 5;
+		/** Fold one Workspace without charging its provisional New Session against the ordinary-row limit. */
+		function collapsedSessionRows(sessions) {
+			let ordinaryCount = 0;
+			const rows = sessions.filter((session) => {
+				if (session.blank) return true;
+				if (ordinaryCount >= COLLAPSED_SESSION_LIMIT) return false;
+				ordinaryCount += 1;
+				return true;
+			});
+			return {
+				rows,
+				hiddenCount: sessions.length - rows.length
+			};
+		}
 		/** Keep controlled input and RPC payload inside the session.search wire contract. */
 		function sanitizeSearchQuery(value) {
 			const withoutNul = value.replaceAll("\0", "");
@@ -1197,8 +1402,9 @@ window.__ModuleLoader__.load({
 			return e.clientY < rect.top + rect.height / 2 ? "before" : "after";
 		}
 		/** The scrolling session tree; unmounting drops the sessions subscription and expand-all state. */
-		function SessionTree({ useSessions, startSession, open, forkSession, workspaces, archivedSessionIds, onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive, insertWorkspaceBefore, insertSessionBefore, orderBy, groupExpansion, setGroupExpanded, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t }) {
+		function SessionTree({ useSessions, useSessionPendingInteraction, startSession, open, forkSession, workspaces, archivedSessionIds, onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive, insertWorkspaceBefore, insertSessionBefore, orderBy, groupExpansion, setGroupExpanded, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t }) {
 			const list = useSessions((s) => s);
+			const pendingInteractions = useSessionPendingInteraction((s) => s);
 			const current = list.current;
 			const [expandedSessionGroups, setExpandedSessionGroups] = (0, react.useState)([]);
 			const [drag, setDrag] = (0, react.useState)(null);
@@ -1265,13 +1471,14 @@ window.__ModuleLoader__.load({
 				});
 			}, [sessionOrderByAccount, workspaces]);
 			const orderedUngroupedSessionIds = (0, react.useMemo)(() => reconciledSessionOrder(ungroupedSessionIds, sessionOrderByAccount[""]), [sessionOrderByAccount, ungroupedSessionIds]);
-			const groups = (0, react.useMemo)(() => deriveGroups(list, orderedWorkspaces, archivedSessionIds, {
+			const groups = (0, react.useMemo)(() => deriveGroups(list, orderedWorkspaces, archivedSessionIds, pendingInteractions, {
 				expandedGroups,
 				...sessionOrderByAccount[""] === void 0 ? {} : { ungroupedOrder: sessionOrderByAccount[""] }
 			}), [
 				list,
 				orderedWorkspaces,
 				archivedSessionIds,
+				pendingInteractions,
 				expandedGroups,
 				sessionOrderByAccount
 			]);
@@ -1282,18 +1489,40 @@ window.__ModuleLoader__.load({
 				setDrag(null);
 				const group = groups.find((candidate) => candidate.key === activeDrag.accountKey);
 				if (group === void 0) return;
-				const targetIndex = group.sessions.findIndex((session) => session.id === over.id);
+				const sessionsExpanded = expandedSessionGroups.includes(group.key);
+				const renderedSessions = sessionsExpanded ? group.sessions : collapsedSessionRows(group.sessions).rows;
+				const targetIndex = renderedSessions.findIndex((session) => session.id === over.id);
 				if (targetIndex === -1) return;
-				const anchor = over.half === "before" ? over.id : group.sessions[targetIndex + 1]?.id;
-				if (anchor === activeDrag.sessionId) return;
-				const sourceIndex = group.sessions.findIndex((session) => session.id === activeDrag.sessionId);
-				const anchorIndex = anchor === void 0 ? group.sessions.length : group.sessions.findIndex((session) => session.id === anchor);
-				if (sourceIndex !== -1 && (anchorIndex === sourceIndex || anchorIndex === sourceIndex + 1)) return;
+				const sourceIndex = renderedSessions.findIndex((session) => session.id === activeDrag.sessionId);
+				if (over.id === activeDrag.sessionId) return;
+				const withoutSource = renderedSessions.filter((session) => session.id !== activeDrag.sessionId);
+				const targetWithoutSourceIndex = withoutSource.findIndex((session) => session.id === over.id);
+				if (targetWithoutSourceIndex === -1) return;
+				const visibleInsertAt = over.half === "before" ? targetWithoutSourceIndex : targetWithoutSourceIndex + 1;
+				if (sourceIndex !== -1 && visibleInsertAt === sourceIndex) return;
 				const accountSessionIds = activeDrag.accountKey === "" ? orderedUngroupedSessionIds : orderedWorkspaces.find((workspace) => workspace.workspaceId === activeDrag.accountKey)?.sessionIds;
 				if (accountSessionIds === void 0) return;
 				const nextOrder = accountSessionIds.filter((id) => id !== activeDrag.sessionId);
+				let anchor;
+				if (sessionsExpanded) anchor = over.half === "before" ? over.id : renderedSessions[targetIndex + 1]?.id;
+				else {
+					const previousVisible = withoutSource[visibleInsertAt - 1]?.id;
+					if (previousVisible === void 0) anchor = nextOrder[0];
+					else {
+						const previousIndex = nextOrder.indexOf(previousVisible);
+						if (previousIndex === -1) return;
+						anchor = nextOrder[previousIndex + 1];
+					}
+				}
 				const insertAt = anchor === void 0 ? nextOrder.length : nextOrder.indexOf(anchor);
 				nextOrder.splice(insertAt === -1 ? nextOrder.length : insertAt, 0, activeDrag.sessionId);
+				if (!sessionsExpanded && sourceIndex !== -1) {
+					const nodes = new Map(group.sessions.map((node) => [node.id, node]));
+					if (!collapsedSessionRows(nextOrder.flatMap((id) => {
+						const node = nodes.get(id);
+						return node === void 0 ? [] : [node];
+					})).rows.some((node) => node.id === activeDrag.sessionId)) return;
+				}
 				setSessionOrder(activeDrag.accountKey, nextOrder.map((id) => id));
 				if (orderBy === "updated" || activeDrag.accountKey === "") return;
 				insertSessionBefore(activeDrag.accountKey, activeDrag.sessionId, anchor).catch((reason) => {
@@ -1332,6 +1561,8 @@ window.__ModuleLoader__.load({
 							children: t("empty.none")
 						}), groups.map((group) => {
 							const workspaceId = group.workspaceId;
+							const collapsed = collapsedSessionRows(group.sessions);
+							const sessionsExpanded = expandedSessionGroups.includes(group.key);
 							const workspaceMarker = workspaceId !== void 0 && workspaceDrag?.over?.id === workspaceId ? workspaceDrag.over.half : null;
 							const workspaceDragProps = workspaceId === void 0 ? void 0 : {
 								start: () => {
@@ -1401,7 +1632,7 @@ window.__ModuleLoader__.load({
 											}
 										}
 									}),
-									(expandedSessionGroups.includes(group.key) ? group.sessions : group.sessions.slice(0, COLLAPSED_SESSION_LIMIT)).map((node) => {
+									(sessionsExpanded ? group.sessions : collapsed.rows).map((node) => {
 										const sameGroupDrag = drag !== null && drag.accountKey === group.key;
 										return (0, react_jsx_runtime.jsx)(SessionNodeItem, {
 											node,
@@ -1449,14 +1680,14 @@ window.__ModuleLoader__.load({
 											t
 										}, node.id);
 									}),
-									group.sessions.length > COLLAPSED_SESSION_LIMIT && (0, react_jsx_runtime.jsx)("button", {
+									collapsed.hiddenCount > 0 && (0, react_jsx_runtime.jsx)("button", {
 										type: "button",
 										className: WorkspaceBrowser_module_css_default.sessionOverflowButton,
-										"aria-expanded": expandedSessionGroups.includes(group.key),
+										"aria-expanded": sessionsExpanded,
 										onClick: () => {
 											setExpandedSessionGroups((keys) => toggled(keys, group.key));
 										},
-										children: expandedSessionGroups.includes(group.key) ? t("sessions.collapse") : t("sessions.expand", { n: group.sessions.length - COLLAPSED_SESSION_LIMIT })
+										children: sessionsExpanded ? t("sessions.collapse") : t("sessions.expand", { n: collapsed.hiddenCount })
 									})
 								]
 							}, group.key);
@@ -1467,9 +1698,14 @@ window.__ModuleLoader__.load({
 			});
 		}
 		/** The flat "In one list" body: every session is one draggable top-level row. */
-		function FlatList({ useSessions, open, forkSession, onSessionRename, onSessionArchive, archivedSessionIds, orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t }) {
+		function FlatList({ useSessions, useSessionPendingInteraction, open, forkSession, onSessionRename, onSessionArchive, archivedSessionIds, orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t }) {
 			const list = useSessions((s) => s);
-			const baseRows = (0, react.useMemo)(() => deriveFlat(list, archivedSessionIds), [list, archivedSessionIds]);
+			const pendingInteractions = useSessionPendingInteraction((s) => s);
+			const baseRows = (0, react.useMemo)(() => deriveFlat(list, archivedSessionIds, pendingInteractions), [
+				list,
+				archivedSessionIds,
+				pendingInteractions
+			]);
 			const sessionIds = (0, react.useMemo)(() => baseRows.map((row) => row.id), [baseRows]);
 			const previousOrderBy = (0, react.useRef)(orderBy);
 			(0, react.useEffect)(() => {
@@ -1585,19 +1821,21 @@ window.__ModuleLoader__.load({
 			});
 		}
 		/** Flat search body: local metadata matches plus the current Host result page. */
-		function SearchResults({ useSessions, open, workspaces, archivedSessionIds, query, remote, resultLimit, t }) {
+		function SearchResults({ useSessions, useSessionPendingInteraction, open, workspaces, archivedSessionIds, query, remote, resultLimit, t }) {
 			const list = useSessions((s) => s);
+			const pendingInteractions = useSessionPendingInteraction((s) => s);
 			const currentRemote = remote.query === query ? remote : {
 				query,
 				status: "loading",
 				items: [],
 				hasMore: false
 			};
-			const results = (0, react.useMemo)(() => deriveSearchResults(list, workspaces, query, archivedSessionIds, currentRemote, resultLimit), [
+			const results = (0, react.useMemo)(() => deriveSearchResults(list, workspaces, query, archivedSessionIds, pendingInteractions, currentRemote, resultLimit), [
 				list,
 				workspaces,
 				query,
 				archivedSessionIds,
+				pendingInteractions,
 				currentRemote,
 				resultLimit
 			]);
@@ -1646,8 +1884,8 @@ window.__ModuleLoader__.load({
 		* @param props - composed slot props (shell owner share + store + injected actions).
 		* @returns the region element tree.
 		*/
-		function WorkspaceBrowser({ wide, expandSidebar, useSessions, useWorkspaces, useStore, actions, startSession, open, renameSession, forkSession, renameWorkspace, deleteWorkspace, insertWorkspaceBefore, archiveSession, insertSessionBefore, createWorkspace, searchSessions, searchResultLimit, useDirectoryFlow, useHostDescription, renderSlot, t }) {
-			const home = useHostDescription((description) => description?.home);
+		function WorkspaceBrowser({ wide, expandSidebar, useSessions, useSessionPendingInteraction, useWorkspaces, useStore, actions, startSession, open, renameSession, forkSession, renameWorkspace, deleteWorkspace, insertWorkspaceBefore, archiveSession, insertSessionBefore, createWorkspace, searchSessions, searchResultLimit, useDirectoryFlow, useConnectionGeneration, renderSlot, t }) {
+			const home = useConnectionGeneration((generation) => generation?.host.home);
 			const workspaces = useWorkspaces((state) => state.items);
 			const workspacePhase = useWorkspaces((state) => state.phase);
 			const archivedSessionIds = useWorkspaces((state) => state.archivedSessionIds);
@@ -1668,7 +1906,8 @@ window.__ModuleLoader__.load({
 					promotedBlank.current = void 0;
 					return;
 				}
-				if (promotedBlank.current?.sessionId === currentBlankSessionId && promotedBlank.current.accountKey === currentBlankAccount) return;
+				const promoted = promotedBlank.current;
+				if (promoted !== void 0 && promoted.sessionId === currentBlankSessionId && promoted.accountKey === currentBlankAccount) return;
 				promotedBlank.current = {
 					sessionId: currentBlankSessionId,
 					accountKey: currentBlankAccount
@@ -2014,6 +2253,7 @@ window.__ModuleLoader__.load({
 						className: WorkspaceBrowser_module_css_default.listArea,
 						children: wide && (normalizedQuery !== "" ? (0, react_jsx_runtime.jsx)(SearchResults, {
 							useSessions,
+							useSessionPendingInteraction,
 							open,
 							workspaces,
 							archivedSessionIds,
@@ -2023,6 +2263,7 @@ window.__ModuleLoader__.load({
 							t
 						}) : groupBy === "flat" ? (0, react_jsx_runtime.jsx)(FlatList, {
 							useSessions,
+							useSessionPendingInteraction,
 							open,
 							forkSession,
 							onSessionRename,
@@ -2036,6 +2277,7 @@ window.__ModuleLoader__.load({
 							t
 						}) : (0, react_jsx_runtime.jsx)(SessionTree, {
 							useSessions,
+							useSessionPendingInteraction,
 							onSessionRename,
 							onSessionArchive,
 							forkSession,
@@ -2358,7 +2600,9 @@ window.__ModuleLoader__.load({
 			"sessions",
 			"workspaces",
 			"locale",
-			"connection"
+			"connection",
+			"remote",
+			"remote.directoryPicker"
 		];
 		/**
 		* Register the browser and picker once their slot declarations are on the
@@ -2367,13 +2611,18 @@ window.__ModuleLoader__.load({
 		* @param ctx - client root context.
 		*/
 		function apply(ctx) {
-			const hostDescription = ctx.get("connection").hostDescription;
+			const connection = ctx.get("connection");
+			const sessions = ctx.get("sessions");
+			const workspaces = ctx.get("workspaces");
+			const connectionGeneration = connection.generation;
+			const uiWorkspace = new UiWorkspaceService(ctx, ctx.remote.directoryPicker, workspaces, sessions);
+			ctx.slots.provideRoot({ hooks: { workspaces: workspaces.list } });
 			ctx.effect(() => ctx.locale.register(NS, {
 				zh,
 				en
 			}), "ui-workspace: dictionaries");
 			const searchSessions = async (query, signal) => {
-				const result = await ctx.sessions.search(query, signal);
+				const result = await sessions.search(query, signal);
 				if (!result.ok) throw new Error(result.error.message);
 				return result.value;
 			};
@@ -2385,50 +2634,50 @@ window.__ModuleLoader__.load({
 			const pickerFlowSource = flowSource("conversation.hero.workspace.directoryFlow");
 			const browserInjected = () => ({
 				startSession: (workspaceId) => {
-					ctx.workspaces.startSession(workspaceId);
+					uiWorkspace.startSession(workspaceId);
 				},
 				open: (sessionId) => {
-					ctx.sessions.open(sessionId);
+					sessions.open(sessionId);
 				},
 				searchSessions,
-				searchResultLimit: ctx.sessions.searchResultLimit,
+				searchResultLimit: sessions.searchResultLimit,
 				renameSession: async (sessionId, title) => {
-					const session = ctx.sessions.binding(sessionId)?.session;
+					const session = sessions.binding(sessionId)?.session;
 					if (session === void 0) throw new Error(`unknown session "${sessionId}"`);
 					const result = await session.rename(title);
 					if (!result.ok) throw new Error(result.error.message);
 				},
 				forkSession: (sessionId) => {
-					ctx.sessions.fork({
+					sessions.fork({
 						sessionId,
 						increaseTitle: true
 					}).then((childId) => {
-						ctx.sessions.open(childId);
+						sessions.open(childId);
 					}).catch(() => {});
 				},
 				renameWorkspace: async (workspaceId, title) => {
-					await ctx.workspaces.rename(workspaceId, title);
+					await workspaces.rename(workspaceId, title);
 				},
 				deleteWorkspace: async (workspaceId) => {
-					await ctx.workspaces.delete(workspaceId);
+					await workspaces.delete(workspaceId);
 				},
 				insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
-					await ctx.workspaces.insertBefore(workspaceId, beforeWorkspaceId);
+					await workspaces.insertBefore(workspaceId, beforeWorkspaceId);
 				},
 				archiveSession: async (sessionId) => {
-					await ctx.workspaces.archiveSession(sessionId);
+					await uiWorkspace.archiveSession(sessionId);
 				},
 				insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
-					await ctx.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId);
+					await workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId);
 				},
-				createWorkspace: (input) => ctx.workspaces.create(input),
+				createWorkspace: (input) => workspaces.create(input),
 				hooks: {
 					directoryFlow: browserFlowSource,
-					hostDescription
+					connectionGeneration
 				}
 			});
 			const pickerInjected = () => ({
-				createWorkspace: (input) => ctx.workspaces.create(input),
+				createWorkspace: (input) => workspaces.create(input),
 				hooks: { directoryFlow: pickerFlowSource }
 			});
 			ctx.slots.inject("sidebar.workspaces", () => ctx.slots.register({

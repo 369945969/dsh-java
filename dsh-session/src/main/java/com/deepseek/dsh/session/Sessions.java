@@ -32,6 +32,6 @@ public interface Sessions extends Service {
     /** 持久化一条事件到后端。 */
     void persist(SessionEvent event);
 
-    /** 列出全部活跃会话 ID。 */
+    /** 列出全部会话 ID（活跃 + 持久化）。 */
     List<SessionId> list();
 }

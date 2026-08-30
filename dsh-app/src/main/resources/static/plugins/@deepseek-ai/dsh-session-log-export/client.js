@@ -4,7 +4,7 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
+		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 		//#region lib/types/client/controller.js
@@ -42,7 +42,7 @@ window.__ModuleLoader__.load({
 			fetcher;
 			save;
 			/** uSES-safe state source shared by every Session-scoped modal contribution. */
-			store = (0, _deepseek_ai_dsh_client_runtime_client.createSnapshotStore)(INITIAL);
+			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(INITIAL);
 			active = /* @__PURE__ */ new Map();
 			disposed = false;
 			/**
@@ -168,8 +168,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/session-query/session-log-export/src/client/HeaderAction.module.css.mjs
-		const css = ".jQeaAq_sessionLogButton{border:1px solid var(--dsw-alias-border-l2);min-width:111px;height:32px;color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);cursor:pointer;background:0 0;border-radius:18px;justify-content:center;align-items:center;gap:4px;padding:6px 12px;font-size:13px;font-weight:400;line-height:20px;display:inline-flex}.jQeaAq_sessionLogButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.jQeaAq_sessionLogButton:disabled{color:var(--dsw-alias-label-dimmed);cursor:wait}.jQeaAq_sessionLogButton span,.jQeaAq_sessionLogButton svg{flex:none}.jQeaAq_sessionLogButton span{white-space:nowrap}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/session-query/session-log-export/src/client/HeaderAction.module.css.mjs
+		const css = "._1FWlna_sessionLogButton{border:1px solid var(--dsw-alias-border-l2);min-width:111px;height:32px;color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-family);cursor:pointer;background:0 0;border-radius:18px;justify-content:center;align-items:center;gap:4px;padding:6px 12px;font-size:13px;font-weight:400;line-height:20px;display:inline-flex}._1FWlna_sessionLogButton:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}._1FWlna_sessionLogButton:disabled{color:var(--dsw-alias-label-dimmed);cursor:wait}._1FWlna_sessionLogButton span,._1FWlna_sessionLogButton svg{flex:none}._1FWlna_sessionLogButton span{white-space:nowrap}";
 		const tagId = "@deepseek-ai/dsh-session-log-export/HeaderAction.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -178,7 +178,7 @@ window.__ModuleLoader__.load({
 			tag.textContent = css;
 			document.head.appendChild(tag);
 		}
-		var HeaderAction_module_css_default = { "sessionLogButton": "jQeaAq_sessionLogButton" };
+		var HeaderAction_module_css_default = { "sessionLogButton": "_1FWlna_sessionLogButton" };
 		//#endregion
 		//#region lib/types/client/HeaderAction.js
 		/**
@@ -187,7 +187,7 @@ window.__ModuleLoader__.load({
 		* @returns the persistent Header action and Session-scoped dialog.
 		*/
 		function SessionLogDownloadHeaderAction(props) {
-			const { sessionId, useSessionLogDownload, request } = props;
+			const { sessionId, useSessionLogDownload, request, t } = props;
 			const busy = useSessionLogDownload((state) => state.bySession[String(sessionId)])?.status === "downloading";
 			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("button", {
 				type: "button",
@@ -197,7 +197,7 @@ window.__ModuleLoader__.load({
 				onClick: () => {
 					request(sessionId);
 				},
-				children: [(0, react_jsx_runtime.jsx)("span", { children: "Session log" }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconDownloadOutline16, { size: 12 })]
+				children: [(0, react_jsx_runtime.jsx)("span", { children: t("header.action") }), (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconDownloadOutline16, { size: 12 })]
 			}), (0, react_jsx_runtime.jsx)(SessionLogDownloadDialog, { ...props })] });
 		}
 		//#endregion
@@ -206,6 +206,7 @@ window.__ModuleLoader__.load({
 		const NS = "session-log-download";
 		/** Simplified-Chinese Session export strings. */
 		const zh = {
+			"header.action": "Session 日志",
 			"dialog.preparingTitle": "正在导出 Session",
 			"dialog.preparingDescription": "正在准备包含当前 Session、子 Session 和附件的 ZIP 文件。",
 			"dialog.successTitle": "Session 导出已开始下载",
@@ -216,6 +217,7 @@ window.__ModuleLoader__.load({
 		};
 		/** English Session export strings. */
 		const en = {
+			"header.action": "Session log",
 			"dialog.preparingTitle": "Exporting Session",
 			"dialog.preparingDescription": "Preparing a ZIP containing this Session, its sub-Sessions, and attachments.",
 			"dialog.successTitle": "Session download started",

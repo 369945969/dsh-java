@@ -63,7 +63,7 @@ public final class SessionManager implements Plugin, Sessions, Service {
             // 从持久化后端重放历史
             try {
                 for (SessionEvent e : store.load(id)) {
-                    fresh.append(e.type(), e.payload(), e.lineage());
+                    fresh.append(e.type(), e.data(), e.surfaceOp());
                 }
             } catch (IOException ex) {
                 log.warn("Failed to replay session {} history: {}", id, ex.toString());
@@ -83,6 +83,12 @@ public final class SessionManager implements Plugin, Sessions, Service {
 
     @Override
     public List<SessionId> list() {
-        return List.copyOf(active.keySet());
+        java.util.Set<SessionId> all = new java.util.LinkedHashSet<>(active.keySet());
+        try {
+            all.addAll(store.listAll());
+        } catch (IOException e) {
+            log.warn("Failed to list persisted sessions: {}", e.toString());
+        }
+        return List.copyOf(all);
     }
 }

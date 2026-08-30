@@ -7,25 +7,52 @@ window.__ModuleLoader__.load({
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
-		//#region lib/types/client/tool/models/tool-call-model.js
+		//#region ../../util/workspace-path/src/index.ts
 		/**
-		* Pure row-model derivation for tool summary rows: variant classification,
-		* one-line summary, expanded-body text, and flattened result output from the
-		* frozen call slice. Input material comes from the call ARGUMENTS; output and
-		* error material from the settled result node. A call whose render intent is
-		* a terminal card gets its expanded body from the views instead, through
-		* `terminalCardModel` in terminal-card-model.ts.
+		* Browser-safe Workspace path and display helpers.
+		* @module @deepseek-ai/dsh-util-workspace-path
 		*/
-		/** Figma row titles per variant (design literals, not translatable copy). */
-		const VARIANT_TITLES = {
-			search: "Search",
-			read: "Read",
-			bash: "Bash",
-			write: "Write",
-			edit: "Edit",
-			code: "Code",
-			others: "Tool call"
+		/** Whether a path uses a Windows drive or UNC prefix. */
+		function isWindowsStylePath(value) {
+			return /^[A-Za-z]:[/\\]/.test(value) || value.startsWith("\\\\");
+		}
+		/**
+		* Resolve a Workspace-relative path into the Host-facing spelling used by path operations.
+		* @param cwd - Session Workspace root, when known.
+		* @param path - Absolute or Workspace-relative path.
+		* @returns an absolute path when a Workspace root is available, otherwise the original path.
+		*/
+		function resolveWorkspacePath(cwd, path) {
+			if (path.startsWith("/") || isWindowsStylePath(path)) return path;
+			if (cwd === void 0 || cwd === "") return path;
+			return `${cwd.replace(/[/\\]+$/, "")}/${path.replace(/^[/\\]+/, "")}`;
+		}
+		/**
+		* Abbreviate a POSIX home directory for display.
+		* @param path - Absolute or already-short display path.
+		* @param home - Host account home; absent skips abbreviation.
+		* @returns `~` or `~/…` for the POSIX home and its descendants, otherwise `path`.
+		*/
+		function abbreviateHomePath(path, home) {
+			if (home === void 0 || home === "") return path;
+			if (isWindowsStylePath(path) || isWindowsStylePath(home)) return path;
+			const root = home.replace(/\/+$/, "");
+			if (root === "" || root === "/") return path;
+			if (path.replace(/\/+$/, "") === root) return "~";
+			if (path.startsWith(`${root}/`)) return `~${path.slice(root.length)}`;
+			return path;
+		}
+		//#endregion
+		//#region lib/types/client/tool/models/tool-call-model.js
+		/** Locale key per generic row variant. */
+		const VARIANT_TITLE_KEYS = {
+			search: "tool.title.search",
+			read: "tool.title.read",
+			bash: "tool.title.bash",
+			write: "tool.title.write",
+			edit: "tool.title.edit",
+			code: "tool.title.code",
+			others: "tool.title.generic"
 		};
 		/**
 		* Known tool name -> variant.
@@ -54,13 +81,13 @@ window.__ModuleLoader__.load({
 			cordis_undefine: "others"
 		};
 		/** Tool-owned titles that refine a generic row variant without replacing it. */
-		const TOOL_TITLES = {
-			cordis_package_inspect: "Inspect",
-			cordis_runtime_inspect: "Inspect",
-			cordis_run: "Run Cordis Plugin",
-			cordis_stop: "Stop Cordis Plugin",
-			cordis_undefine: "Remove Cordis Plugin",
-			pwsh: "Pwsh"
+		const TOOL_TITLE_KEYS = {
+			cordis_package_inspect: "tool.title.inspect",
+			cordis_runtime_inspect: "tool.title.inspect",
+			cordis_run: "tool.title.runCordis",
+			cordis_stop: "tool.title.stopCordis",
+			cordis_undefine: "tool.title.removeCordis",
+			pwsh: "tool.title.pwsh"
 		};
 		/**
 		* Classify a tool name into its row variant.
@@ -182,14 +209,14 @@ window.__ModuleLoader__.load({
 			const done = "kind" in block;
 			const argsRaw = (done ? block.call?.argsRaw : block.argsRaw) ?? "";
 			const state = !done ? "running" : block.error?.code === "interrupted" ? "stopped" : block.isError ? "error" : "ok";
-			const base = argsRaw === "" ? block.callId : (0, _deepseek_ai_dsh_client_runtime_client.abbreviateHomePath)(relativizeToCwd(deriveSummary(variant, argsRaw), cwd), home);
-			const toolTitle = TOOL_TITLES[toolName];
-			const summary = variant === "others" && toolName !== "" && toolTitle === void 0 ? `${toolName} · ${base}` : base;
+			const base = argsRaw === "" ? block.callId : abbreviateHomePath(relativizeToCwd(deriveSummary(variant, argsRaw), cwd), home);
+			const toolTitleKey = TOOL_TITLE_KEYS[toolName];
+			const summary = variant === "others" && toolName !== "" && toolTitleKey === void 0 ? `${toolName} · ${base}` : base;
 			const output = done ? resultText(block) || null : null;
 			const errorSummary = state === "error" && output !== null ? firstLine(output) : null;
 			return {
 				variant,
-				title: toolTitle ?? VARIANT_TITLES[variant],
+				titleKey: toolTitleKey ?? VARIANT_TITLE_KEYS[variant],
 				summary,
 				filePath: deriveFilePath(variant, argsRaw),
 				body: deriveBody(variant, argsRaw),
@@ -199,72 +226,129 @@ window.__ModuleLoader__.load({
 			};
 		}
 		//#endregion
-		//#region lib/types/client/tool/models/read-card-model.js
+		//#region lib/types/client/tool/models/raw-tool-call.js
+		const parsedCalls = /* @__PURE__ */ new WeakMap();
 		/**
-		* Pure derivation of the read-card props from a frozen call slice: the
-		* `card:'read'` render intent the read tool declares arrives on the snapshot as
-		* the settled result node's `resultView`, and this is the one place that turns
-		* it into what {@link ReadBlock} draws. Both conversation render sites (the chat
-		* tool row's resident body and the details panel's Output section) call this, so
-		* the path, lines, total, and language they show are derived once.
-		*
-		* The read card is result-side only ([read card note](../../../../../../.agents/notes/implemented/feature/2026-07-30-web-read-card.md)):
-		* a call carries no file content until `execute` returns, so the pending call
-		* stays a generic card (`kind: 'read'`). A running read therefore has no read
-		* card, and this returns null for it — the row keeps its args-derived summary
-		* until the result arrives.
-		* @module
+		* Parse the call head paired with one immutable Tool block.
+		* @param block - running or settled Tool block.
+		* @returns the Tool name and object arguments, or null when the call head or valid JSON object is unavailable.
 		*/
+		function parsedToolCall(block) {
+			const cached = parsedCalls.get(block);
+			if (cached !== void 0 || parsedCalls.has(block)) return cached ?? null;
+			const call = "kind" in block ? block.call : block;
+			if (call === null) {
+				parsedCalls.set(block, null);
+				return null;
+			}
+			let value;
+			try {
+				value = JSON.parse(call.argsRaw);
+			} catch {
+				parsedCalls.set(block, null);
+				return null;
+			}
+			if (typeof value !== "object" || value === null || Array.isArray(value)) {
+				parsedCalls.set(block, null);
+				return null;
+			}
+			const parsed = {
+				name: call.name,
+				args: value
+			};
+			parsedCalls.set(block, parsed);
+			return parsed;
+		}
 		/**
-		* Derive the read-card props for a tool call, or null when this call is not a
-		* read card and belongs on the generic path.
-		*
-		* The read card is result-side only, so only a settled call whose result view
-		* declares `card:'read'` produces one. Every other case is null — the
-		* documented generic-card default:
-		*
-		* - A running call: it has no result view yet, and a read carries no content at
-		*   call time.
-		* - A settled call whose result view is not a read card — including a `card`
-		*   value this UI version does not know, which arrives over the wire and cannot
-		*   be trusted to be one of the compiled variants, and the read tool's own
-		*   generic fallback for an error result or a non-envelope body.
-		*
-		* The label is the read view's `title` when the tool supplied one (the
-		* presentation contract's replacement-title rule), otherwise the file path
-		* shortened the same way the row summary is: workspace-relative first, then
-		* POSIX `~` for a leftover host-home path.
-		* @param block - RunningToolCall or ToolResultNode off the snapshot caches.
+		* Read the exact single text block consumed by first-party card derivations.
+		* @param block - settled Tool result.
+		* @returns its text, or undefined for any other content layout.
+		*/
+		function singleResultText(block) {
+			if (block.content.length !== 1) return void 0;
+			const only = block.content[0];
+			return only?.type === "text" ? only.text : void 0;
+		}
+		/**
+		* Validate the optional escalation pair shared by first-party shell and file
+		* mutation tools.
+		* @param args - parsed open-root Tool arguments.
+		* @returns whether the declared escalation fields form a valid pair.
+		*/
+		function validEscalationFields(args) {
+			const permission = args.sandbox_permissions;
+			const justification = args.justification;
+			if (permission === void 0 && justification === void 0) return true;
+			if (permission !== "workspace-write" && permission !== "danger-full-access") return false;
+			return typeof justification === "string" && justification.trim() !== "";
+		}
+		//#endregion
+		//#region lib/types/client/tool/models/read-card-model.js
+		function validReadCall(block) {
+			const call = parsedToolCall(block);
+			if (call?.name !== "read") return false;
+			const { file_path: path, offset, limit } = call.args;
+			if (typeof path !== "string" || path.trim() === "") return false;
+			if (offset !== void 0 && (typeof offset !== "number" || !Number.isInteger(offset) || offset < 1)) return false;
+			if (limit !== void 0 && (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1)) return false;
+			return true;
+		}
+		function readMeta(meta) {
+			if (typeof meta !== "object" || meta === null || Array.isArray(meta)) return null;
+			const { path, offset, lines, totalLines, lang } = meta;
+			if (typeof path !== "string" || typeof offset !== "number" || !Number.isInteger(offset) || offset < 1) return null;
+			if (typeof totalLines !== "number" || !Number.isInteger(totalLines) || totalLines < 0 || !Array.isArray(lines)) return null;
+			if (lang !== void 0 && typeof lang !== "string") return null;
+			const narrowed = [];
+			let previous = offset - 1;
+			for (const line of lines) {
+				if (typeof line !== "object" || line === null || Array.isArray(line)) return null;
+				const { number, text } = line;
+				if (typeof number !== "number" || !Number.isInteger(number) || number < 1 || number <= previous) return null;
+				if (number > totalLines || typeof text !== "string") return null;
+				previous = number;
+				narrowed.push({
+					number,
+					text
+				});
+			}
+			return {
+				path,
+				offset,
+				lines: narrowed,
+				totalLines,
+				...lang === void 0 ? {} : { lang }
+			};
+		}
+		/**
+		* Derive a settled root read card after validating its persisted metadata and
+		* model-facing read envelope.
+		* @param block - running or settled Tool block.
 		* @param sessionCwd - the session workspace root; a workspace-rooted absolute
 		*   path label displays relative to it. Absent leaves the path as authored.
 		* @param home - host account home; a leftover POSIX home path displays as `~`.
 		* @returns the read-card props, or null for the generic path.
 		*/
 		function readCardModel(block, sessionCwd, home) {
-			if (!("kind" in block)) return null;
-			const result = block.resultView?.card === "read" ? block.resultView : null;
-			if (result === null) return null;
-			const lines = result.lines.map((line) => ({
-				number: line.number,
-				text: line.text
-			}));
+			if (block.parentCallId !== void 0 || !("kind" in block) || block.isError) return null;
+			if (!validReadCall(block)) return null;
+			const meta = readMeta(block.meta);
+			if (meta === null) return null;
+			const text = singleResultText(block);
+			if (text === void 0) return null;
+			if (/^<path>[^\n]*<\/path>\n<type>file<\/type>\n<content>\n([\s\S]*)\n<\/content>$/u.exec(text)?.[1] === void 0) return null;
 			return {
-				label: result.title ?? (0, _deepseek_ai_dsh_client_runtime_client.abbreviateHomePath)(relativizeToCwd(result.path, sessionCwd), home),
-				lines,
-				totalLines: result.totalLines,
-				lang: result.lang
+				label: abbreviateHomePath(relativizeToCwd(meta.path, sessionCwd), home),
+				lines: meta.lines,
+				totalLines: meta.totalLines,
+				lang: meta.lang
 			};
 		}
 		//#endregion
 		//#region lib/types/client/tool/models/diff-card-model.js
 		/**
-		* Narrow a wire `card:'diff'` view's `diffs` to well-formed hunks. The event
-		* view crosses the wire and `toolEventViewSchema` validates only the `card`
-		* string, so a version mismatch or an anomalous plugin can deliver a `diff` card
-		* whose `diffs` is absent, not an array, or carries malformed hunks. Returning
-		* null for any of those routes the block to the generic path instead of letting
-		* DiffBlock's `for...of`/`split` throw and crash the row or the details panel.
-		* @param diffs - the view's `diffs` field, unverified.
+		* Narrow opaque result metadata's `diffs` to well-formed hunks.
+		* @param diffs - the metadata field to validate.
 		* @returns the validated hunks, or null when the payload is not usable.
 		*/
 		function narrowDiffs(diffs) {
@@ -284,126 +368,188 @@ window.__ModuleLoader__.load({
 			}
 			return out;
 		}
+		function intendedDiff(block) {
+			const parsed = parsedToolCall(block);
+			if (parsed === null) return null;
+			if (parsed.name === "str_replace_editor") {
+				const { command, path, file_text: fileText, old_str: oldText, new_str: newText } = parsed.args;
+				if (typeof path !== "string" || path.trim() === "") return null;
+				if (command === "create") {
+					if (fileText !== void 0 && typeof fileText !== "string") return null;
+					return {
+						tool: "str_replace_editor",
+						diff: {
+							path,
+							oldText: null,
+							newText: fileText ?? ""
+						}
+					};
+				}
+				if (command === "str_replace") {
+					if (oldText !== void 0 && typeof oldText !== "string") return null;
+					if (newText !== void 0 && typeof newText !== "string") return null;
+					return {
+						tool: "str_replace_editor",
+						diff: {
+							path,
+							oldText: oldText ?? null,
+							newText: newText ?? ""
+						}
+					};
+				}
+				return null;
+			}
+			const { file_path: path } = parsed.args;
+			if (typeof path !== "string" || path.trim() === "") return null;
+			if (!validEscalationFields(parsed.args)) return null;
+			if (parsed.name === "write") {
+				const { content } = parsed.args;
+				return typeof content === "string" ? {
+					tool: "write",
+					diff: {
+						path,
+						oldText: null,
+						newText: content
+					}
+				} : null;
+			}
+			if (parsed.name !== "edit") return null;
+			const { old_string: oldText, new_string: newText, replace_all: replaceAll } = parsed.args;
+			if (typeof oldText !== "string" || typeof newText !== "string") return null;
+			if (replaceAll !== void 0 && typeof replaceAll !== "boolean") return null;
+			return {
+				tool: "edit",
+				diff: {
+					path,
+					oldText: oldText || null,
+					newText
+				}
+			};
+		}
+		function appliedDiffs(meta) {
+			if (typeof meta !== "object" || meta === null || Array.isArray(meta)) return null;
+			const diffs = meta.diffs;
+			if (!Array.isArray(diffs)) return null;
+			if (diffs.length === 0) return "empty";
+			return narrowDiffs(diffs);
+		}
 		/**
-		* Derive the diff-card props for a tool call, or null when this call is not a
-		* diff card and belongs on the generic path.
-		*
-		* The result side is authoritative once the call settles: the write/edit tools
-		* return the applied contextual hunks there (an edit's real before/after, a
-		* create's whole-file diff), which replace the call-time diff derived from the
-		* arguments alone. While the call is still running only the call side exists,
-		* so a running write/edit shows its intended change. Null is the documented
-		* generic-card default and covers every non-diff card — including a `card`
-		* value this UI version does not know, which arrives over the wire and cannot
-		* be trusted to be one of the compiled variants — and a settled call whose
-		* result view is generic (how write/edit keep their execution errors on the
-		* generic path).
-		*
-		* This derivation consumes only `diffs`; the render intent's `title` field is
-		* deliberately dropped. The row supplies its own title (`Edit`/`Write · path`
-		* from the args), which outranks the view's `title`. A tool that names its own
-		* diff header therefore does not surface that text on the Web row.
-		* @param block - RunningToolCall or ToolResultNode off the snapshot caches.
+		* Derive running diffs for root write/edit and `str_replace_editor`
+		* create/replace calls, plus applied settled diffs for root write/edit calls.
+		* A successful write with valid empty metadata uses its argument-derived
+		* whole-file diff, matching create and identical-overwrite presentation;
+		* `str_replace_editor` settles through Generic because it has no result view.
+		* @param block - running or settled Tool block.
 		* @returns the diff-card props, or null for the generic path.
 		*/
 		function diffCardModel(block) {
-			if (!("kind" in block)) {
-				const call = block.callView?.card === "diff" ? block.callView : null;
-				const diffs = call === null ? null : narrowDiffs(call.diffs);
-				return diffs === null ? null : { card: { diffs } };
-			}
-			const result = block.resultView?.card === "diff" ? block.resultView : null;
-			const diffs = result === null ? null : narrowDiffs(result.diffs);
-			return diffs === null ? null : { card: { diffs } };
+			if (block.parentCallId !== void 0) return null;
+			const intended = intendedDiff(block);
+			if (intended === null) return null;
+			if (!("kind" in block)) return { card: { diffs: [intended.diff] } };
+			if (intended.tool === "str_replace_editor") return null;
+			if (block.isError) return null;
+			const applied = appliedDiffs(block.meta);
+			if (applied === null || applied === "empty") return intended.tool === "write" ? { card: { diffs: [intended.diff] } } : null;
+			return { card: { diffs: applied } };
 		}
 		//#endregion
 		//#region lib/types/client/tool/models/search-card-model.js
-		/**
-		* Whether every file group in a matches view is structurally valid: the wire
-		* frame carries `shape` and `card` as strings the host schema checks, but not the
-		* grouped `files` fields, so a version mismatch or loose producer could deliver
-		* `shape: 'matches'` with a missing or malformed `files`. Rendering that would
-		* crash {@link SearchBlock} at `.reduce`/`.map`; invalid fields select the
-		* generic path instead.
-		* @param files - the candidate `files` field off the untrusted result view.
-		* @returns whether `files` is a valid {@link SearchFileGroup} array.
-		*/
-		function isValidFiles(files) {
-			return Array.isArray(files) && files.every((file) => typeof file === "object" && file !== null && typeof file.path === "string" && Array.isArray(file.matches) && file.matches.every((match) => typeof match === "object" && match !== null && typeof match.lineNumber === "number" && typeof match.line === "string"));
+		function validSearchCall(block) {
+			const call = parsedToolCall(block);
+			if (call === null) return null;
+			const { pattern, path } = call.args;
+			if (typeof pattern !== "string") return null;
+			if (call.name === "grep" && pattern === "") return null;
+			if (call.name === "glob" && pattern.trim() === "") return null;
+			if (call.name !== "grep" && call.name !== "glob") return null;
+			if (path !== void 0 && (typeof path !== "string" || path.trim() === "")) return null;
+			if (call.name === "grep") {
+				const { include } = call.args;
+				if (include !== void 0 && (typeof include !== "string" || !validInclude(include))) return null;
+			}
+			return call.name;
 		}
-		/**
-		* Flatten a settled tool result's content blocks to their text, joined by
-		* newlines. The search view carries no result text — a UI without a card falls
-		* back to the raw `tool/result` content — so the truncation recovery footer is
-		* read from the block's own content here. Non-text blocks (a search result
-		* carries none) are skipped.
-		* @param content - the result node's content blocks.
-		* @returns the joined text, or undefined when empty.
-		*/
+		function validInclude(include) {
+			if (include.trim() === "" || include.startsWith("!")) return false;
+			let braceDepth = 0;
+			for (const character of include) if (character === "{") braceDepth += 1;
+			else if (character === "}") braceDepth = Math.max(0, braceDepth - 1);
+			else if (character === "," && braceDepth === 0) return false;
+			return true;
+		}
+		function searchFiles(value) {
+			if (!Array.isArray(value)) return null;
+			const files = [];
+			for (const file of value) {
+				if (typeof file !== "object" || file === null || Array.isArray(file)) return null;
+				const { path, matches } = file;
+				if (typeof path !== "string" || !Array.isArray(matches)) return null;
+				const narrowed = [];
+				for (const match of matches) {
+					if (typeof match !== "object" || match === null || Array.isArray(match)) return null;
+					const { lineNumber, line } = match;
+					if (typeof lineNumber !== "number" || !Number.isInteger(lineNumber) || lineNumber < 1) return null;
+					if (typeof line !== "string") return null;
+					narrowed.push({
+						lineNumber,
+						line
+					});
+				}
+				files.push({
+					path,
+					matches: narrowed
+				});
+			}
+			return files;
+		}
 		function flattenContent(content) {
 			const text = content.filter((block) => block.type === "text" && typeof block.text === "string").map((block) => block.text).join("\n");
 			return text === "" ? void 0 : text;
 		}
 		/**
-		* Derive the search-card props for a tool call, or null when this call is not a
-		* search card and belongs on the generic path.
-		*
-		* Only the result side matters: the search card carries no call-time state, so
-		* a still-running call (no result view) is null, as is a settled call whose
-		* result view is not a search card — including a `card` value this UI version
-		* does not know, which arrives over the wire and cannot be trusted to be one of
-		* the compiled variants, a `card: 'search'` view whose `shape` is neither
-		* `matches` nor `paths` (equally untrusted wire data), and a generic result a
-		* `grep`/`glob` failure or nested `run_code` dispatch produces (its text keeps
-		* the generic path).
-		* @param block - RunningToolCall or ToolResultNode off the snapshot caches.
-		* @returns the search-card props, or null for the generic path.
+		* Derive a settled root grep/glob card from persisted metadata.
+		* @param block - running or settled Tool block.
+		* @returns search-card props, or null for the generic path.
 		*/
 		function searchCardModel(block) {
-			if (!("kind" in block)) return null;
-			const result = block.resultView?.card === "search" ? block.resultView : null;
-			if (result === null) return null;
+			if (block.parentCallId !== void 0 || !("kind" in block) || block.isError) return null;
+			const tool = validSearchCall(block);
+			if (tool === null) return null;
+			if (typeof block.meta !== "object" || block.meta === null || Array.isArray(block.meta)) return null;
+			const meta = block.meta;
+			if (typeof meta.truncated !== "boolean") return null;
+			if (typeof meta.total !== "number" || !Number.isInteger(meta.total) || meta.total < 0) return null;
 			const common = {
-				truncated: result.truncated,
-				total: result.total
+				truncated: meta.truncated,
+				total: meta.total
 			};
-			const recovery = result.truncated ? flattenContent(block.content) : void 0;
-			if (result.shape === "matches") {
-				if (!isValidFiles(result.files)) return null;
-				return {
-					title: result.title,
+			const recovery = meta.truncated ? flattenContent(block.content) : void 0;
+			if (tool === "grep") {
+				if (meta.shape !== "matches") return null;
+				const files = searchFiles(meta.files);
+				return files === null ? null : {
 					recovery,
 					card: {
 						kind: "matches",
-						files: result.files,
+						files,
 						...common
 					}
 				};
 			}
-			if (result.shape !== "paths") return null;
-			if (!Array.isArray(result.paths) || !result.paths.every((path) => typeof path === "string")) return null;
+			if (meta.shape !== "paths" || !Array.isArray(meta.paths)) return null;
+			if (!meta.paths.every((path) => typeof path === "string")) return null;
 			return {
-				title: result.title,
 				recovery,
 				card: {
 					kind: "paths",
-					paths: result.paths,
+					paths: [...meta.paths],
 					...common
 				}
 			};
 		}
 		//#endregion
 		//#region lib/types/client/tool/models/terminal-card-model.js
-		/**
-		* Pure derivation of the terminal-card props from a frozen call slice: the
-		* `card:'terminal'` render intent the shell tools declare arrives on the
-		* snapshot as `callView`/`resultView`, and this is the one place that turns
-		* that pair into what {@link TerminalBlock} draws. Both conversation render
-		* sites (the chat tool row's expanded body and the details panel's Output
-		* section) call this, so the command, cwd, output and exit status they show
-		* are derived once.
-		* @module
-		*/
 		/**
 		* Build the TerminalBlock display copy from the conversation locale seat —
 		* the one place the primitive's label surface pairs with this package's
@@ -429,6 +575,29 @@ window.__ModuleLoader__.load({
 			};
 		}
 		/**
+		* Resolve locale-owned `terminal_send` copy while preserving Tool-authored
+		* shell commands and descriptions verbatim.
+		* @param model - locale-neutral terminal card data.
+		* @param t - the render site's conversation locale seat.
+		* @returns terminal props and description ready for rendering.
+		*/
+		function localizeTerminalCardModel(model, t) {
+			if (model.copy.kind === "shell") return {
+				card: {
+					command: model.copy.command,
+					...model.card
+				},
+				description: model.copy.description
+			};
+			return {
+				card: {
+					command: model.copy.text === "" ? t("terminal.sendInput") : model.copy.text,
+					...model.card
+				},
+				description: t("terminal.session", { sessionId: model.copy.sessionId })
+			};
+		}
+		/**
 		* True when a settled terminal card reports a failing exit — a non-zero code
 		* or a terminating signal. The bash tool settles a failing command as a
 		* completed call (`isError` stays false: the exit status is result data), so
@@ -442,21 +611,18 @@ window.__ModuleLoader__.load({
 			return running !== true && (exitCode !== void 0 && exitCode !== 0 || signal !== void 0);
 		}
 		/**
-		* Resolve a terminal view's working directory the way the render-intent
-		* contract assigns to the UI bridge: an absolute path is used as-is, a relative
-		* one joins under the session workspace, and an omitted one IS the session
-		* workspace. A pure presenter cannot see the session cwd, which is why this
-		* resolution belongs here rather than in the tool. Without a session cwd there
-		* is nothing to resolve against, so a relative path stays as authored and an
-		* omitted one stays absent (the prompt row then draws a bare `$`).
-		* @param viewCwd - the cwd the terminal call view carries, if any.
+		* Resolve a shell call's workdir for display: an absolute path is used as-is,
+		* a relative one joins under the session workspace, and an omitted one is the
+		* session workspace. Without a session cwd, a relative path stays as authored
+		* and an omitted one stays absent.
+		* @param workdir - the raw call's workdir, if any.
 		* @param sessionCwd - the session workspace root, if the caller knows it.
 		* @returns the working directory for the prompt label, or undefined.
 		*/
-		function resolveTerminalCwd(viewCwd, sessionCwd) {
-			if (viewCwd === void 0 || viewCwd === "") return sessionCwd;
-			if (sessionCwd === void 0 || sessionCwd === "") return normalizeSegments(viewCwd);
-			return normalizeSegments((0, _deepseek_ai_dsh_client_runtime_client.resolveWorkspacePath)(sessionCwd, viewCwd));
+		function resolveTerminalCwd(workdir, sessionCwd) {
+			if (workdir === void 0 || workdir === "") return sessionCwd;
+			if (sessionCwd === void 0 || sessionCwd === "") return normalizeSegments(workdir);
+			return normalizeSegments(resolveWorkspacePath(sessionCwd, workdir));
 		}
 		/**
 		* Collapse `.` and `..` segments so the prompt label names the directory the
@@ -508,104 +674,195 @@ window.__ModuleLoader__.load({
 			}
 			return kept.join(separator);
 		}
+		function shellCall(name, args) {
+			if (name !== "bash" && name !== "pwsh") return null;
+			const { command, description, timeoutMs, workdir, run_in_background: background } = args;
+			if (typeof command !== "string" || command.trim() === "") return null;
+			if (timeoutMs !== void 0 && (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0)) return null;
+			if (workdir !== void 0 && typeof workdir !== "string") return null;
+			if (background !== void 0 && typeof background !== "boolean") return null;
+			if (!validEscalationFields(args)) return null;
+			if (description === void 0) return {
+				kind: "shell",
+				command,
+				description: void 0,
+				workdir: void 0,
+				persistent: true,
+				background: false
+			};
+			if (typeof description !== "string" || description.trim() === "") return null;
+			return {
+				kind: "shell",
+				command,
+				description,
+				workdir,
+				persistent: false,
+				background: background === true
+			};
+		}
 		/**
-		* Derive the terminal-card props for a tool call, or null when this call is
-		* not a terminal card and belongs on the generic path.
-		*
-		* The call side supplies the command and its working directory; the result
-		* side supplies the captured output and exit status. Three cases produce
-		* null, all of them the documented generic-card default:
-		*
-		* - Neither side declares `card:'terminal'` — including a `card` value this
-		*   UI version does not know, which arrives over the wire and therefore
-		*   cannot be trusted to be one of the compiled variants.
-		* - A settled call whose result view is not a terminal card: the result
-		*   presentation decides how the settled call renders, and the bash tool
-		*   returns a generic fenced card for an execution error or a background
-		*   start, whose text and error styling the generic path preserves.
-		*
-		* Window truncation can drop the call head from a settled result (see
-		* `ToolResultNode.call`/`callView` in dsh-client-runtime), leaving a terminal
-		* result with no call side. That still renders: the command falls back to the
-		* result view's replacement title, then to an empty command (the prompt line
-		* draws bare), and the prompt shows no cwd.
-		* @param block - RunningToolCall or ToolResultNode off the snapshot caches.
-		* @param sessionCwd - the session workspace root, which resolves an omitted or
-		*   relative view cwd (see {@link resolveTerminalCwd}); absent leaves both unresolved.
-		* @returns the terminal-card props, or null for the generic path.
+		* Identify a settled root call from the persistent Bash or PowerShell tool.
+		* Its result stays on the generic input/output path because the persistent
+		* shell can report resets and partial output without one process exit status.
+		* @param block - running or settled Tool block.
+		* @returns whether the block is a settled persistent-shell call.
+		*/
+		function isSettledPersistentShellCall(block) {
+			if (!("kind" in block) || block.parentCallId !== void 0) return false;
+			const parsed = parsedToolCall(block);
+			if (parsed === null) return false;
+			return shellCall(parsed.name, parsed.args)?.persistent === true;
+		}
+		function terminalSendCall(name, args) {
+			if (name !== "terminal_send") return null;
+			const { sessionId, text, submit, run_in_background: background } = args;
+			if (typeof sessionId !== "string" || sessionId === "" || typeof text !== "string") return null;
+			if (submit !== void 0 && typeof submit !== "boolean") return null;
+			if (background !== void 0 && typeof background !== "boolean") return null;
+			return {
+				kind: "terminal-send",
+				text,
+				sessionId,
+				background: background === true
+			};
+		}
+		/**
+		* Parse the marker literals owned by `@deepseek-ai/dsh-shell/render` without
+		* importing that Host-only package into the Client dependency graph.
+		* @param text - rendered shell result text.
+		* @returns output with a trailing exit-code or signal marker extracted.
+		*/
+		function parseExitStatus(text) {
+			const signal = /\n\[killed by signal: ([^\]\n]+)\]$/.exec(text);
+			if (signal?.[1] !== void 0) return {
+				output: text.slice(0, signal.index),
+				signal: signal[1]
+			};
+			const exit = /\n\[exit code: (\d+)\]$/.exec(text);
+			if (exit?.[1] !== void 0) return {
+				output: text.slice(0, exit.index),
+				exitCode: Number(exit[1])
+			};
+			return {
+				output: text,
+				exitCode: 0
+			};
+		}
+		/**
+		* Derive terminal props for supported root shell and terminal-send calls.
+		* Standard shell results parse their final status marker; persistent shell
+		* results, background calls, errors, malformed input, or child dispatches use
+		* the generic path. {@link isSettledPersistentShellCall} lets that generic
+		* persistent result remain expandable without inventing one process status.
+		* @param block - running or settled Tool block.
+		* @param sessionCwd - session workspace root used to resolve workdir.
+		* @returns locale-neutral terminal-card data, or null for the generic path.
 		*/
 		function terminalCardModel(block, sessionCwd) {
-			const call = block.callView?.card === "terminal" ? block.callView : null;
-			if (!("kind" in block)) return call === null ? null : {
-				description: call.description,
+			if (block.parentCallId !== void 0) return null;
+			const parsed = parsedToolCall(block);
+			if (parsed === null) return null;
+			const call = shellCall(parsed.name, parsed.args) ?? terminalSendCall(parsed.name, parsed.args);
+			if (call === null || call.background) return null;
+			const copy = call.kind === "shell" ? {
+				kind: "shell",
+				command: call.command,
+				description: call.description
+			} : {
+				kind: "terminal-send",
+				text: call.text,
+				sessionId: call.sessionId
+			};
+			const cwd = resolveTerminalCwd(call.kind === "shell" ? call.workdir : void 0, sessionCwd);
+			if (!("kind" in block)) return {
+				copy,
 				card: {
-					command: call.title,
-					cwd: resolveTerminalCwd(call.cwd, sessionCwd),
+					cwd,
 					output: void 0,
 					exitCode: void 0,
 					signal: void 0,
 					running: true
 				}
 			};
-			const result = block.resultView?.card === "terminal" ? block.resultView : null;
-			if (result === null) return null;
+			if (block.isError || call.kind === "shell" && call.persistent) return null;
+			const output = singleResultText(block);
+			if (output === void 0) return null;
+			const status = call.kind === "terminal-send" ? { output } : parseExitStatus(output);
 			return {
-				description: call?.description,
+				copy,
 				card: {
-					command: result.title ?? call?.title ?? "",
-					cwd: call === null ? void 0 : resolveTerminalCwd(call.cwd, sessionCwd),
-					output: result.output,
-					exitCode: result.exitCode,
-					signal: result.signal,
+					cwd,
+					output: status.output,
+					exitCode: status.exitCode,
+					signal: status.signal,
 					running: false
 				}
 			};
 		}
 		//#endregion
 		//#region lib/types/client/tool/models/web-card-model.js
+		function validWebCall(block) {
+			const call = parsedToolCall(block);
+			if (call === null) return null;
+			if (call.name === "web_search") {
+				const { queries } = call.args;
+				if (!Array.isArray(queries) || queries.length === 0) return null;
+				return queries.every((query) => typeof query === "string" && query.trim() !== "") ? call.name : null;
+			}
+			if (call.name === "web_fetch") {
+				const { url } = call.args;
+				return typeof url === "string" && url.trim() !== "" ? call.name : null;
+			}
+			return null;
+		}
+		function webSources(value) {
+			if (!Array.isArray(value)) return null;
+			const sources = [];
+			for (const source of value) {
+				if (typeof source !== "object" || source === null || Array.isArray(source)) return null;
+				const { url, title, snippet, publishedAt } = source;
+				if (typeof url !== "string") return null;
+				if (title !== void 0 && typeof title !== "string") return null;
+				if (snippet !== void 0 && typeof snippet !== "string") return null;
+				if (publishedAt !== void 0 && typeof publishedAt !== "string") return null;
+				sources.push({
+					url,
+					...title === void 0 ? {} : { title },
+					...snippet === void 0 ? {} : { snippet },
+					...publishedAt === void 0 ? {} : { publishedAt }
+				});
+			}
+			return sources;
+		}
 		/**
-		* Derive the web-card props for a tool call, or null when this call is not a
-		* web card and belongs on the generic path.
-		*
-		* The result side supplies the whole card: the sources and answer for a
-		* `search`, the URL and status for a `fetch`. Cases producing null, all of
-		* them the documented generic-card default:
-		*
-		* - A running call (no `resultView` yet): the web tools keep a generic pending
-		*   card, so nothing web-shaped exists until the call settles.
-		* - A settled call whose result view is not a web card — including a `card`
-		*   value this UI version does not know, which arrives over the wire and so
-		*   cannot be trusted to be one of the compiled variants, and a generic result
-		*   view (a web tool's error path returns the generic card, whose text the
-		*   generic path preserves).
-		* - A web card whose `kind` this UI version does not know (a newer host's
-		*   value): the wire cannot be trusted to be `search` or `fetch`, so it takes
-		*   the generic path rather than rendering as a malformed fetch.
-		* @param block - RunningToolCall or ToolResultNode off the snapshot caches.
-		* @returns the web-card props, or null for the generic path.
+		* Derive a settled root web-search or web-fetch card from persisted metadata.
+		* @param block - running or settled Tool block.
+		* @returns web-card props, or null for the generic path.
 		*/
 		function webCardModel(block) {
-			if (!("kind" in block)) return null;
-			const result = block.resultView;
-			if (result?.card !== "web") return null;
-			if (result.kind === "search") return {
-				kind: "search",
-				answer: result.answer,
-				sources: result.sources.map((source) => ({
-					url: source.url,
-					title: source.title,
-					snippet: source.snippet,
-					publishedAt: source.publishedAt
-				})),
-				truncated: result.truncated
-			};
-			if (result.kind === "fetch") return {
+			if (block.parentCallId !== void 0 || !("kind" in block) || block.isError) return null;
+			const tool = validWebCall(block);
+			if (tool === null || typeof block.meta !== "object" || block.meta === null || Array.isArray(block.meta)) return null;
+			const meta = block.meta;
+			if (typeof meta.truncated !== "boolean") return null;
+			if (tool === "web_search") {
+				const sources = webSources(meta.sources);
+				if (sources === null || meta.answer !== void 0 && typeof meta.answer !== "string") return null;
+				return {
+					kind: "search",
+					answer: meta.answer,
+					sources,
+					truncated: meta.truncated
+				};
+			}
+			if (typeof meta.url !== "string") return null;
+			if (typeof meta.statusCode !== "number" || !Number.isInteger(meta.statusCode)) return null;
+			return {
 				kind: "fetch",
-				url: result.url,
-				statusCode: result.statusCode,
-				truncated: result.truncated
+				url: meta.url,
+				statusCode: meta.statusCode,
+				truncated: meta.truncated
 			};
-			return null;
 		}
 		//#endregion
 		//#region ../../../node_modules/.pnpm/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
@@ -623,8 +880,162 @@ window.__ModuleLoader__.load({
 			return n;
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-tool/src/client/tool/components/ToolRow.module.css.mjs
-		const css$3 = "._6SAUtW_root{flex-direction:column;display:flex}._6SAUtW_row{position:relative;overflow:hidden}._6SAUtW_root[data-state=running] ._6SAUtW_row:after{content:\"\";background:linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%, transparent 100%);pointer-events:none;width:300px;animation:2.6s ease-out infinite _6SAUtW_dsh-tool-row-sweep;position:absolute;top:0;bottom:0;left:0}@keyframes _6SAUtW_dsh-tool-row-sweep{0%{left:-300px}90%,to{left:100%}}._6SAUtW_leading{flex-shrink:0}._6SAUtW_root[data-tool^=cordis_] ._6SAUtW_leading,._6SAUtW_root[data-tool^=cordis_] ._6SAUtW_title{color:var(--dsw-alias-state-business-primary)}._6SAUtW_root[data-tool^=cordis_] ._6SAUtW_title{font-weight:500}._6SAUtW_root[data-tool^=cordis_] ._6SAUtW_sep{background:var(--dsw-alias-state-business-primary)}._6SAUtW_chevron{color:var(--dsw-alias-label-secondary)}._6SAUtW_title{font-weight:400}._6SAUtW_sep{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}._6SAUtW_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary);flex:auto;font-size:14px;line-height:24px;overflow:hidden}._6SAUtW_summarySuffix{white-space:nowrap;color:var(--dsw-alias-label-tertiary);flex:none;margin-left:4px;font-size:14px;line-height:24px}._6SAUtW_fileLink{text-overflow:ellipsis;white-space:nowrap;min-width:0;font:inherit;text-align:left;color:var(--dsw-alias-label-secondary);text-decoration:underline;text-decoration-color:var(--dsw-alias-label-quaternary);text-underline-offset:3px;cursor:pointer;background:0 0;border:none;flex:auto;margin:0;padding:0;font-size:14px;line-height:24px;overflow:hidden}._6SAUtW_fileLink:hover{color:var(--dsw-alias-label-primary);text-decoration-color:currentColor}._6SAUtW_errorSummary{color:var(--dsw-alias-state-error-primary)}._6SAUtW_bodyWrap{flex-direction:column;display:flex}._6SAUtW_inspectButton{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}._6SAUtW_root:hover ._6SAUtW_inspectButton,._6SAUtW_inspectButton:focus-visible{opacity:1}._6SAUtW_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}._6SAUtW_bodyScroll{max-height:260px;overflow-y:auto}._6SAUtW_ioCard{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-markdown-code-block);font:var(--dsw-font-markdown-code-block-small);border-radius:12px;flex-direction:column;margin:4px 0 4px 4px;display:flex}._6SAUtW_ioSection{grid-template-columns:max-content 1fr;align-items:baseline;column-gap:14px;max-height:150px;padding:12px 16px;display:grid;overflow-y:auto}._6SAUtW_ioSection::-webkit-scrollbar-thumb{background-clip:padding-box;border:2px solid #0000;border-radius:6px}._6SAUtW_ioSection::-webkit-scrollbar-track{margin:6px 0}._6SAUtW_ioLabel{color:var(--dsw-alias-label-caption);align-self:start;position:sticky;top:0}._6SAUtW_ioDivider{background:var(--dsw-alias-border-l2);flex:none;height:1px}._6SAUtW_ioText{white-space:pre-wrap;word-break:break-word;min-width:0;color:var(--dsw-alias-label-secondary)}._6SAUtW_ioText[data-error]{color:var(--dsw-alias-state-error-primary)}._6SAUtW_codeBody,._6SAUtW_terminalBody,._6SAUtW_diffBody,._6SAUtW_readBody,._6SAUtW_searchBody,._6SAUtW_webBody{margin:4px 0 4px 4px}._6SAUtW_searchRecovery{white-space:pre-wrap;overflow-wrap:anywhere;font:var(--dsw-font-xs-13);color:var(--dsw-alias-label-tertiary);margin:4px 0 4px 4px}._6SAUtW_codeBody{--dsl-code-block-content-font:var(--dsw-font-markdown-code-block-small)}._6SAUtW_terminalBody{--dsl-terminal-font:var(--dsw-font-markdown-code-block-small);--dsl-terminal-line-height:18px;--dsl-terminal-output-max-height:224px;border:1px solid var(--dsw-alias-border-l1)}._6SAUtW_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}";
+		//#region lib/types/client/tool/models/primitive-labels.js
+		/** Localized copy adapters for Cordis-free UI primitives used by Tool cards. */
+		/**
+		* Build localized Markdown chrome labels.
+		* @param t - Conversation locale seat.
+		* @returns Markdown chrome labels.
+		*/
+		function markdownLabels(t) {
+			return {
+				code: {
+					copyLabel: t("copy"),
+					copiedLabel: t("copied")
+				},
+				footnotes: t("markdown.footnotes")
+			};
+		}
+		/**
+		* Build localized diff-card chrome labels.
+		* @param t - Conversation locale seat.
+		* @returns Diff-card chrome labels.
+		*/
+		function diffBlockLabels(t) {
+			return {
+				copy: t("copy"),
+				copied: t("copied"),
+				collapseAria: t("diff.collapseAria"),
+				expandAria: (count) => t("diff.expandAria", { count }),
+				collapse: t("collapse"),
+				expand: (count) => t("diff.expandRest", { count }),
+				files: (count) => t(count === 1 ? "diff.files.one" : "diff.files.other", { count })
+			};
+		}
+		/**
+		* Build localized read-card chrome labels.
+		* @param t - Conversation locale seat.
+		* @returns Read-card chrome labels.
+		*/
+		function readBlockLabels(t) {
+			return {
+				window: (shown, total) => t("read.window", {
+					shown,
+					total
+				}),
+				copy: t("copy"),
+				copied: t("copied"),
+				collapseAria: t("read.collapseAria"),
+				expandAria: (count) => t("read.expandAria", { count }),
+				collapse: t("collapse"),
+				expand: (count) => t("read.expandRest", { count })
+			};
+		}
+		/**
+		* Build localized search-card chrome labels.
+		* @param t - Conversation locale seat.
+		* @returns Search-card chrome labels.
+		*/
+		function searchBlockLabels(t) {
+			return {
+				pathsSummary: (shown, total, truncated) => t(truncated ? "search.paths.truncated" : "search.paths", {
+					shown,
+					total
+				}),
+				matchesSummary: (shown, total, files, truncated) => t(truncated ? "search.matches.truncated" : "search.matches", {
+					shown,
+					total,
+					files
+				}),
+				copy: t("copy"),
+				copied: t("copied"),
+				noResults: t("search.noResults"),
+				collapseAria: t("search.collapseAria"),
+				expandAria: (count) => t("search.expandAria", { count }),
+				collapse: t("collapse"),
+				expand: (count) => t("search.expandRest", { count })
+			};
+		}
+		/**
+		* Build localized web-card chrome labels.
+		* @param t - Conversation locale seat.
+		* @returns Web-card chrome labels.
+		*/
+		function webBlockLabels(t) {
+			return {
+				noResults: t("web.noResults"),
+				sourcesTruncated: t("web.sourcesTruncated"),
+				http: t("web.http"),
+				contentTruncated: t("web.contentTruncated"),
+				markdown: markdownLabels(t)
+			};
+		}
+		//#endregion
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-tool/src/client/tool/components/AskQuestionCard.module.css.mjs
+		const css$4 = ".E4hdKW_card{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-base);border-radius:12px;flex-direction:column;gap:16px;max-height:360px;margin:4px 0 4px 4px;padding:16px 20px;display:flex;overflow-y:auto}.E4hdKW_item{flex-direction:column;gap:2px;min-width:0;display:flex}.E4hdKW_question,.E4hdKW_answer{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));margin:0}.E4hdKW_question{color:var(--dsw-alias-label-tertiary)}.E4hdKW_answer{color:var(--dsw-alias-label-primary)}.E4hdKW_answerLine{display:block}.E4hdKW_skipped{color:var(--dsw-alias-label-tertiary)}.E4hdKW_verdict{color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));margin:0}.E4hdKW_questionList{flex-direction:column;gap:8px;margin:0;padding-left:20px;display:flex}.E4hdKW_unansweredQuestion{color:var(--dsw-alias-label-tertiary);white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}";
+		const tagId$4 = "@deepseek-ai/dsh-client-ui-tool/AskQuestionCard.module.css";
+		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$4) + "]") === null) {
+			const tag = document.createElement("style");
+			tag.dataset.plugin = "@deepseek-ai/dsh-client-ui-tool";
+			tag.dataset.pluginCss = tagId$4;
+			tag.textContent = css$4;
+			document.head.appendChild(tag);
+		}
+		var AskQuestionCard_module_css_default = {
+			"answer": "E4hdKW_answer",
+			"answerLine": "E4hdKW_answerLine",
+			"card": "E4hdKW_card",
+			"item": "E4hdKW_item",
+			"question": "E4hdKW_question",
+			"questionList": "E4hdKW_questionList",
+			"skipped": "E4hdKW_skipped",
+			"unansweredQuestion": "E4hdKW_unansweredQuestion",
+			"verdict": "E4hdKW_verdict"
+		};
+		//#endregion
+		//#region lib/types/client/tool/components/AskQuestionCard.js
+		/**
+		* Render a validated ask-user transcript from plain card data.
+		* @param props - Localized transcript card data.
+		* @returns the readable answered or unanswered question list.
+		*/
+		function AskQuestionCard({ card }) {
+			if (card.kind === "unanswered") return (0, react_jsx_runtime.jsxs)("div", {
+				className: AskQuestionCard_module_css_default.card,
+				children: [(0, react_jsx_runtime.jsx)("p", {
+					className: AskQuestionCard_module_css_default.verdict,
+					children: card.verdict
+				}), (0, react_jsx_runtime.jsx)("ul", {
+					className: AskQuestionCard_module_css_default.questionList,
+					children: card.questions.map((question) => (0, react_jsx_runtime.jsx)("li", {
+						className: AskQuestionCard_module_css_default.unansweredQuestion,
+						children: question.question
+					}, question.id))
+				})]
+			});
+			return (0, react_jsx_runtime.jsx)("dl", {
+				className: AskQuestionCard_module_css_default.card,
+				children: card.questions.map((question) => (0, react_jsx_runtime.jsxs)("div", {
+					className: AskQuestionCard_module_css_default.item,
+					children: [(0, react_jsx_runtime.jsx)("dt", {
+						className: AskQuestionCard_module_css_default.question,
+						children: question.question
+					}), (0, react_jsx_runtime.jsx)("dd", {
+						className: AskQuestionCard_module_css_default.answer,
+						children: question.answers.length === 0 ? (0, react_jsx_runtime.jsx)("span", {
+							className: AskQuestionCard_module_css_default.skipped,
+							children: card.skippedLabel
+						}) : question.answers.map((answer, index) => (0, react_jsx_runtime.jsx)("span", {
+							className: AskQuestionCard_module_css_default.answerLine,
+							children: answer
+						}, `${question.id}-${String(index)}`))
+					})]
+				}, question.id))
+			});
+		}
+		//#endregion
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-tool/src/client/tool/components/ToolRow.module.css.mjs
+		const css$3 = ".Tw4b8q_root{flex-direction:column;display:flex}.Tw4b8q_row{position:relative;overflow:hidden}.Tw4b8q_root[data-state=running] .Tw4b8q_row:after{content:\"\";background:linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%, transparent 100%);pointer-events:none;width:300px;animation:2.6s ease-out infinite Tw4b8q_dsh-tool-row-sweep;position:absolute;top:0;bottom:0;left:0}@keyframes Tw4b8q_dsh-tool-row-sweep{0%{left:-300px}90%,to{left:100%}}.Tw4b8q_leading{flex-shrink:0}.Tw4b8q_root[data-tool^=cordis_] .Tw4b8q_leading,.Tw4b8q_root[data-tool^=cordis_] .Tw4b8q_title{color:var(--dsw-alias-state-business-primary)}.Tw4b8q_root[data-tool^=cordis_] .Tw4b8q_title{font-weight:500}.Tw4b8q_root[data-tool^=cordis_] .Tw4b8q_sep{background:var(--dsw-alias-state-business-primary)}.Tw4b8q_chevron{color:var(--dsw-alias-label-secondary)}.Tw4b8q_title{font-weight:400}.Tw4b8q_sep{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.Tw4b8q_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);flex:auto;overflow:hidden}.Tw4b8q_summarySuffix{white-space:nowrap;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);flex:none;margin-left:4px}.Tw4b8q_fileLink{text-overflow:ellipsis;white-space:nowrap;min-width:0;font:inherit;text-align:left;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-secondary);text-decoration:underline;text-decoration-color:var(--dsw-alias-label-quaternary);text-underline-offset:3px;cursor:pointer;background:0 0;border:none;flex:auto;margin:0;padding:0;overflow:hidden}.Tw4b8q_fileLink:hover{color:var(--dsw-alias-label-primary);text-decoration-color:currentColor}.Tw4b8q_errorSummary{color:var(--dsw-alias-state-error-primary)}.Tw4b8q_bodyWrap{flex-direction:column;display:flex}.Tw4b8q_inspectButton{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.Tw4b8q_root:hover .Tw4b8q_inspectButton,.Tw4b8q_inspectButton:focus-visible{opacity:1}.Tw4b8q_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.Tw4b8q_bodyScroll{max-height:260px;overflow-y:auto}.Tw4b8q_ioCard{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-markdown-code-block);font:var(--dsw-font-markdown-code-block-small);border-radius:12px;flex-direction:column;margin:4px 0 4px 4px;display:flex}.Tw4b8q_ioSection{grid-template-columns:max-content 1fr;align-items:baseline;column-gap:14px;max-height:150px;padding:12px 16px;display:grid;overflow-y:auto}.Tw4b8q_ioSection::-webkit-scrollbar-thumb{background-clip:padding-box;border:2px solid #0000;border-radius:6px}.Tw4b8q_ioSection::-webkit-scrollbar-track{margin:6px 0}.Tw4b8q_ioLabel{color:var(--dsw-alias-label-caption);align-self:start;position:sticky;top:0}.Tw4b8q_ioDivider{background:var(--dsw-alias-border-l2);flex:none;height:1px}.Tw4b8q_ioText{white-space:pre-wrap;word-break:break-word;min-width:0;color:var(--dsw-alias-label-secondary)}.Tw4b8q_ioText[data-error]{color:var(--dsw-alias-state-error-primary)}.Tw4b8q_codeBody,.Tw4b8q_terminalBody,.Tw4b8q_diffBody,.Tw4b8q_readBody,.Tw4b8q_searchBody,.Tw4b8q_webBody{margin:4px 0 4px 4px}.Tw4b8q_searchRecovery{white-space:pre-wrap;overflow-wrap:anywhere;font:var(--dsw-font-xs-13);color:var(--dsw-alias-label-tertiary);margin:4px 0 4px 4px}.Tw4b8q_codeBody{--dsl-code-block-content-font:var(--dsw-font-markdown-code-block-small)}.Tw4b8q_terminalBody{--dsl-terminal-font:var(--dsw-font-markdown-code-block-small);--dsl-terminal-line-height:18px;--dsl-terminal-output-max-height:224px;border:1px solid var(--dsw-alias-border-l1)}.Tw4b8q_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}";
 		const tagId$3 = "@deepseek-ai/dsh-client-ui-tool/ToolRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$3) + "]") === null) {
 			const tag = document.createElement("style");
@@ -634,39 +1045,36 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ToolRow_module_css_default = {
-			"bodyScroll": "_6SAUtW_bodyScroll",
-			"bodyWrap": "_6SAUtW_bodyWrap",
-			"chevron": "_6SAUtW_chevron",
-			"codeBody": "_6SAUtW_codeBody",
-			"diffBody": "_6SAUtW_diffBody",
-			"dsh-tool-row-sweep": "_6SAUtW_dsh-tool-row-sweep",
-			"errorSummary": "_6SAUtW_errorSummary",
-			"fileLink": "_6SAUtW_fileLink",
-			"inspectButton": "_6SAUtW_inspectButton",
-			"ioCard": "_6SAUtW_ioCard",
-			"ioDivider": "_6SAUtW_ioDivider",
-			"ioLabel": "_6SAUtW_ioLabel",
-			"ioSection": "_6SAUtW_ioSection",
-			"ioText": "_6SAUtW_ioText",
-			"leading": "_6SAUtW_leading",
-			"readBody": "_6SAUtW_readBody",
-			"root": "_6SAUtW_root",
-			"row": "_6SAUtW_row",
-			"searchBody": "_6SAUtW_searchBody",
-			"searchRecovery": "_6SAUtW_searchRecovery",
-			"sep": "_6SAUtW_sep",
-			"summary": "_6SAUtW_summary",
-			"summarySuffix": "_6SAUtW_summarySuffix",
-			"terminalBody": "_6SAUtW_terminalBody",
-			"title": "_6SAUtW_title",
-			"visuallyHidden": "_6SAUtW_visuallyHidden",
-			"webBody": "_6SAUtW_webBody"
+			"bodyScroll": "Tw4b8q_bodyScroll",
+			"bodyWrap": "Tw4b8q_bodyWrap",
+			"chevron": "Tw4b8q_chevron",
+			"codeBody": "Tw4b8q_codeBody",
+			"diffBody": "Tw4b8q_diffBody",
+			"dsh-tool-row-sweep": "Tw4b8q_dsh-tool-row-sweep",
+			"errorSummary": "Tw4b8q_errorSummary",
+			"fileLink": "Tw4b8q_fileLink",
+			"inspectButton": "Tw4b8q_inspectButton",
+			"ioCard": "Tw4b8q_ioCard",
+			"ioDivider": "Tw4b8q_ioDivider",
+			"ioLabel": "Tw4b8q_ioLabel",
+			"ioSection": "Tw4b8q_ioSection",
+			"ioText": "Tw4b8q_ioText",
+			"leading": "Tw4b8q_leading",
+			"readBody": "Tw4b8q_readBody",
+			"root": "Tw4b8q_root",
+			"row": "Tw4b8q_row",
+			"searchBody": "Tw4b8q_searchBody",
+			"searchRecovery": "Tw4b8q_searchRecovery",
+			"sep": "Tw4b8q_sep",
+			"summary": "Tw4b8q_summary",
+			"summarySuffix": "Tw4b8q_summarySuffix",
+			"terminalBody": "Tw4b8q_terminalBody",
+			"title": "Tw4b8q_title",
+			"visuallyHidden": "Tw4b8q_visuallyHidden",
+			"webBody": "Tw4b8q_webBody"
 		};
 		//#endregion
 		//#region lib/types/client/tool/components/ToolRow.js
-		/** Leading-slot state substitution: the tool icon yields to the terminal state
-		*  semantic (error = red, interrupted = amber halo). Running keeps the icon —
-		*  the row sweep (CSS on data-state) carries the in-flight signal. */
 		function leadingFor$1(state, icon) {
 			switch (state) {
 				case "error": return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.StateDot, { state: "error" });
@@ -686,19 +1094,25 @@ window.__ModuleLoader__.load({
 				default: return null;
 			}
 		}
-		function ToolRow({ t, variant, toolName, icon, title, summary, summarySuffix, body, output, errorSummary, terminal, diff, read, search, web, state, filePath, onOpenFile, inspect }) {
+		function ToolRow({ t, variant, toolName, icon, title, summary, summarySuffix, body, output, askQuestion, errorSummary, terminal, diff, read, search, web, state, filePath, onOpenFile, inspect }) {
 			const [expanded, setExpanded] = (0, react.useState)(false);
-			const terminalBody = terminal ?? null;
+			const terminalLabels = (0, react.useMemo)(() => terminalBlockLabels(t), [t]);
+			const diffLabels = (0, react.useMemo)(() => diffBlockLabels(t), [t]);
+			const readLabels = (0, react.useMemo)(() => readBlockLabels(t), [t]);
+			const searchLabels = (0, react.useMemo)(() => searchBlockLabels(t), [t]);
+			const webLabels = (0, react.useMemo)(() => webBlockLabels(t), [t]);
+			const terminalBody = terminal === void 0 || terminal === null ? null : localizeTerminalCardModel(terminal, t);
 			const diffBody = diff ?? null;
 			const readBody = read ?? null;
 			const searchBody = search ?? null;
 			const webBody = web ?? null;
+			const askQuestionBody = askQuestion ?? null;
 			const outputText = output ?? null;
-			const expandable = body !== null || outputText !== null || (terminalBody ?? diffBody ?? readBody ?? searchBody ?? webBody) !== null;
+			const expandable = body !== null || outputText !== null || (askQuestionBody ?? terminalBody ?? diffBody ?? readBody ?? searchBody ?? webBody) !== null;
 			const open = expanded && expandable;
 			const status = stateStatus$1(state, t);
 			const failureLine = state === "error" ? errorSummary ?? null : null;
-			const summaryText = failureLine ?? summary;
+			const summaryText = failureLine ?? terminalBody?.description ?? summary;
 			const suffix = failureLine === null ? summarySuffix ?? null : null;
 			const fileLink = filePath !== void 0 && onOpenFile !== void 0 && failureLine === null;
 			const toggleExpand = () => {
@@ -754,21 +1168,24 @@ window.__ModuleLoader__.load({
 					] }),
 					children: (0, react_jsx_runtime.jsxs)("div", {
 						className: ToolRow_module_css_default.bodyWrap,
-						children: [terminalBody !== null ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.TerminalBlock, {
+						children: [askQuestionBody !== null ? (0, react_jsx_runtime.jsx)(AskQuestionCard, { card: askQuestionBody }) : terminalBody !== null ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.TerminalBlock, {
 							...terminalBody.card,
 							maxLines: Infinity,
-							labels: terminalBlockLabels(t),
+							labels: terminalLabels,
 							className: ToolRow_module_css_default.terminalBody
 						}) : diffBody !== null ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.DiffBlock, {
 							...diffBody.card,
+							labels: diffLabels,
 							maxLines: 8,
 							className: ToolRow_module_css_default.diffBody
 						}) : readBody !== null ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.ReadBlock, {
 							...readBody,
+							labels: readLabels,
 							maxLines: 8,
 							className: ToolRow_module_css_default.readBody
 						}) : searchBody !== null ? (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.SearchBlock, {
 							...searchBody.card,
+							labels: searchLabels,
 							maxLines: 8,
 							className: ToolRow_module_css_default.searchBody
 						}), searchBody.recovery !== void 0 && (0, react_jsx_runtime.jsx)("div", {
@@ -776,6 +1193,7 @@ window.__ModuleLoader__.load({
 							children: searchBody.recovery
 						})] }) : webBody !== null ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.WebBlock, {
 							...webBody,
+							labels: webLabels,
 							className: ToolRow_module_css_default.webBody
 						}) : (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [variant === "code" && body !== null && (0, react_jsx_runtime.jsx)("div", {
 							className: ToolRow_module_css_default.bodyScroll,
@@ -793,7 +1211,7 @@ window.__ModuleLoader__.load({
 									className: ToolRow_module_css_default.ioSection,
 									children: [(0, react_jsx_runtime.jsx)("span", {
 										className: ToolRow_module_css_default.ioLabel,
-										children: "IN"
+										children: t("row.input")
 									}), (0, react_jsx_runtime.jsx)("span", {
 										className: ToolRow_module_css_default.ioText,
 										children: cardBody
@@ -807,7 +1225,7 @@ window.__ModuleLoader__.load({
 									className: ToolRow_module_css_default.ioSection,
 									children: [(0, react_jsx_runtime.jsx)("span", {
 										className: ToolRow_module_css_default.ioLabel,
-										children: "OUT"
+										children: t("row.output")
 									}), (0, react_jsx_runtime.jsx)("span", {
 										className: ToolRow_module_css_default.ioText,
 										"data-error": state === "error" || void 0,
@@ -819,7 +1237,7 @@ window.__ModuleLoader__.load({
 							type: "button",
 							className: ToolRow_module_css_default.inspectButton,
 							onClick: inspect,
-							children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutline12, {}), "Inspect"]
+							children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutline12, {}), t("row.inspect")]
 						})]
 					})
 				})]
@@ -851,8 +1269,8 @@ window.__ModuleLoader__.load({
 				variant: model.variant,
 				toolName,
 				icon: VARIANT_ICONS[model.variant],
-				title: model.title,
-				summary: terminal?.description ?? search?.title ?? model.summary,
+				title: t(model.titleKey),
+				summary: model.summary,
 				body: singleFile ? null : model.body,
 				output: model.output,
 				errorSummary: model.errorSummary,
@@ -868,8 +1286,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-tool/src/client/tool/ToolCallTree.module.css.mjs
-		const css$2 = ".Q_ub2G_callRow{border-radius:6px}.Q_ub2G_subCalls{border-left:1px solid var(--dsw-alias-border-l2);flex-direction:column;gap:4px;margin:4px 0 2px 22px;padding-left:8px;display:flex}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-tool/src/client/tool/ToolCallTree.module.css.mjs
+		const css$2 = ".vu5t8q_callRow{border-radius:6px}.vu5t8q_subCalls{border-left:1px solid var(--dsw-alias-border-l2);flex-direction:column;gap:4px;margin:4px 0 2px 22px;padding-left:8px;display:flex}";
 		const tagId$2 = "@deepseek-ai/dsh-client-ui-tool/ToolCallTree.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
@@ -879,8 +1297,8 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ToolCallTree_module_css_default = {
-			"callRow": "Q_ub2G_callRow",
-			"subCalls": "Q_ub2G_subCalls"
+			"callRow": "vu5t8q_callRow",
+			"subCalls": "vu5t8q_subCalls"
 		};
 		//#endregion
 		//#region lib/types/client/tool/ToolCallTree.js
@@ -958,8 +1376,8 @@ window.__ModuleLoader__.load({
 		* @param props - whole-Tool owner data and the Tool-owned child-slot share.
 		* @returns the Tool call tree.
 		*/
-		function ToolCallTree({ renderSlot, node, selectedCallId, cwd, openFile, inspectCall, useHostDescription, t }) {
-			const home = useHostDescription((description) => description?.home);
+		function ToolCallTree({ renderSlot, node, selectedCallId, cwd, openFile, inspectCall, useConnectionGeneration, t }) {
+			const home = useConnectionGeneration((generation) => generation?.host.home);
 			const block = node.data.root;
 			return (0, react_jsx_runtime.jsx)(ToolCallBranch, {
 				renderSlot,
@@ -973,8 +1391,8 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-tool/src/client/tool/ToolDetails.module.css.mjs
-		const css$1 = ".AhiR-a_description{color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);margin:0 0 6px}.AhiR-a_cardBody{margin:0}.AhiR-a_recovery{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-13);margin:6px 0 0}.AhiR-a_code{background:var(--dsw-alias-markdown-code-block);font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-primary);white-space:pre-wrap;word-break:break-word;border-radius:12px;margin:0;padding:16px;font-size:13px;line-height:22px}.AhiR-a_code[data-error]{color:var(--dsw-alias-state-error-primary)}.AhiR-a_read,.AhiR-a_web{margin:0}.AhiR-a_empty{color:var(--dsw-alias-label-tertiary);padding:8px 0;font-size:13px;line-height:20px}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-tool/src/client/tool/ToolDetails.module.css.mjs
+		const css$1 = ".BVWbLW_description{color:var(--dsw-alias-label-secondary);font:var(--dsw-font-xs-13);margin:0 0 6px}.BVWbLW_cardBody{margin:0}.BVWbLW_recovery{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-13);margin:6px 0 0}.BVWbLW_code{background:var(--dsw-alias-markdown-code-block);font-family:var(--ds-font-family-code);color:var(--dsw-alias-label-primary);white-space:pre-wrap;word-break:break-word;border-radius:12px;margin:0;padding:16px;font-size:13px;line-height:22px}.BVWbLW_code[data-error]{color:var(--dsw-alias-state-error-primary)}.BVWbLW_read,.BVWbLW_web{margin:0}.BVWbLW_empty{color:var(--dsw-alias-label-tertiary);padding:8px 0;font-size:13px;line-height:20px}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-tool/ToolDetails.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -984,47 +1402,53 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ToolDetails_module_css_default = {
-			"cardBody": "AhiR-a_cardBody",
-			"code": "AhiR-a_code",
-			"description": "AhiR-a_description",
-			"empty": "AhiR-a_empty",
-			"read": "AhiR-a_read",
-			"recovery": "AhiR-a_recovery",
-			"web": "AhiR-a_web"
+			"cardBody": "BVWbLW_cardBody",
+			"code": "BVWbLW_code",
+			"description": "BVWbLW_description",
+			"empty": "BVWbLW_empty",
+			"read": "BVWbLW_read",
+			"recovery": "BVWbLW_recovery",
+			"web": "BVWbLW_web"
 		};
 		//#endregion
 		//#region lib/types/client/tool/ToolDetails.js
 		/** Card-aware output body for the selected Tool call in details. */
 		/**
-		* Render the selected Tool call's structured output when its presentation
-		* intent is known, otherwise preserve the flattened result text.
+		* Render the selected Tool call's structured output when its raw fields form a
+		* supported root card, otherwise preserve the flattened result text.
 		* @param props - selected call slice, workspace root, host home, and locale seat.
 		* @returns the details output body.
 		*/
-		function ToolDetails({ block, cwd, useHostDescription, t }) {
-			const home = useHostDescription((description) => description?.home);
-			const terminal = terminalCardModel(block, cwd);
-			if (terminal !== null) return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [terminal.description !== void 0 ? (0, react_jsx_runtime.jsx)("div", {
-				className: ToolDetails_module_css_default.description,
-				children: terminal.description
-			}) : null, (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.TerminalBlock, {
-				...terminal.card,
-				labels: terminalBlockLabels(t),
-				className: ToolDetails_module_css_default.cardBody
-			})] });
+		function ToolDetails({ block, cwd, useConnectionGeneration, t }) {
+			const home = useConnectionGeneration((generation) => generation?.host.home);
+			const terminalModel = terminalCardModel(block, cwd);
+			if (terminalModel !== null) {
+				const terminal = localizeTerminalCardModel(terminalModel, t);
+				return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [terminal.description !== void 0 ? (0, react_jsx_runtime.jsx)("div", {
+					className: ToolDetails_module_css_default.description,
+					children: terminal.description
+				}) : null, (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.TerminalBlock, {
+					...terminal.card,
+					labels: terminalBlockLabels(t),
+					className: ToolDetails_module_css_default.cardBody
+				})] });
+			}
 			const read = readCardModel(block, cwd, home);
 			if (read !== null) return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.ReadBlock, {
 				...read,
+				labels: readBlockLabels(t),
 				className: ToolDetails_module_css_default.read
 			});
 			const diff = diffCardModel(block);
 			if (diff !== null) return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.DiffBlock, {
 				...diff.card,
+				labels: diffBlockLabels(t),
 				className: ToolDetails_module_css_default.cardBody
 			});
 			const search = searchCardModel(block);
 			if (search !== null) return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.SearchBlock, {
 				...search.card,
+				labels: searchBlockLabels(t),
 				className: ToolDetails_module_css_default.cardBody
 			}), search.recovery !== void 0 ? (0, react_jsx_runtime.jsx)("div", {
 				className: ToolDetails_module_css_default.recovery,
@@ -1035,6 +1459,7 @@ window.__ModuleLoader__.load({
 				const body = "kind" in block ? resultText(block) : "";
 				return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.WebBlock, {
 					...web,
+					labels: webBlockLabels(t),
 					className: ToolDetails_module_css_default.web
 				}), body !== "" ? (0, react_jsx_runtime.jsx)("pre", {
 					className: ToolDetails_module_css_default.code,
@@ -1057,40 +1482,133 @@ window.__ModuleLoader__.load({
 		const CONVERSATION_NS = "conversation";
 		//#endregion
 		//#region lib/types/client/tool/toolviews/ask-question-row.js
-		function isAnswer(value) {
-			return typeof value === "object" && value !== null;
+		function isRecord(value) {
+			return typeof value === "object" && value !== null && !Array.isArray(value);
 		}
-		/** Answered-count summary from the result JSON (a skipped question has
-		*  empty `selected` and no `custom`); null when answer fields are invalid. */
-		function answeredSummary(text, t) {
-			let parsed;
+		function parseJson(text) {
 			try {
-				parsed = JSON.parse(text);
+				return JSON.parse(text);
 			} catch {
-				return null;
+				return;
 			}
-			if (typeof parsed !== "object" || parsed === null) return null;
+		}
+		/** Answer records from the result JSON; null when the result is malformed. */
+		function answerEntries(text) {
+			const parsed = parseJson(text);
+			if (!isRecord(parsed)) return null;
 			const answers = parsed.answers;
-			if (!Array.isArray(answers) || !answers.every(isAnswer)) return null;
+			if (!Array.isArray(answers) || !answers.every(isRecord)) return null;
+			const entries = [];
+			for (const answer of answers) {
+				if (typeof answer.id !== "string" || !Array.isArray(answer.selected) || !answer.selected.every((item) => typeof item === "string") || answer.custom !== void 0 && typeof answer.custom !== "string") return null;
+				entries.push({
+					id: answer.id,
+					selected: answer.selected,
+					...answer.custom === void 0 ? {} : { custom: answer.custom }
+				});
+			}
+			return entries;
+		}
+		/** Questions from call JSON; null when pairing with answers would be ambiguous. */
+		function questionEntries(argsRaw) {
+			const parsed = parseJson(argsRaw);
+			if (!isRecord(parsed) || !Array.isArray(parsed.questions) || parsed.questions.length === 0) return null;
+			const questions = [];
+			const ids = /* @__PURE__ */ new Set();
+			for (const question of parsed.questions) {
+				if (!isRecord(question) || typeof question.id !== "string" || typeof question.question !== "string" || ids.has(question.id)) return null;
+				ids.add(question.id);
+				questions.push({
+					id: question.id,
+					question: question.question
+				});
+			}
+			return questions;
+		}
+		/** Pair questions with result entries by their echoed stable ids. */
+		function pairAnswers(argsRaw, answers) {
+			const questions = questionEntries(argsRaw);
+			if (questions === null || questions.length !== answers.length) return null;
+			const byId = /* @__PURE__ */ new Map();
+			for (const answer of answers) {
+				if (byId.has(answer.id)) return null;
+				byId.set(answer.id, answer);
+			}
+			const paired = [];
+			for (const question of questions) {
+				const answer = byId.get(question.id);
+				if (answer === void 0) return null;
+				paired.push({
+					...question,
+					answers: [...answer.selected, ...answer.custom === void 0 || answer.custom === "" ? [] : [answer.custom]]
+				});
+			}
+			return paired;
+		}
+		/** Answer summary plus structured transcript content from the two wire JSON documents. */
+		function answeredPresentation(argsRaw, text, t) {
+			const answers = answerEntries(text);
+			if (answers === null) return null;
+			const answered = answers.filter((answer) => answer.selected.length > 0 || (answer.custom ?? "") !== "").length;
+			return {
+				summary: t("ask.answered", {
+					answered,
+					total: answers.length
+				}),
+				questions: pairAnswers(argsRaw, answers)
+			};
+		}
+		/** Best-effort answered-count summary when strict transcript pairing fails. */
+		function answeredSummary(text, t) {
+			const parsed = parseJson(text);
+			if (!isRecord(parsed)) return null;
+			const answers = parsed.answers;
+			if (!Array.isArray(answers) || !answers.every(isRecord)) return null;
 			const answered = answers.filter((a) => Array.isArray(a.selected) && a.selected.length > 0 || typeof a.custom === "string" && a.custom !== "").length;
 			return t("ask.answered", {
 				answered,
 				total: answers.length
 			});
 		}
-		/** One-line question-interaction row (the whole row toggles the call's
-		*  Input/Output sections, ToolRow's unified expand). */
+		/** Summarizes a pending, answered, cancelled, or interrupted question set. */
 		function AskQuestionRow({ toolName, block, inspect, t }) {
 			const model = toolRowModel(toolName, block);
 			const code = "kind" in block ? block.error?.code : void 0;
+			const argsRaw = ("kind" in block ? block.call?.argsRaw : block.argsRaw) ?? "";
 			let summary = model.summary;
 			let state = model.state;
-			if (code === "ASK_CANCELLED") summary = t("ask.cancelled");
-			else if (code === "ASK_ABORTED") {
+			let transcript = null;
+			if (code === "ASK_CANCELLED") {
+				summary = t("ask.cancelled");
+				state = "ok";
+				const questions = questionEntries(argsRaw);
+				if (questions !== null) transcript = {
+					kind: "unanswered",
+					questions,
+					verdict: t("ask.cancelledDetail")
+				};
+			} else if (code === "ASK_ABORTED") {
 				summary = t("ask.interrupted");
 				state = "stopped";
+				const questions = questionEntries(argsRaw);
+				if (questions !== null) transcript = {
+					kind: "unanswered",
+					questions,
+					verdict: t("ask.interruptedDetail")
+				};
 			} else if (model.state === "running") summary = t("ask.waiting");
-			else if ("kind" in block && model.state === "ok") summary = answeredSummary(block.content.filter((b) => b.type === "text").map((b) => b.text).join(""), t) ?? model.summary;
+			else if ("kind" in block && model.state === "ok") {
+				const text = singleResultText(block);
+				if (text !== void 0) {
+					const presentation = answeredPresentation(argsRaw, text, t);
+					summary = presentation?.summary ?? answeredSummary(text, t) ?? model.summary;
+					if (presentation?.questions !== null && presentation?.questions !== void 0) transcript = {
+						kind: "answered",
+						questions: presentation.questions,
+						skippedLabel: t("ask.skipped")
+					};
+				}
+			}
 			return (0, react_jsx_runtime.jsx)(ToolRow, {
 				t,
 				variant: model.variant,
@@ -1098,23 +1616,17 @@ window.__ModuleLoader__.load({
 				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconQuestionOutline14, {}),
 				title: t("ask.rowTitle"),
 				summary,
-				body: model.body,
-				output: model.output,
+				body: transcript === null ? model.body : null,
+				output: transcript === null ? model.output : null,
+				askQuestion: transcript,
 				state,
 				inspect
 			});
 		}
-		/**
-		* The ask-question row as a plain registrant plugin following the chat
-		* toolview declaration across independent activation and reload lifetimes.
-		*/
+		/** Registers the ask-user-question conversation row. */
 		const askQuestionToolview = {
 			name: "ask-question-toolview",
 			inject: ["slots"],
-			/**
-			* Register the ask-question row into the Tool-owned keyed view slot.
-			* @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
-			*/
 			apply(ctx) {
 				ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({
 					name: "tool.call.toolview",
@@ -1124,8 +1636,8 @@ window.__ModuleLoader__.load({
 			}
 		};
 		//#endregion
-		//#region \0dsh-css:/opt/dsh/dsh-java/frontend/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css.mjs
-		const css = ".MHCjDq_card{flex-direction:column;display:flex}.MHCjDq_terminal{--dsl-terminal-font:var(--dsw-font-markdown-code-block-small);--dsl-terminal-line-height:18px;--dsl-terminal-output-max-height:224px;border:1px solid var(--dsw-alias-border-l1);margin:4px 0 4px 4px}.MHCjDq_ioCard{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-markdown-code-block);font:var(--dsw-font-markdown-code-block-small);border-radius:12px;flex-direction:column;margin:4px 0 4px 4px;display:flex}.MHCjDq_ioSection{grid-template-columns:max-content 1fr;align-items:baseline;column-gap:14px;max-height:150px;padding:12px 16px;display:grid;overflow-y:auto}.MHCjDq_ioSection::-webkit-scrollbar-thumb{background-clip:padding-box;border:2px solid #0000;border-radius:6px}.MHCjDq_ioSection::-webkit-scrollbar-track{margin:6px 0}.MHCjDq_ioLabel{color:var(--dsw-alias-label-caption);align-self:start;position:sticky;top:0}.MHCjDq_ioDivider{background:var(--dsw-alias-border-l2);flex:none;height:1px}.MHCjDq_ioText{white-space:pre-wrap;word-break:break-word;min-width:0;color:var(--dsw-alias-label-secondary)}.MHCjDq_ioText[data-error]{color:var(--dsw-alias-state-error-primary)}.MHCjDq_root[data-expandable]{cursor:pointer}.MHCjDq_root{align-items:center;min-width:0;height:24px;display:flex;position:relative;overflow:hidden}.MHCjDq_root[data-state=running]:after{content:\"\";background:linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%, transparent 100%);pointer-events:none;width:300px;animation:2.6s ease-out infinite MHCjDq_dsh-bash-row-sweep;position:absolute;top:0;bottom:0;left:0}@keyframes MHCjDq_dsh-bash-row-sweep{0%{left:-300px}90%,to{left:100%}}.MHCjDq_leading{width:16px;height:16px;color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;margin-right:6px;display:inline-flex;position:relative}.MHCjDq_chevron{color:var(--dsw-alias-label-secondary)}.MHCjDq_iconIdle{opacity:1;transition:opacity .1s;display:inline-flex}.MHCjDq_chevronHover{opacity:0;margin:auto;transition:opacity .1s;position:absolute;inset:0}.MHCjDq_root:hover .MHCjDq_iconIdle{opacity:0}.MHCjDq_root:hover .MHCjDq_chevronHover{opacity:1}.MHCjDq_title{color:var(--dsw-alias-label-secondary);flex:none;font-size:14px;line-height:24px}.MHCjDq_sep{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.MHCjDq_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--dsw-alias-label-tertiary);flex:auto;font-size:14px;line-height:24px;overflow:hidden}.MHCjDq_errorSummary{color:var(--dsw-alias-state-error-primary)}.MHCjDq_bodyWrap{flex-direction:column;display:flex}.MHCjDq_inspectButton{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.MHCjDq_card:hover .MHCjDq_inspectButton,.MHCjDq_inspectButton:focus-visible{opacity:1}.MHCjDq_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.MHCjDq_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}";
+		//#region \0dsh-css:/Users/jack/java/dsh-java/frontend/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css.mjs
+		const css = ".paA3ua_card{flex-direction:column;display:flex}.paA3ua_terminal{--dsl-terminal-font:var(--dsw-font-markdown-code-block-small);--dsl-terminal-line-height:18px;--dsl-terminal-output-max-height:224px;border:1px solid var(--dsw-alias-border-l1);margin:4px 0 4px 4px}.paA3ua_ioCard{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-markdown-code-block);font:var(--dsw-font-markdown-code-block-small);border-radius:12px;flex-direction:column;margin:4px 0 4px 4px;display:flex}.paA3ua_ioSection{grid-template-columns:max-content 1fr;align-items:baseline;column-gap:14px;max-height:150px;padding:12px 16px;display:grid;overflow-y:auto}.paA3ua_ioSection::-webkit-scrollbar-thumb{background-clip:padding-box;border:2px solid #0000;border-radius:6px}.paA3ua_ioSection::-webkit-scrollbar-track{margin:6px 0}.paA3ua_ioLabel{color:var(--dsw-alias-label-caption);align-self:start;position:sticky;top:0}.paA3ua_ioDivider{background:var(--dsw-alias-border-l2);flex:none;height:1px}.paA3ua_ioText{white-space:pre-wrap;word-break:break-word;min-width:0;color:var(--dsw-alias-label-secondary)}.paA3ua_ioText[data-error]{color:var(--dsw-alias-state-error-primary)}.paA3ua_root[data-expandable]{cursor:pointer}.paA3ua_root{height:calc(24px + var(--dsh-content-font-delta,0px));align-items:center;min-width:0;display:flex;position:relative;overflow:hidden}.paA3ua_root[data-state=running]:after{content:\"\";background:linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%, transparent 100%);pointer-events:none;width:300px;animation:2.6s ease-out infinite paA3ua_dsh-bash-row-sweep;position:absolute;top:0;bottom:0;left:0}@keyframes paA3ua_dsh-bash-row-sweep{0%{left:-300px}90%,to{left:100%}}.paA3ua_leading{width:calc(16px + var(--dsh-content-font-delta,0px));height:calc(16px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;margin-right:6px;display:inline-flex;position:relative}.paA3ua_leading svg:not([data-state]){width:calc(14px + var(--dsh-content-font-delta,0px));height:calc(14px + var(--dsh-content-font-delta,0px))}.paA3ua_chevron{color:var(--dsw-alias-label-secondary)}.paA3ua_iconIdle{opacity:1;transition:opacity .1s;display:inline-flex}.paA3ua_chevronHover{opacity:0;margin:auto;transition:opacity .1s;position:absolute;inset:0}.paA3ua_root:hover .paA3ua_iconIdle{opacity:0}.paA3ua_root:hover .paA3ua_chevronHover{opacity:1}.paA3ua_title{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-secondary);flex:none}.paA3ua_sep{background:var(--dsw-alias-label-caption);border-radius:1px;flex:none;width:2px;height:2px;margin:0 8px}.paA3ua_summary{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);flex:auto;overflow:hidden}.paA3ua_errorSummary{color:var(--dsw-alias-state-error-primary)}.paA3ua_bodyWrap{flex-direction:column;display:flex}.paA3ua_inspectButton{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:0;border-radius:999px;align-self:flex-start;align-items:center;gap:4px;margin:4px 0 2px 4px;padding:2px 8px;font-size:11px;line-height:16px;transition:opacity .1s;display:inline-flex}.paA3ua_card:hover .paA3ua_inspectButton,.paA3ua_inspectButton:focus-visible{opacity:1}.paA3ua_inspectButton:hover{background:var(--dsw-alias-interactive-bg-hover-solid);color:var(--dsw-alias-label-primary)}.paA3ua_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}";
 		const tagId = "@deepseek-ai/dsh-client-ui-tool/bash-sample.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1135,26 +1647,26 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var bash_sample_module_css_default = {
-			"bodyWrap": "MHCjDq_bodyWrap",
-			"card": "MHCjDq_card",
-			"chevron": "MHCjDq_chevron",
-			"chevronHover": "MHCjDq_chevronHover",
-			"dsh-bash-row-sweep": "MHCjDq_dsh-bash-row-sweep",
-			"errorSummary": "MHCjDq_errorSummary",
-			"iconIdle": "MHCjDq_iconIdle",
-			"inspectButton": "MHCjDq_inspectButton",
-			"ioCard": "MHCjDq_ioCard",
-			"ioDivider": "MHCjDq_ioDivider",
-			"ioLabel": "MHCjDq_ioLabel",
-			"ioSection": "MHCjDq_ioSection",
-			"ioText": "MHCjDq_ioText",
-			"leading": "MHCjDq_leading",
-			"root": "MHCjDq_root",
-			"sep": "MHCjDq_sep",
-			"summary": "MHCjDq_summary",
-			"terminal": "MHCjDq_terminal",
-			"title": "MHCjDq_title",
-			"visuallyHidden": "MHCjDq_visuallyHidden"
+			"bodyWrap": "paA3ua_bodyWrap",
+			"card": "paA3ua_card",
+			"chevron": "paA3ua_chevron",
+			"chevronHover": "paA3ua_chevronHover",
+			"dsh-bash-row-sweep": "paA3ua_dsh-bash-row-sweep",
+			"errorSummary": "paA3ua_errorSummary",
+			"iconIdle": "paA3ua_iconIdle",
+			"inspectButton": "paA3ua_inspectButton",
+			"ioCard": "paA3ua_ioCard",
+			"ioDivider": "paA3ua_ioDivider",
+			"ioLabel": "paA3ua_ioLabel",
+			"ioSection": "paA3ua_ioSection",
+			"ioText": "paA3ua_ioText",
+			"leading": "paA3ua_leading",
+			"root": "paA3ua_root",
+			"sep": "paA3ua_sep",
+			"summary": "paA3ua_summary",
+			"terminal": "paA3ua_terminal",
+			"title": "paA3ua_title",
+			"visuallyHidden": "paA3ua_visuallyHidden"
 		};
 		//#endregion
 		//#region lib/types/client/tool/toolviews/bash-sample.js
@@ -1174,19 +1686,16 @@ window.__ModuleLoader__.load({
 				default: return null;
 			}
 		}
-		/**
-		* Bash row: icon + Bash · {description} in the shared ToolRow chrome, the
-		* whole row toggling the command's terminal or generic error card (ToolRow's unified
-		* expand interaction, replicated locally per the registrant posture).
-		*/
+		/** Renders expandable Bash output with an accessible lifecycle label. */
 		function BashRow({ toolName, block, sessionId, useSessions, inspect, t }) {
 			const model = toolRowModel(toolName, block);
-			const terminal = terminalCardModel(block, useSessions((list) => list.byId[sessionId]?.cwd));
-			const state = model.state === "ok" && terminal !== null && terminalFailed(terminal) ? "error" : model.state;
+			const terminalModel = terminalCardModel(block, useSessions((list) => list.byId[sessionId]?.cwd));
+			const terminal = terminalModel === null ? null : localizeTerminalCardModel(terminalModel, t);
+			const state = model.state === "ok" && terminalModel !== null && terminalFailed(terminalModel) ? "error" : model.state;
 			const status = stateStatus(state, t);
 			const [expanded, setExpanded] = (0, react.useState)(false);
-			const genericError = terminal === null && model.state === "error" && (model.body !== null || model.output !== null);
-			const expandable = terminal !== null || genericError;
+			const genericBody = terminal === null && (model.state === "error" || isSettledPersistentShellCall(block)) && (model.body !== null || model.output !== null);
+			const expandable = terminal !== null || genericBody;
 			const open = expanded && expandable;
 			const failureLine = model.state === "error" ? model.errorSummary : null;
 			const toggleExpand = () => {
@@ -1225,7 +1734,7 @@ window.__ModuleLoader__.load({
 						}),
 						(0, react_jsx_runtime.jsx)("span", {
 							className: bash_sample_module_css_default.title,
-							children: model.title
+							children: t(model.titleKey)
 						}),
 						(0, react_jsx_runtime.jsx)("span", {
 							className: bash_sample_module_css_default.sep,
@@ -1250,7 +1759,7 @@ window.__ModuleLoader__.load({
 								className: bash_sample_module_css_default.ioSection,
 								children: [(0, react_jsx_runtime.jsx)("span", {
 									className: bash_sample_module_css_default.ioLabel,
-									children: "IN"
+									children: t("row.input")
 								}), (0, react_jsx_runtime.jsx)("span", {
 									className: bash_sample_module_css_default.ioText,
 									children: model.body
@@ -1264,10 +1773,10 @@ window.__ModuleLoader__.load({
 								className: bash_sample_module_css_default.ioSection,
 								children: [(0, react_jsx_runtime.jsx)("span", {
 									className: bash_sample_module_css_default.ioLabel,
-									children: "OUT"
+									children: t("row.output")
 								}), (0, react_jsx_runtime.jsx)("span", {
 									className: bash_sample_module_css_default.ioText,
-									"data-error": true,
+									"data-error": state === "error" || void 0,
 									children: model.output
 								})]
 							})
@@ -1276,22 +1785,15 @@ window.__ModuleLoader__.load({
 						type: "button",
 						className: bash_sample_module_css_default.inspectButton,
 						onClick: inspect,
-						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutline12, {}), "Inspect"]
+						children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconInspectOutline12, {}), t("row.inspect")]
 					})]
 				})]
 			});
 		}
-		/**
-		* The sample as a plain registrant plugin. Slot injection follows the chat
-		* toolview declaration across independent activation and reload lifetimes.
-		*/
+		/** Registers the standalone Bash conversation-row sample. */
 		const bashToolviewSample = {
 			name: "bash-toolview-sample",
 			inject: ["slots"],
-			/**
-			* Register the bash row into the Tool-owned keyed view slot.
-			* @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
-			*/
 			apply(ctx) {
 				ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({
 					name: "tool.call.toolview",
@@ -1303,13 +1805,7 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/types/client/tool/toolviews/file-mutation-row.js
 		/**
-		* File-mutation row: icon + {Edit,Write} · {path} in the shared ToolRow chrome,
-		* with the applied diff as the row's collapsed-by-default card body. The
-		* summary is a path link (a file tool's interaction); the host's `openFile`
-		* resolves it against the session cwd, so this passes the tool's own path
-		* verbatim. An errored mutation has no diff card, so ToolRow surfaces the
-		* model-facing error text through its Output section and its first line in the
-		* collapsed summary instead.
+		* Lets users expand an applied file diff and open the reported path.
 		*/
 		function FileMutationRow({ toolName, block, cwd, home, openFile, inspect, t }) {
 			const model = toolRowModel(toolName, block, cwd, home);
@@ -1319,7 +1815,7 @@ window.__ModuleLoader__.load({
 				variant: model.variant,
 				toolName,
 				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconEditOutline16, { size: 14 }),
-				title: model.title,
+				title: t(model.titleKey),
 				summary: model.summary,
 				body: null,
 				output: model.output,
@@ -1331,18 +1827,10 @@ window.__ModuleLoader__.load({
 				inspect
 			});
 		}
-		/**
-		* The file-mutation rows as a plain registrant plugin following the chat
-		* toolview declaration across independent activation and reload lifetimes.
-		*/
+		/** Registers the edit and write conversation rows. */
 		const fileMutationToolview = {
 			name: "file-mutation-toolview",
 			inject: ["slots"],
-			/**
-			* Register the file-mutation row into the Tool-owned keyed view slot
-			* under both mutation tool names.
-			* @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
-			*/
 			apply(ctx) {
 				ctx.slots.inject("tool.call.toolview", function* () {
 					yield ctx.slots.register({
@@ -1361,9 +1849,7 @@ window.__ModuleLoader__.load({
 		//#endregion
 		//#region lib/types/client/tool/toolviews/read-row.js
 		/**
-		* Read row: icon + Read · {path} in the shared ToolRow chrome, with the file's
-		* read card as the row's collapsed-by-default card body. The summary path is an
-		* openable host link when the row names a single file.
+		* Lets users expand a completed read result and open its reported path.
 		*/
 		function ReadRow({ toolName, block, cwd, home, openFile, inspect, t }) {
 			const model = toolRowModel(toolName, block, cwd, home);
@@ -1373,7 +1859,7 @@ window.__ModuleLoader__.load({
 				variant: model.variant,
 				toolName,
 				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconBrowseOutline16, { size: 14 }),
-				title: model.title,
+				title: t(model.titleKey),
 				summary: model.summary,
 				body: null,
 				output: model.output,
@@ -1385,17 +1871,10 @@ window.__ModuleLoader__.load({
 				inspect
 			});
 		}
-		/**
-		* The read row as a plain registrant plugin following the atomic Tool-view
-		* declaration across independent activation and reload lifetimes.
-		*/
+		/** Registers the read tool's conversation row. */
 		const readToolview = {
 			name: "read-toolview",
 			inject: ["slots"],
-			/**
-			* Register the read row into the Tool-owned keyed view slot.
-			* @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
-			*/
 			apply(ctx) {
 				ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({
 					name: "tool.call.toolview",
@@ -1406,18 +1885,11 @@ window.__ModuleLoader__.load({
 		};
 		//#endregion
 		//#region lib/types/client/tool/toolviews/search-row.js
-		const SEARCH_TITLES = {
-			grep: "Grep",
-			glob: "Glob"
+		const SEARCH_TITLE_KEYS = {
+			grep: "tool.title.grep",
+			glob: "tool.title.glob"
 		};
-		/**
-		* Search row: icon + Grep/Glob · {summary} in the shared ToolRow chrome, with the
-		* completed search's card as the row's collapsed-by-default card body (a capped
-		* search's recovery footer rides below it, inside ToolRow). Registered under
-		* both `grep` and `glob`; the derived model's `kind` decides the card shape. A
-		* settled call with no search card surfaces its model-facing text through
-		* ToolRow's Output section, since the keyed SearchRow owns this render slot.
-		*/
+		/** Lets users expand grep or glob results and recover capped searches. */
 		function SearchRow({ toolName, block, inspect, t }) {
 			const model = toolRowModel(toolName, block);
 			const search = searchCardModel(block);
@@ -1426,8 +1898,8 @@ window.__ModuleLoader__.load({
 				variant: model.variant,
 				toolName,
 				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconSearchOutline16, { size: 14 }),
-				title: SEARCH_TITLES[toolName] ?? model.title,
-				summary: search?.title ?? model.summary,
+				title: t(toolName === "grep" ? SEARCH_TITLE_KEYS.grep : toolName === "glob" ? SEARCH_TITLE_KEYS.glob : model.titleKey),
+				summary: model.summary,
 				body: null,
 				output: model.output,
 				errorSummary: model.errorSummary,
@@ -1436,19 +1908,10 @@ window.__ModuleLoader__.load({
 				inspect
 			});
 		}
-		/**
-		* The search view follows the atomic Tool-view declaration across activation
-		* and reload. One component registers under both keys because `grep` and
-		* `glob` are the same visual object discriminated by the result view's `kind`.
-		*/
+		/** Registers the grep and glob conversation rows. */
 		const searchToolview = {
 			name: "search-toolview",
 			inject: ["slots"],
-			/**
-			* Register the search row into the Tool-owned keyed view slot under both
-			* the `grep` and `glob` tool names.
-			* @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
-			*/
 			apply(ctx) {
 				ctx.slots.inject("tool.call.toolview", function* () {
 					yield ctx.slots.register({
@@ -1525,10 +1988,7 @@ window.__ModuleLoader__.load({
 				extra: activeExtra
 			};
 		}
-		/** One-line plan update row (the whole row toggles the call's Input/Output
-		*  sections, ToolRow's unified expand). Non-ok execution states keep the
-		*  shared row's dot semantics — a cancelled call wrote no todo/write, so it
-		*  must not read as a completed update. */
+		/** Summarizes a plan update without presenting a cancelled call as completed. */
 		function TodoRow({ toolName, block, inspect, t }) {
 			const model = toolRowModel(toolName, block);
 			const summary = summarize(("kind" in block ? block.call?.argsRaw : block.argsRaw) ?? "", t) ?? {
@@ -1550,17 +2010,10 @@ window.__ModuleLoader__.load({
 				inspect
 			});
 		}
-		/**
-		* The todo row as a plain registrant plugin following the atomic Tool-view
-		* declaration across independent activation and reload lifetimes.
-		*/
+		/** Registers the todo conversation row. */
 		const todoToolview = {
 			name: "todo-toolview",
 			inject: ["slots"],
-			/**
-			* Register the todo row into the Tool-owned keyed view slot.
-			* @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
-			*/
 			apply(ctx) {
 				ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({
 					name: "tool.call.toolview",
@@ -1571,16 +2024,11 @@ window.__ModuleLoader__.load({
 		};
 		//#endregion
 		//#region lib/types/client/tool/toolviews/web-row.js
-		/** web_fetch reads one URL; web_search queries. Titles are figma literals. */
-		const WEB_TITLES = {
-			web_search: "Search",
-			web_fetch: "Fetch"
+		const WEB_TITLE_KEYS = {
+			web_search: "tool.title.webSearch",
+			web_fetch: "tool.title.webFetch"
 		};
-		/**
-		* Web row: icon + Search/Fetch · {summary} in the shared ToolRow chrome, with
-		* the completed retrieval's web card as the row's collapsed-by-default card
-		* body. The row discriminates on `toolName` only to pick its icon and title.
-		*/
+		/** Lets users expand a completed web search or fetch result. */
 		function WebRow({ toolName, block, inspect, t }) {
 			const model = toolRowModel(toolName, block);
 			const web = webCardModel(block);
@@ -1590,7 +2038,7 @@ window.__ModuleLoader__.load({
 				variant: model.variant,
 				toolName,
 				icon,
-				title: WEB_TITLES[toolName] ?? model.title,
+				title: t(toolName === "web_search" ? WEB_TITLE_KEYS.web_search : toolName === "web_fetch" ? WEB_TITLE_KEYS.web_fetch : model.titleKey),
 				summary: model.summary,
 				body: null,
 				output: model.output,
@@ -1600,17 +2048,10 @@ window.__ModuleLoader__.load({
 				inspect
 			});
 		}
-		/**
-		* The web rows follow the atomic Tool-view declaration across activation and
-		* reload. One WebRow component registers under both web tool names.
-		*/
+		/** Registers the web search and fetch conversation rows. */
 		const webToolview = {
 			name: "web-toolview",
 			inject: ["slots"],
-			/**
-			* Register the web row under both web tool names' keyed toolview holes.
-			* @param ctx - registrant context (disposal rides ctx.effect inside slots.register).
-			*/
 			apply(ctx) {
 				ctx.slots.inject("tool.call.toolview", function* () {
 					yield ctx.slots.register({
@@ -1636,7 +2077,7 @@ window.__ModuleLoader__.load({
 		*/
 		function apply(ctx) {
 			const connection = ctx.get("connection");
-			const toolInject = () => ({ hooks: { hostDescription: connection.hostDescription } });
+			const toolInject = () => ({ hooks: { connectionGeneration: connection.generation } });
 			ctx.slots.inject("conversation.chat.node", () => ctx.slots.register({
 				name: "conversation.chat.node",
 				key: "tool-call",
