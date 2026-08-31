@@ -19,6 +19,8 @@ import com.deepseek.dsh.web.server.AgentContextHolder;
 
 import java.util.UUID;
 
+import java.util.Map;
+
 /**
  * Agent API 控制器 —— 对应原 Harness 的 {@code apiproxy} 网关。
  *
@@ -33,9 +35,11 @@ public class AgentController {
     private static final Logger log = LoggerFactory.getLogger(AgentController.class);
 
     private final AgentContextHolder holder;
+    private final SessionEventRecorder recorder;
 
-    public AgentController(AgentContextHolder holder) {
+    public AgentController(AgentContextHolder holder, SessionEventRecorder recorder) {
         this.holder = holder;
+        this.recorder = recorder;
     }
 
     /**
@@ -53,8 +57,18 @@ public class AgentController {
                     : SessionId.of(request.sessionId());
             ScopeKey scopeKey = ScopeKey.random();
 
+            recorder.record(ctx, sessionId.value(), "user/message",
+                    Map.of("id", "u-" + UUID.randomUUID().toString().substring(0, 8),
+                            "content", request.message(), "source", "browser"));
+
             String reply = agent.run(sessionId, scopeKey, ctx, request.message());
             SessionLog sessionLog = sessions.getOrCreate(sessionId);
+
+            recorder.record(ctx, sessionId.value(), "assistant/message",
+                    Map.of("message", Map.of("id", "a-" + UUID.randomUUID().toString().substring(0, 8),
+                            "content", reply),
+                            "turn", 1, "step", 0));
+
             var projection = sessionLog.deriveMessages();
 
             long totalTokens = ctx.get(TokenMeterService.class)
