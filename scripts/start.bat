@@ -44,14 +44,16 @@ for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /v /c:"#" "%ROOT%\.env
 if not defined DSH_MODEL set "DSH_MODEL=deepseek-chat"
 if not defined DSH_BASE_URL set "DSH_BASE_URL=https://api.deepseek.com"
 
+rem free port %PORT% BEFORE build: a running instance locks jars in the
+rem local repo, which makes mvn clean install fail to overwrite them.
+call :kill_port
+
 rem recompile backend before launch (clean install picks up any .java/pom change), then refresh classpath
 echo [start] recompiling backend (mvn clean install)... 1>&2
 call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app -am clean install -DskipTests -Dmaven.test.skip=true || ( echo [start] mvn clean install failed 1>&2 & exit /b 1 )
 call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%CP_FILE%" || ( echo [start] mvn build-classpath failed 1>&2 & exit /b 1 )
 
 echo [start] launching web server: port=%PORT% model=%DSH_MODEL% 1>&2
-
-call :kill_port
 
 rem Launch via PowerShell + ProcessStartInfo, redirect output to capture token URL.
 powershell -NoProfile -Command "$cp=[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp='%ROOT%\dsh-app\target\classes;'+$cp; $q=[string][char]34; $psi=New-Object Diagnostics.ProcessStartInfo; $psi.FileName='%JAVABIN%'; $psi.Arguments='-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dserver.port=%PORT% -cp '+$q+$cp+$q+' com.deepseek.dsh.app.boot.DshApplication'; $psi.UseShellExecute=$false; $psi.RedirectStandardOutput=$true; $psi.RedirectStandardError=$true; $p=[Diagnostics.Process]::Start($psi); $p.ErrorData.Add_DataReceivedHandler({param($s,$e); if($e.Data){[Console]::Error.WriteLine($e.Data); if($e.Data -match 'authentication URL:'){$url=($e.Data -replace '.*authentication URL: ',''); [Console]::Error.WriteLine(''); [Console]::Error.WriteLine('================================================'); [Console]::Error.WriteLine($url); [Console]::Error.WriteLine('================================================'); [Console]::Error.WriteLine('')}}}); $p.OutputData.Add_DataReceivedHandler({param($s,$e); if($e.Data){[Console]::Error.WriteLine($e.Data)}}); $p.BeginErrorReadLine(); $p.BeginOutputReadLine(); $p.WaitForExit(); exit $p.ExitCode"
