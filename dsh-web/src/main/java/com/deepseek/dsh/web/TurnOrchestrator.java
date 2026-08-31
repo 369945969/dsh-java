@@ -76,17 +76,24 @@ public final class TurnOrchestrator {
     }
 
     public void prepareTurn(String sessionId, String text, int turn, String model,
-                            SessionEventSink sink) {
+                            String rpcId, SessionEventSink sink) {
         setupWorkspace(sessionId);
         if (turn == 0) {
             injectRequestHeader(sessionId, model, sink);
             injectContextMessages(sessionId, sink);
         }
         sink.emit(sessionId, "turn/start", Map.of("turn", turn));
+        // source.rpcId 与前端 beginSubmission 的 requestId 对齐：前端据此把本地
+        // 乐观 echo 与这条 durable user/message 配对 retire（observeSubmissionEvent
+        // 要求 source.kind==='user' 且 source.rpcId 为字符串）。缺 rpcId 则 echo
+        // 不被 retire，会与 durable 消息同时渲染，致"发送内容显示两次"。
+        Map<String, Object> source = new java.util.LinkedHashMap<>();
+        source.put("kind", "user");
+        if (rpcId != null && !rpcId.isBlank()) source.put("rpcId", rpcId);
         sink.emit(sessionId, "user/message", Map.of(
                 "id", "u-" + UUID.randomUUID().toString().substring(0, 8),
                 "content", List.of(Map.of("type", "text", "text", text)),
-                "source", Map.of("kind", "user")));
+                "source", source));
     }
 
     public void runAgent(String sessionId, String text, int turn, String model,

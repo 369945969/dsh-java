@@ -687,7 +687,8 @@ public class ApiproxyController {
         }
 
         String model = sessionModelSelection.getOrDefault(sessionId, currentModelName());
-        orch.prepareTurn(sessionId, text, turn, model, this::sendSessionEvent);
+        String rpcId = strOf(p.get("requestId"));
+        orch.prepareTurn(sessionId, text, turn, model, rpcId, this::sendSessionEvent);
         sendSessionProjection(sessionId, "title", text.length() > 40 ? text.substring(0, 40) + "…" : text);
         remoteMux.broadcastEmit("api-session/status", new Object[]{sessionId, true});
         try { downlink.sendHostFrame(uuid(), hostFrame("host/session-status",
