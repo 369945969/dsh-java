@@ -224,6 +224,8 @@ public final class BaseBundle {
                                 new com.deepseek.dsh.telemetry.TelemetryMiddleware(telemetry))),
                 toolRegistry);
         loop.setSystemPrompt(defaultSystemPrompt());
+        // subagent 委派工具：让主 agent 能把子任务委派给子 agent（ForkInProcessProvider 已注册为 SubagentService）
+        toolRegistry.register(new com.deepseek.dsh.subagent.tool.SubagentTaskTool(loop));
         return loop;
     }
 
