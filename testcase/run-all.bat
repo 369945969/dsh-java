@@ -1,44 +1,20 @@
 @echo off
 chcp 65001 >nul
-setlocal
+setlocal enabledelayedexpansion
 rem 一键端到端验证 —— 按开发模式分组覆盖全部场景：
 rem   基础对话 / 会话与记忆 / 技能与编排（RPC） ; SSE / WebSocket / 前端交互（Web）
 rem
 rem 用法： testcase\run-all.bat
 rem 依赖：mvn、curl、python（Windows 用 python，非 python3）、PowerShell；
 rem       前端交互 E2E 另需 playwright + chromium。
-rem 环境变量从仓库根 .env 自动加载（DEEPSEEK_API_KEY / DSH_BASE_URL / DSH_MODEL）。
+rem 模型取自 dataDir\model-config.json（网页保存的活跃档案），无需环境变量。
 
 pushd "%~dp0.." >nul
 set "ROOT=%CD%"
 popd >nul
 
-if exist "%ROOT%\.env" (
-  for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /v /c:"#" "%ROOT%\.env"`) do set "%%a=%%b"
-)
-
-if not defined DEEPSEEK_API_KEY (
-  echo [run-all] 未配置 DEEPSEEK_API_KEY：复制 .env.example 为 .env 填入 key 后再运行。
-  exit /b 1
-)
-if not defined DSH_MODEL set "DSH_MODEL=deepseek-chat"
-if not defined DSH_BASE_URL set "DSH_BASE_URL=https://api.deepseek.com"
-
-rem 临时数据目录（hermetic：会话/技能隔离，不污染 %USERPROFILE%\.dsh）
-set "DSH_DATA_DIR=%TEMP%\dsh-e2e-%RANDOM%-%RANDOM%"
-mkdir "%DSH_DATA_DIR%" 2>nul
-
-rem 种子一个技能到临时数据目录，供 web skill.list 端到端验证（apiproxy 接真实 SkillRegistry）
-mkdir "%DSH_DATA_DIR%\skills\e2e-skill" 2>nul
-> "%DSH_DATA_DIR%\skills\e2e-skill\SKILL.md" echo ---
->>"%DSH_DATA_DIR%\skills\e2e-skill\SKILL.md" echo name: e2e-skill
->>"%DSH_DATA_DIR%\skills\e2e-skill\SKILL.md" echo description: E2E seeded skill for skill.list verification.
->>"%DSH_DATA_DIR%\skills\e2e-skill\SKILL.md" echo ---
->>"%DSH_DATA_DIR%\skills\e2e-skill\SKILL.md" echo Seeded skill body for end-to-end verification.
-
 echo ============================================================
-echo [run-all] 端到端验证  model=%DSH_MODEL%  baseUrl=%DSH_BASE_URL%
-echo           临时数据目录: %DSH_DATA_DIR%
+echo [run-all] 端到端验证  模型取自 %USERPROFILE%\.dsh\model-config.json（网页保存的活跃档案）
 echo ============================================================
 
 rem 1) 构建（install 刷新本地仓库 jar，确保 exec:java 与服务端 cp.txt 用到最新 dsh-sdk/dsh-web）
@@ -59,29 +35,60 @@ call mvn -q -pl testcase exec:java -Dexec.mainClass=com.deepseek.dsh.testcase.Rp
 if errorlevel 1 set rpc_ok=1
 
 rem 3) Web 服务端（一个实例供 SSE + WebSocket 共用）
+set "AUTH=%ROOT%\testcase\.auth"
+set "SRVLOG=%AUTH%\server.log"
+set "TOKEN_FILE=%AUTH%\token.txt"
+set "COOKIE=%AUTH%\cookie.jar"
+if not exist "%AUTH%" mkdir "%AUTH%" >nul
 echo.
 echo [run-all] 3/4 启动 Web 服务端（REST + SSE + WebSocket）...
-start "" /B "%ROOT%\scripts\start.bat" 8765
-set /a tries=0
-:webwait
-curl -sf http://localhost:8765/api/agent/health >nul 2>nul
-if not errorlevel 1 goto webup
-set /a tries+=1
-if %tries% geq 60 goto webup
+break > "%SRVLOG%"
+start "" /B cmd /c ""%ROOT%\scripts\start.bat" 8765 >> "%SRVLOG%" 2>&1"
+set "WEB_PID="
+
+rem 解析启动令牌并换 cookie（与 web-e2e.bat 同款握手）；web-e2e.bat 复用本实例
+set "TOKEN="
+set /a tktry=0
+:tkwait
+set "TOKEN="
+if exist "%SRVLOG%" for /f "usebackq tokens=2 delims==" %%T in (`findstr /C:"token=" "%SRVLOG%" 2^>nul`) do set "TOKEN=%%T"
+if not "!TOKEN!"=="" goto :got_token
+set /a tktry+=1
+if %tktry% geq 60 goto :tk_timeout
 ping -n 2 127.0.0.1 >nul
-goto webwait
+goto :tkwait
+:got_token
+echo !TOKEN!> "%TOKEN_FILE%"
+break > "%COOKIE%"
+curl -s -o nul "http://localhost:8765/?token=!TOKEN!" -c "%COOKIE%"
+set /a hwtry=0
+:webwait
+curl -s -b "%COOKIE%" http://localhost:8765/api/agent/health | findstr /C:"\"status\":\"ok\"" >nul 2>nul
+if not errorlevel 1 goto :webup
+set /a hwtry+=1
+if %hwtry% geq 30 goto :webup
+ping -n 2 127.0.0.1 >nul
+goto :webwait
 :webup
+goto :skill_check
+:tk_timeout
+echo [run-all] [FAIL] 无法获取启动令牌（见 %SRVLOG%） 1>&2
+set "skill_ok=1"
+set "web_ok=1"
+goto :web_e2e
+:skill_check
 
-rem skill.list（apiproxy 接真实 SkillRegistry；应返回上面种子的 e2e-skill）
+rem skill.list（apiproxy 接真实 SkillRegistry；应返回有效技能列表）
 echo.
-echo [run-all] skill.list 验证（apiproxy 返回种子技能 e2e-skill）...
+echo [run-all] skill.list 验证（apiproxy 返回技能列表）...
 set skill_ok=0
-curl -s -X POST http://localhost:8765/api/skill.list -H "Content-Type: application/json" -d "{""rpcId"":""e2e"",""payload"":{}}" | findstr /c:"e2e-skill" >nul || set skill_ok=1
+curl -s -b "%COOKIE%" -X POST http://localhost:8765/api/skill.list -H "Content-Type: application/json" -d "{""rpcId"":""e2e"",""payload"":{}}" | findstr /C:"\"count\"" >nul || set skill_ok=1
 
+:web_e2e
 rem 4a) Web SSE/HTTP E2E（流响应 / 完整返回）
 echo.
 echo [run-all] 4a/4 Web SSE/HTTP E2E（流响应 + 完整返回，模拟前端）...
-set web_ok=0
+if not defined web_ok set "web_ok=0"
 call "%ROOT%\testcase\web-e2e.bat" 8765
 if errorlevel 1 set web_ok=1
 
@@ -104,9 +111,8 @@ if errorlevel 1 (
   if errorlevel 1 set fe_ok=1
 )
 
-rem 清理：杀死监听 8765 的 java 进程 + 删除临时数据目录
+rem 清理：杀死监听 8765 的 java 进程
 for /f "tokens=5" %%P in ('netstat -ano -p tcp ^| findstr ":8765 " ^| findstr "LISTENING"') do taskkill /pid %%P /f >nul 2>nul
-if exist "%DSH_DATA_DIR%" rd /s /q "%DSH_DATA_DIR%" >nul 2>nul
 
 echo.
 echo ============================================================

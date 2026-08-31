@@ -7,7 +7,8 @@ rem dsh-app/src/main/resources/static, served same-origin by the backend; no run
 rem Open http://localhost:8765 to use the frontend against the backend agent.
 rem
 rem Usage: scripts\start.bat [port]
-rem Env vars loaded from repo root .env (DEEPSEEK_API_KEY / DSH_BASE_URL / DSH_MODEL).
+rem Model/key/endpoint come from dataDir\model-config.json (the active profile
+rem saved via the web "Add custom model" page); no env vars needed.
 
 pushd "%~dp0.." >nul
 set "ROOT=%CD%"
@@ -37,13 +38,6 @@ if not "%JV_MAJOR%"=="21" (
 )
 echo [start] java %JV_VER% ok 1>&2
 
-rem load .env if present (do not commit secrets)
-if not exist "%ROOT%\.env" goto :skip_env
-for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /v /c:"#" "%ROOT%\.env"`) do set "%%a=%%b"
-:skip_env
-if not defined DSH_MODEL set "DSH_MODEL=deepseek-chat"
-if not defined DSH_BASE_URL set "DSH_BASE_URL=https://api.deepseek.com"
-
 rem free port %PORT% BEFORE build: a running instance locks jars in the
 rem local repo, which makes mvn clean install fail to overwrite them.
 call :kill_port
@@ -53,7 +47,7 @@ echo [start] recompiling backend (mvn clean install)... 1>&2
 call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app -am clean install -DskipTests -Dmaven.test.skip=true || ( echo [start] mvn clean install failed 1>&2 & exit /b 1 )
 call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%CP_FILE%" || ( echo [start] mvn build-classpath failed 1>&2 & exit /b 1 )
 
-echo [start] launching web server: port=%PORT% model=%DSH_MODEL% 1>&2
+echo [start] launching web server: port=%PORT% (model from model-config.json) 1>&2
 
 rem Launch via PowerShell: pipe java stdout+stderr, highlight token auth URL.
 powershell -NoProfile -Command "$cp=[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp='%ROOT%\dsh-app\target\classes;'+$cp; & '%JAVABIN%' '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.encoding=UTF-8' '-Dserver.port=%PORT%' -cp $cp com.deepseek.dsh.app.boot.DshApplication 2>&1 | ForEach-Object { $line=$_.ToString(); [Console]::Error.WriteLine($line); if($line -match 'authentication URL:'){$url=($line -replace '.*authentication URL: ',''); [Console]::Error.WriteLine(''); [Console]::Error.WriteLine('================================================'); [Console]::Error.WriteLine($url); [Console]::Error.WriteLine('================================================'); [Console]::Error.WriteLine('')}}; exit $LASTEXITCODE"

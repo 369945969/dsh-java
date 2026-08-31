@@ -8,10 +8,8 @@ rem
 rem Method surface (automation-only minimal set): session.create / session.run / session.list / shutdown
 rem
 rem Usage: scripts\start-acp.bat
-rem Env vars (auto-loaded from repo root .env, or set manually):
-rem   DEEPSEEK_API_KEY  model API key (required)
-rem   DSH_BASE_URL      OpenAI-compatible endpoint
-rem   DSH_MODEL         model name
+rem Model/key/endpoint come from dataDir\model-config.json (the active profile
+rem saved via the web "Add custom model" page); no env vars needed.
 
 set "SELF=start-acp"
 
@@ -41,19 +39,12 @@ if not "%JV_MAJOR%"=="21" (
 )
 echo [%SELF%] java %JV_VER% ok 1>&2
 
-rem load .env if present (do not commit secrets)
-if not exist "%ROOT%\.env" goto :skip_env
-for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /v /c:"#" "%ROOT%\.env"`) do set "%%a=%%b"
-:skip_env
-if not defined DSH_MODEL set "DSH_MODEL=deepseek-chat"
-if not defined DSH_BASE_URL set "DSH_BASE_URL=https://api.deepseek.com"
-
 rem recompile backend before launch (clean install picks up any .java/pom change), then refresh classpath
 echo [%SELF%] recompiling backend (mvn clean install)... 1>&2
 call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app -am clean install -DskipTests -Dmaven.test.skip=true || ( echo [%SELF%] mvn clean install failed 1>&2 & exit /b 1 )
 call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%CP_FILE%" || ( echo [%SELF%] mvn build-classpath failed 1>&2 & exit /b 1 )
 
-echo [%SELF%] launching ACP server: model=%DSH_MODEL% baseUrl=%DSH_BASE_URL% 1>&2
+echo [%SELF%] launching ACP server (model from model-config.json) 1>&2
 
 rem Classpath may exceed 8KB and the .m2 path contains spaces. java @argfile cannot quote-group
 rem backslashed Windows paths, so launch via PowerShell + ProcessStartInfo (CreateProcess ~32KB line,

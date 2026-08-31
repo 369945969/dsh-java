@@ -5,13 +5,12 @@
 # 打开 http://localhost:8765 即可用原版前端对话后端 agent。
 #
 # 用法： scripts/start.sh [port]
-# 环境变量从仓库根 .env 自动加载（DEEPSEEK_API_KEY / DSH_BASE_URL / DSH_MODEL）。
+# 模型/key/端点取自 dataDir/model-config.json（网页「添加自定义模型」保存的活跃档案），
+# 不再从环境变量读取。
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${1:-8765}"
 CP_FILE="$ROOT/dsh-app/target/rpc-cp.txt"
-
-if [ -f "$ROOT/.env" ]; then set -a; . "$ROOT/.env"; set +a; fi
 
 # 每次启动前重新编译后端（clean install 拾取任意 .java/pom 改动），再刷新 classpath
 echo "[start] 重新编译后端（mvn clean install）..." >&2

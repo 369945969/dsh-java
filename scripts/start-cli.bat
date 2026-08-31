@@ -6,10 +6,8 @@ rem Reads user input line-by-line from stdin, drives the agent conversation, pri
 rem Supports /exit, /new, /tokens; session memory persists across turns.
 rem
 rem Usage: scripts\start-cli.bat
-rem Env vars (auto-loaded from repo root .env, or set manually):
-rem   DEEPSEEK_API_KEY  model API key (required)
-rem   DSH_BASE_URL      OpenAI-compatible endpoint
-rem   DSH_MODEL         model name
+rem Model/key/endpoint come from dataDir\model-config.json (the active profile
+rem saved via the web "Add custom model" page); no env vars needed.
 
 set "SELF=start-cli"
 
@@ -39,19 +37,12 @@ if not "%JV_MAJOR%"=="21" (
 )
 echo [%SELF%] java %JV_VER% ok 1>&2
 
-rem load .env if present (do not commit secrets)
-if not exist "%ROOT%\.env" goto :skip_env
-for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /v /c:"#" "%ROOT%\.env"`) do set "%%a=%%b"
-:skip_env
-if not defined DSH_MODEL set "DSH_MODEL=deepseek-chat"
-if not defined DSH_BASE_URL set "DSH_BASE_URL=https://api.deepseek.com"
-
 rem recompile backend before launch (clean install picks up any .java/pom change), then refresh classpath
 echo [%SELF%] recompiling backend (mvn clean install)... 1>&2
 call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app -am clean install -DskipTests -Dmaven.test.skip=true || ( echo [%SELF%] mvn clean install failed 1>&2 & exit /b 1 )
 call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%CP_FILE%" || ( echo [%SELF%] mvn build-classpath failed 1>&2 & exit /b 1 )
 
-echo [%SELF%] launching CLI REPL: model=%DSH_MODEL% baseUrl=%DSH_BASE_URL% 1>&2
+echo [%SELF%] launching CLI REPL (model from model-config.json) 1>&2
 
 rem 用 PowerShell 写 argfile（正确引用含空格的 classpath），再用 java @argfile 直接启动。
 rem 不经 PowerShell Process.Start 启动 java，使 java 直接继承 cmd 控制台 → System.console()
