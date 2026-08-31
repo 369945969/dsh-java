@@ -83,11 +83,6 @@ public class ApiproxyController {
     /** 每会话选定的模型（session.selectModel 写入）；runTurn 读取，缺省回退 active profile 的 model。 */
     private final ConcurrentMap<String, String> sessionModelSelection = new ConcurrentHashMap<>();
 
-    /** provider /models 发现到的模型清单缓存（带 TTL，避免每次开 /model 都打网络/触发限流）。 */
-    private volatile List<Map<String, Object>> discoveredModels = List.of();
-    private volatile long discoveredAt = 0L;
-    private static final long DISCOVER_TTL_MS = 60_000L;
-
     /** 系统 agent 预设名单（id/显示名/说明）。用户预设存于 ~/.dsh/presets/*.yml。 */
     private static final String[][] SYSTEM_PRESETS = {
             {"standard", "标准模式", "功能完整的编码 Agent，支持文件编辑、Shell、文件与网页检索、Skills、计划、目标、子代理和工作流。"},
@@ -201,7 +196,7 @@ public class ApiproxyController {
                 case "llm.providers" -> response(rpcId, ok(llmProviders()));
                 case "llm.configurableProviders" -> response(rpcId, ok(llmConfigurableProviders()));
                 case "llm.models" -> response(rpcId, ok(sessionModels()));
-                case "llm.discoverModels" -> response(rpcId, ok(Map.of("models", discoverModels())));
+                case "llm.discoverModels" -> response(rpcId, ok(Map.of("models", List.of())));
                 case "credentials.describe" -> response(rpcId, ok(credentialDescribe(payload)));
                 case "credentials.set" -> response(rpcId, ok(credentialSet(payload)));
                 case "credentials.unset" -> response(rpcId, ok(credentialUnset(payload)));
@@ -609,8 +604,8 @@ public class ApiproxyController {
                 "groups", List.of(group), "failures", List.of());
     }
 
-    /** 合并 profile 自带 models + provider /models 发现到的模型（按 id 去重，含当前模型）。
-     *  使网页保存的单模型 profile 也能在 /model 弹窗看到并切换到 provider 的其他模型。 */
+    /** /model 可选模型：仅 active profile 配置过的 models 数组（+ 当前模型，按 id 去重）。
+     *  不拉 provider /models 发现到的模型——只切换用户已配置的模型。 */
     private List<Map<String, Object>> selectableModels(String currentModel) {
         List<Map<String, Object>> models = new ArrayList<>();
         java.util.Set<String> seen = new java.util.LinkedHashSet<>();
@@ -626,11 +621,6 @@ public class ApiproxyController {
                 entry.put("name", nameObj == null || String.valueOf(nameObj).isEmpty() ? id : String.valueOf(nameObj));
                 models.add(entry);
             }
-        }
-        for (Map<String, Object> d : discoverModels()) {
-            String id = String.valueOf(d.get("id"));
-            if (id.isEmpty() || "null".equals(id) || !seen.add(id)) continue;
-            models.add(new LinkedHashMap<>(d));
         }
         if (currentModel != null && !currentModel.isBlank() && seen.add(currentModel)) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -1174,61 +1164,6 @@ public class ApiproxyController {
     private ModelProfile activeProfile() {
         ModelProfileStore s = storeOrNone();
         return s == null ? null : s.active().orElse(null);
-    }
-
-    /**
-     * 发现 active profile 所接 provider 的可用模型（OpenAI 兼容 GET {baseUrl}/models）。
-     * 带 TTL 缓存；失败保留上次成功结果，不缓存空失败，避免一次网络抖动清空 /model 选项。
-     * 使网页保存的单模型 profile 也能在 /model 弹窗里看到并切换到 provider 的其他模型。
-     */
-    private List<Map<String, Object>> discoverModels() {
-        ModelProfile ap = activeProfile();
-        if (ap == null) return List.of();
-        String baseUrl = ap.baseUrl();
-        String apiKey = ap.apiKey();
-        if (baseUrl == null || baseUrl.isBlank() || apiKey == null || apiKey.isBlank()) return List.of();
-        long now = System.currentTimeMillis();
-        if (now - discoveredAt < DISCOVER_TTL_MS) return discoveredModels;
-        List<Map<String, Object>> out = new ArrayList<>();
-        boolean ok = false;
-        try {
-            String url = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                    .connectTimeout(java.time.Duration.ofSeconds(10)).build();
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create(url + "/models"))
-                    .timeout(java.time.Duration.ofSeconds(15))
-                    .header("Authorization", "Bearer " + apiKey)
-                    .GET().build();
-            java.net.http.HttpResponse<String> resp = client.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() == 200) {
-                ok = true;
-                var root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(resp.body());
-                var data = root.path("data");
-                if (data.isArray()) {
-                    for (var n : data) {
-                        String id = n.path("id").asText("");
-                        if (!id.isBlank()) {
-                            Map<String, Object> m = new LinkedHashMap<>();
-                            m.put("id", id);
-                            m.put("name", n.path("name").asText(id));
-                            out.add(m);
-                        }
-                    }
-                }
-            } else {
-                log.warn("discoverModels HTTP {}: {}", resp.statusCode(), resp.body().lines().findFirst().orElse(""));
-            }
-        } catch (Exception e) {
-            log.warn("discoverModels failed: {}", e.toString());
-        }
-        if (ok) {
-            discoveredModels = out;
-            discoveredAt = now;
-            return out;
-        }
-        // 失败：沿用上次成功缓存（可能为空），不更新时间戳，下次调用立即重试
-        return discoveredModels;
     }
 
     /** route → 档案 id；ensureRoutes 已为每个档案建立持久化 route 并填入此表。 */
