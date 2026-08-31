@@ -994,10 +994,12 @@ public class ApiproxyController {
     private Map<String, Object> settingsDescribe() {
         // writable=true 使前端「设置→模型」页解锁写入控件；hasDocument=true 表示存在可写文档。
         // 命名空间 llm-pi-ai 反映模型档案；ui-onboarding 承载欢迎声明确认版本（缺失则页面进入 ready 而非 unavailable）。
+        // agent-loop / bash / web-search-deepseek / subagent：复刻 harness 设置页四个插件配置卡片。
         return Map.of(
                 "writable", true,
                 "hasDocument", true,
-                "namespaces", List.of(llmPiAiNamespace(), uiOnboardingNamespace(), agentPresetsNamespace()));
+                "namespaces", List.of(llmPiAiNamespace(), uiOnboardingNamespace(), agentPresetsNamespace(),
+                        agentLoopNamespace(), bashNamespace(), webSearchNamespace(), subagentNamespace()));
     }
 
     private Map<String, Object> openSettingsDocument() {
@@ -1066,7 +1068,43 @@ public class ApiproxyController {
 
     private static void persistSet(SettingsService s, String ns, String field, Object val) {
         if (s == null) return;
-        s.set(ns, field, String.valueOf(val));
+        String stored;
+        if (val == null) stored = "";
+        else if (val instanceof String) stored = (String) val;
+        else if (val instanceof Number || val instanceof Boolean) stored = String.valueOf(val);
+        else {
+            try { stored = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(val); }
+            catch (Exception e) { stored = String.valueOf(val); }
+        }
+        s.set(ns, field, stored);
+    }
+
+    /** 数字字段按 number 读回（SettingsService 只存 String，故读回需强转）。 */
+    private static Double numOrNull(String v) {
+        if (v == null || v.isBlank()) return null;
+        try { return Double.valueOf(v); } catch (Exception e) { return null; }
+    }
+
+    private static Boolean boolOrNull(String v) {
+        if (v == null || v.isBlank()) return null;
+        return Boolean.valueOf(v);
+    }
+
+    /** allowedModels 等 array 字段以 JSON 字符串持久化，读回还原为 List。 */
+    private static List<Map<String, Object>> jsonListOrNull(String v) {
+        if (v == null || v.isBlank()) return null;
+        try {
+            var n = new com.fasterxml.jackson.databind.ObjectMapper().readTree(v);
+            if (!n.isArray()) return null;
+            List<Map<String, Object>> out = new ArrayList<>();
+            for (var e : n) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", e.path("id").asText(""));
+                if (!e.path("name").asText("").isEmpty()) m.put("name", e.path("name").asText(""));
+                out.add(m);
+            }
+            return out;
+        } catch (Exception ex) { return null; }
     }
 
     @SuppressWarnings("unchecked")
@@ -1240,6 +1278,68 @@ public class ApiproxyController {
         Map<String, Object> value = new LinkedHashMap<>();
         if (s != null) s.getAll("agent-presets").forEach((k, v) -> value.put(k, v));
         return namespaceView("agent-presets", value);
+    }
+
+    // ---- 复刻 harness 设置页四个插件配置卡片：agent-loop / bash / web-search-deepseek / subagent ----
+
+    /** agent-loop：每 step 并行工具调用上限。 */
+    private Map<String, Object> agentLoopNamespace() {
+        SettingsService s = settingsService();
+        Map<String, Object> value = new LinkedHashMap<>();
+        if (s != null) value.put("maxParallelToolCalls", numOrNull(s.getAll("agent-loop").get("maxParallelToolCalls")));
+        Map<String, Object> dict = new LinkedHashMap<>();
+        dict.put("maxParallelToolCalls", schemaNode("number"));
+        return namespaceView("agent-loop", value, schemaNode("object", "dict", dict));
+    }
+
+    /** bash（终端）：前台命令超时 ms + 每流输出上限 bytes。 */
+    private Map<String, Object> bashNamespace() {
+        SettingsService s = settingsService();
+        Map<String, Object> value = new LinkedHashMap<>();
+        if (s != null) {
+            Map<String, String> all = s.getAll("bash");
+            value.put("timeoutMs", numOrNull(all.get("timeoutMs")));
+            value.put("maxOutputBytes", numOrNull(all.get("maxOutputBytes")));
+        }
+        Map<String, Object> dict = new LinkedHashMap<>();
+        dict.put("timeoutMs", schemaNode("number"));
+        dict.put("maxOutputBytes", schemaNode("number"));
+        return namespaceView("bash", value, schemaNode("object", "dict", dict));
+    }
+
+    /** web-search-deepseek：搜索 provider 的 key 引用、端点、单次请求最大搜索数。 */
+    private Map<String, Object> webSearchNamespace() {
+        SettingsService s = settingsService();
+        Map<String, Object> value = new LinkedHashMap<>();
+        if (s != null) {
+            Map<String, String> all = s.getAll("web-search-deepseek");
+            value.put("apiKeyEnv", all.get("apiKeyEnv"));
+            value.put("baseURL", all.get("baseURL"));
+            value.put("maxUses", numOrNull(all.get("maxUses")));
+        }
+        Map<String, Object> dict = new LinkedHashMap<>();
+        dict.put("apiKeyEnv", schemaNode("string"));
+        dict.put("baseURL", schemaNode("string"));
+        dict.put("maxUses", schemaNode("number"));
+        return namespaceView("web-search-deepseek", value, schemaNode("object", "dict", dict));
+    }
+
+    /** subagent：是否对新会话启用模型面向的子路由选择 + 允许的子模型清单。 */
+    private Map<String, Object> subagentNamespace() {
+        SettingsService s = settingsService();
+        Map<String, Object> value = new LinkedHashMap<>();
+        if (s != null) {
+            Map<String, String> all = s.getAll("subagent");
+            value.put("enabled", boolOrNull(all.get("enabled")));
+            value.put("allowedModels", jsonListOrNull(all.get("allowedModels")));
+        }
+        Map<String, Object> modelDict = new LinkedHashMap<>();
+        modelDict.put("id", schemaNode("string"));
+        modelDict.put("name", schemaNode("string"));
+        Map<String, Object> dict = new LinkedHashMap<>();
+        dict.put("enabled", schemaNode("boolean"));
+        dict.put("allowedModels", schemaNode("array", "inner", schemaNode("object", "dict", modelDict)));
+        return namespaceView("subagent", value, schemaNode("object", "dict", dict));
     }
 
     private Map<String, Object> profileView(String route, ModelProfile p) {
