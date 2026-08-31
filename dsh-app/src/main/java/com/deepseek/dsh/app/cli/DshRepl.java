@@ -337,7 +337,7 @@ public final class DshRepl {
         int turn = orchestrator.nextTurn(sid);
         String model = context.get(ModelConfig.class).map(ModelConfig::model).orElse("deepseek-chat");
         var sink = new CliEventSink(sessions, System.out);
-        orchestrator.prepareTurn(sid, userMessage, turn, model, sink);
+        orchestrator.prepareTurn(sid, userMessage, turn, model, null, sink);
         orchestrator.runAgent(sid, userMessage, turn, model, sink);
     }
 

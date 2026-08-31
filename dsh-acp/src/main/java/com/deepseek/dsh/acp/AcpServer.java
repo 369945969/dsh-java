@@ -63,7 +63,7 @@ public final class AcpServer {
             Sessions svc = context.require(Sessions.class);
             var sink = new AcpEventSink(svc);
             int turn = orchestrator.nextTurn(sid);
-            orchestrator.prepareTurn(sid, message, turn, model, sink);
+            orchestrator.prepareTurn(sid, message, turn, model, null, sink);
             orchestrator.runAgent(sid, message, turn, model, sink);
             String reply = "";
             SessionLog slog = svc.getOrCreate(sessionId);
