@@ -32,6 +32,7 @@ public final class SessionManager implements Plugin, Sessions, Service {
 
     private final SessionStore store;
     private final ConcurrentMap<SessionId, SessionLog> active = new ConcurrentHashMap<>();
+    private Context ctx;
 
     public SessionManager(SessionStore store) {
         this.store = store;
@@ -39,8 +40,12 @@ public final class SessionManager implements Plugin, Sessions, Service {
 
     @Override
     public Disposable apply(Context ctx) {
+        this.ctx = ctx;
         Disposable reg = ctx.register(Sessions.class, this);
-        return reg;
+        return () -> {
+            this.ctx = null;
+            reg.dispose();
+        };
     }
 
     @Override
@@ -48,6 +53,7 @@ public final class SessionManager implements Plugin, Sessions, Service {
         SessionId id = SessionId.of(java.util.UUID.randomUUID().toString());
         SessionLog log = new SessionLog(id);
         active.put(id, log);
+        emitCreated(id);
         return log;
     }
 
@@ -68,8 +74,18 @@ public final class SessionManager implements Plugin, Sessions, Service {
             } catch (IOException ex) {
                 log.warn("Failed to replay session {} history: {}", id, ex.toString());
             }
+            // 物化出的会话若为全新空白（无重放历史），视为新会话 —— 如进程内子 agent 委派
+            if (fresh.size() == 0) {
+                emitCreated(id);
+            }
             return fresh;
         });
+    }
+
+    private void emitCreated(SessionId id) {
+        if (ctx != null) {
+            ctx.events().emit(new SessionCreatedEvent(id));
+        }
     }
 
     @Override

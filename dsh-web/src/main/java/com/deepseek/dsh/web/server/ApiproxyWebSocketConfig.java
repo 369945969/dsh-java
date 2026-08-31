@@ -23,25 +23,33 @@ public class ApiproxyWebSocketConfig implements WebSocketConfigurer {
 
     private final ApiproxyDownlinkRegistry registry;
     private final AgentContextHolder holder;
+    private final SessionCreatedBroadcaster sessionBroadcaster;
 
-    public ApiproxyWebSocketConfig(ApiproxyDownlinkRegistry registry, AgentContextHolder holder) {
+    public ApiproxyWebSocketConfig(ApiproxyDownlinkRegistry registry, AgentContextHolder holder,
+                                   SessionCreatedBroadcaster sessionBroadcaster) {
         this.registry = registry;
         this.holder = holder;
+        this.sessionBroadcaster = sessionBroadcaster;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(new DownlinkHandler(this.registry, this.holder), "/api/events.mux").setAllowedOrigins("*");
-        registry.addHandler(new DownlinkHandler(this.registry, this.holder), "/api/events.host").setAllowedOrigins("*");
+        registry.addHandler(new DownlinkHandler(this.registry, this.holder, this.sessionBroadcaster),
+                "/api/events.mux").setAllowedOrigins("*");
+        registry.addHandler(new DownlinkHandler(this.registry, this.holder, this.sessionBroadcaster),
+                "/api/events.host").setAllowedOrigins("*");
     }
 
     static final class DownlinkHandler extends TextWebSocketHandler {
         private final ApiproxyDownlinkRegistry registry;
         private final AgentContextHolder holder;
+        private final SessionCreatedBroadcaster sessionBroadcaster;
 
-        DownlinkHandler(ApiproxyDownlinkRegistry registry, AgentContextHolder holder) {
+        DownlinkHandler(ApiproxyDownlinkRegistry registry, AgentContextHolder holder,
+                        SessionCreatedBroadcaster sessionBroadcaster) {
             this.registry = registry;
             this.holder = holder;
+            this.sessionBroadcaster = sessionBroadcaster;
         }
 
         @Override
@@ -51,6 +59,8 @@ public class ApiproxyWebSocketConfig implements WebSocketConfigurer {
                 Thread.startVirtualThread(() -> pushAllSessionTitles());
             } else {
                 registry.registerHost(session);
+                // host 已连接即订阅会话创建事件，使后续任意入口新建会话都能实时推送 session-added
+                sessionBroadcaster.ensureSubscribed();
             }
         }
 

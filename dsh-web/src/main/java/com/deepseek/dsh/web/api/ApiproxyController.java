@@ -42,7 +42,8 @@ import com.deepseek.dsh.web.server.WorkspaceRegistry;
  * <p>实现原 Harness apiproxy 的最小可用子集：
  * <ul>
  *   <li>{@code host.describe}：连接握手必需。</li>
- *   <li>{@code session.create}：建会话，推 {@code host/session-added} + {@code session/subscribed}。</li>
+ *   <li>{@code session.create}：建会话，推 {@code session/subscribed}；{@code host/session-added} 由
+ *       {@code SessionCreatedBroadcaster} 订阅会话创建事件统一广播。</li>
  *   <li>{@code session.list}：列出 dsh-java 活跃会话为 SessionSummary。</li>
  *   <li>{@code session.prompt}：运行 agent，把 SSE 文本增量映射为 {@code assistant/chunk} 等 mux 帧推送，返回 {@code {accepted:true}}（回合异步）。</li>
  *   <li>其余启动期只读方法：返回 schema 合法的空值。</li>
@@ -444,11 +445,8 @@ public class ApiproxyController {
         Sessions sessions = ctx.require(Sessions.class);
         SessionLog slog = sessions.create();
         SessionId sid = slog.sessionId();
-        String cwd = p.get("cwd") != null ? String.valueOf(p.get("cwd")) : System.getProperty("user.dir");
         String workspaceId = p.get("workspaceId") != null ? String.valueOf(p.get("workspaceId")) : null;
-        // 推 host/session-added + 关联工作区 + session/subscribed，使前端进入该会话
-        downlink.sendHostFrame(uuid(), hostFrame("host/session-added",
-                Map.of("sessionId", sid.value(), "blank", true, "cwd", cwd)));
+        // SessionManager 已广播 host/session-added（SessionCreatedBroadcaster 订阅事件推送），此处关联工作区 + 订阅进会话
         if (workspaceId != null) {
             Map<String, Object> wv = workspaces.attachSession(workspaceId, sid.value());
             if (wv != null) remoteMux.broadcastWorkspaceFrame(Map.of("type", "upsert", "workspace", wv));
