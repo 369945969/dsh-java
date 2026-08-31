@@ -132,10 +132,13 @@ public final class TurnOrchestrator {
     private void injectRequestHeader(String sessionId, String model, SessionEventSink sink) {
         try {
             String sysPrompt = agent.composeSystemPrompt(ctx);
+            // reason:'initial' 与 harness 对齐——inspectRequestPrompt 据 reason 判定首个 header 的
+            // change（kind:'initial'），轨迹 request-header 节点据此渲染系统提示词（缺则不显示）。
             sink.emit(sessionId, "request/header", Map.of(
                     "header", Map.of(
                             "config", Map.of("provider", "openai-compatible", "model", model),
-                            "system", sysPrompt)));
+                            "system", sysPrompt),
+                    "reason", "initial"));
             sink.emit(sessionId, "request/context", Map.of(
                     "provider", "openai-compatible", "model", model));
         } catch (Exception e) {

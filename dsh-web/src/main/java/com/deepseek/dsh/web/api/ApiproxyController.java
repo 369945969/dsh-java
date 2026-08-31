@@ -644,7 +644,13 @@ public class ApiproxyController {
             s.upsert(new ModelProfile(ap.id(), ap.displayName(), ap.apiKey(), ap.baseUrl(), model, ap.models(), ap.route()));
             s.setActive(ap.id());
         }
-        return Map.of("selected", Map.of("provider", "openai-compatible", "model", model));
+        // 广播 modelSelection 投影，前端实时反映所选模型（此前需刷新重读 baseline 才看到）
+        Map<String, Object> selection = Map.of("provider", "openai-compatible", "model", model);
+        Map<String, Object> modelSelection = Map.of("lastUsed", selection, "next", selection);
+        if (!sessionId.isEmpty() && !"null".equals(sessionId)) {
+            sendSessionProjection(sessionId, "modelSelection", modelSelection);
+        }
+        return Map.of("selected", selection);
     }
 
     private TurnOrchestrator orchestrator() {
