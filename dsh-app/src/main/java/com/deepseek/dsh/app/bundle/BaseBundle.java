@@ -217,15 +217,19 @@ public final class BaseBundle {
         toolRegistry.register(new com.deepseek.dsh.workflow.RalphTool(
                 ctx.require(com.deepseek.dsh.workflow.WorkflowService.class)));
 
+        var pipeline = new com.deepseek.dsh.tools.pipeline.ToolPipeline(toolRegistry,
+                java.util.List.of(spillPolicy,
+                        new com.deepseek.dsh.telemetry.TelemetryMiddleware(telemetry)));
+        // 注册 pipeline/toolRegistry 入 ctx，供 SubagentTaskTool 构造 per-delegation 子 agent 复用
+        ctx.register(com.deepseek.dsh.tools.pipeline.ToolPipeline.class, pipeline);
+        ctx.register(com.deepseek.dsh.tools.registry.ToolRegistry.class, toolRegistry);
         var loop = new ReActAgentLoop(
                 llm,
-                new com.deepseek.dsh.tools.pipeline.ToolPipeline(toolRegistry,
-                        java.util.List.of(spillPolicy,
-                                new com.deepseek.dsh.telemetry.TelemetryMiddleware(telemetry))),
+                pipeline,
                 toolRegistry);
         loop.setSystemPrompt(defaultSystemPrompt());
         // subagent 委派工具：让主 agent 能把子任务委派给子 agent（ForkInProcessProvider 已注册为 SubagentService）
-        toolRegistry.register(new com.deepseek.dsh.subagent.tool.SubagentTaskTool(loop));
+        toolRegistry.register(new com.deepseek.dsh.subagent.tool.SubagentTaskTool(loop, ctx));
         return loop;
     }
 
