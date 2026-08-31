@@ -559,7 +559,12 @@ public class ApiproxyController {
                     "key", "title",
                     "value", childTitle,
                     "seq", childSeq));
-            return Map.of("sessionId", child.sessionId().value());
+            // 分叉响应直接携带与刷新（控制基线）一致的标题，供前端立即落地投影，
+            // 避免 live 页先渲染出错误标题、直到刷新/重基线才被纠正。
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("sessionId", child.sessionId().value());
+            resp.put("title", childTitle);
+            return resp;
         } catch (Exception e) {
             log.warn("session.fork failed: {}", e.toString());
             return Map.of("sessionId", UUID.randomUUID().toString());

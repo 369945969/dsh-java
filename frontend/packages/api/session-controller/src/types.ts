@@ -311,6 +311,8 @@ export interface SessionForkRequest {
 /** Identity of a newly forked Session. */
 export interface SessionForkValue {
   readonly sessionId: SessionId
+  /** Optional host-computed title, present when the responder carries it (used to seed the child's title projection immediately). */
+  readonly title?: string
 }
 
 /** Session prompt request. */

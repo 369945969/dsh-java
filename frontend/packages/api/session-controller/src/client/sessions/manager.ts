@@ -617,6 +617,13 @@ export class SessionManager {
           parentSessionId: opts.sessionId,
           ...(source?.cwd !== undefined ? { cwd: source.cwd } : {}),
         } })
+        // Seed the child's title projection from the fork response so the live
+        // sidebar shows the same (refresh/control-baseline-consistent) title
+        // immediately, before the title projection frame or a re-baseline lands.
+        const title = result.ok ? result.value.title : undefined
+        if (typeof title === 'string' && title !== '') {
+          this.projectionStore(childId).apply('title', title, 0)
+        }
       }
       return result
     } catch (error) {

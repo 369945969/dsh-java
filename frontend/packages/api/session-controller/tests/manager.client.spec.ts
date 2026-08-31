@@ -689,6 +689,20 @@ describe('remaining branches', () => {
     })])
   })
 
+  it('seeds the child title projection from the fork response', async () => {
+    const api = new FakeApiClient()
+    api.onFork = () => Promise.resolve(ok({ sessionId: S2, title: 'forked-title' } as never))
+    const manager = new SessionManager(fakeRemote(api))
+    const result = await manager.fork({ sessionId: S1 })
+    expect(result).toMatchObject({ ok: true })
+    expect(manager.getListSnapshot().items).toEqual([expect.objectContaining({
+      sessionId: S2,
+      parentSessionId: S1,
+      blank: false,
+      title: 'forked-title',
+    })])
+  })
+
   it('reconciles a preallocated id after an ordinary transport failure', async () => {
     const api = new FakeApiClient()
     api.onCreate = () => Promise.reject(new Error('response lost'))
