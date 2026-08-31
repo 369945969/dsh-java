@@ -95,17 +95,17 @@ public final class CliEventSink implements TurnOrchestrator.SessionEventSink {
                     String chunkType = String.valueOf(chunk.get("type"));
                     String text = String.valueOf(chunk.get("text"));
                     if ("reasoning-delta".equals(chunkType)) {
-                        if (!inThink) { out.print(DIM); out.println("-- think ----------------"); inThink = true; }
+                        if (!inThink) { out.print(DIM); out.println("---think---"); inThink = true; }
                         out.print(text);
                     } else {
-                        if (inThink) { out.println(); out.println("------------------------"); out.print(RESET); inThink = false; }
+                        if (inThink) { out.println(); out.println("-----------"); out.print(RESET); inThink = false; }
                         out.print(text);
                     }
                     out.flush();
                 }
             }
             case "assistant/message" -> {
-                if (inThink) { out.println(); out.println("------------------------"); out.print(RESET); inThink = false; }
+                if (inThink) { out.println(); out.println("-----------"); out.print(RESET); inThink = false; }
                 out.println();
                 out.println();
                 out.flush();
@@ -119,14 +119,13 @@ public final class CliEventSink implements TurnOrchestrator.SessionEventSink {
             case "tool/result" -> {
                 closeThinkIfNeeded();
                 if (pendingToolCall != null) {
-                    out.print(GREEN + "✓" + RESET + DIM + " " + pendingToolCall + RESET);
+                    out.println();
+                    out.print(DIM + pendingToolCall + RESET);
                     out.println();
                     out.flush();
                     pendingToolCall = null;
                 } else {
-                    out.print(GREEN);
-                    out.println("  ✓");
-                    out.print(RESET);
+                    out.println();
                     out.flush();
                 }
             }
@@ -146,7 +145,7 @@ public final class CliEventSink implements TurnOrchestrator.SessionEventSink {
     private void closeThinkIfNeeded() {
         if (inThink) {
             out.println();
-            out.println("------------------------");
+            out.println("-----------");
             out.print(RESET);
             inThink = false;
             out.flush();
