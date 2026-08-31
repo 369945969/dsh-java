@@ -21,8 +21,9 @@ import com.deepseek.dsh.sdk.client.HarnessClient;
  * </pre>
  * 实时通信模式（SSE/WebSocket 并发+取消）见 web-e2e.sh / ws-e2e.py。
  *
- * <p>环境变量：DSH_RPC_CMD（start-rpc.sh 路径）、DEEPSEEK_API_KEY / DSH_BASE_URL /
- * DSH_MODEL / DSH_DATA_DIR（临时数据目录，驱动在此种子 skill 文件）。
+ * <p>环境变量：DSH_RPC_CMD（start-rpc.sh 路径）、DSH_DATA_DIR（可选；缺省 ~/.dsh）。
+ * 模型不再读环境变量——从 DSH_DATA_DIR/model-config.json 取网页保存的活跃档案
+ * （与 start-cli.sh / start-rpc.sh 相同的 model-config.json 获取方式）。
  */
 public final class RpcE2e {
 
@@ -31,17 +32,20 @@ public final class RpcE2e {
 
     public static void main(String[] args) {
         String rpcCmd = System.getenv("DSH_RPC_CMD");
-        String apiKey = System.getenv("DEEPSEEK_API_KEY");
-        String model = System.getenv("DSH_MODEL");
-        String dataDir = System.getenv("DSH_DATA_DIR");
+        String dataDirEnv = System.getenv("DSH_DATA_DIR");
+        Path dataDir = dataDirEnv != null && !dataDirEnv.isBlank()
+                ? Path.of(dataDirEnv)
+                : Path.of(System.getProperty("user.home"), ".dsh");
+        String model = activeModel(dataDir);
 
         if (rpcCmd == null || rpcCmd.isBlank()) { System.err.println("[rpc-e2e] DSH_RPC_CMD not set, skipping"); return; }
-        if (apiKey == null || apiKey.isBlank() || model == null || model.isBlank()) {
-            System.err.println("[rpc-e2e] DEEPSEEK_API_KEY/DSH_MODEL not set, skipping"); return;
+        if (model == null || model.isBlank()) {
+            System.err.println("[rpc-e2e] 未找到活跃模型： " + dataDir.resolve("model-config.json")
+                    + " 无有效活跃档案（请在网页「添加自定义模型」保存并设为活跃）"); return;
         }
 
         // 种子 skill 文件供技能用例（FilesystemSkillProvider 每次 list() 扫描盘）
-        if (dataDir != null) seedSkills(Path.of(dataDir));
+        seedSkills(dataDir);
 
         System.out.println("[rpc-e2e] Starting RPC server subprocess: " + rpcCmd);
         try (HarnessClient client = new HarnessClient(rpcCmd)) {
@@ -144,6 +148,25 @@ public final class RpcE2e {
             System.err.println("[rpc-e2e] Exception: " + e);
             e.printStackTrace();
             System.exit(1);
+        }
+    }
+
+    // ---- 模型获取（与 start-cli.sh 相同：读 dataDir/model-config.json 活跃档案） ----
+    private static String activeModel(Path dataDir) {
+        Path cfg = dataDir.resolve("model-config.json");
+        if (!Files.isReadable(cfg)) return null;
+        try {
+            var root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(Files.readString(cfg));
+            String activeId = root.path("activeId").asText(null);
+            for (var n : root.path("profiles")) {
+                if (n.path("id").asText().equals(activeId)) {
+                    return n.path("model").asText(null);
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            System.err.println("[rpc-e2e] 解析 " + cfg + " 失败: " + e);
+            return null;
         }
     }
 

@@ -41,6 +41,9 @@ model-config.json
 *.tmp
 *.bak
 
+# testcase 脚本运行时认证状态（token/cookie/服务端日志）
+testcase/.auth/
+
 # Verbatim deepseek-harness frontend source（仅源码；忽略重构建产物与重目录）
 frontend/**/node_modules/
 frontend/**/lib/
