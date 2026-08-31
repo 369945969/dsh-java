@@ -114,7 +114,7 @@ public class ApiproxyController {
                 Map<String, Object> values = new LinkedHashMap<>();
                 values.put("title", title);
                 values.put("modelSelection", modelSelection);
-                values.put("agentPreset", "standard");
+                values.put("agentPreset", defaultPreset);
                 projections.put(id.value(), Map.of("asOfSeq", sl.lastSeq(), "values", values));
             }
         } catch (Exception e) {
@@ -1582,7 +1582,7 @@ public class ApiproxyController {
         return result;
     }
 
-    private Map<String, Object> agentPresetSelect(Object payload) {
+    private String agentPresetSelect(Object payload) {
         String id = strField(payload, "agentPreset");
         defaultPreset = id;
         try {
@@ -1590,9 +1590,11 @@ public class ApiproxyController {
         } catch (Exception e) {
             log.warn("switch preset system prompt failed: {}", e.toString());
         }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("agentPreset", id);
-        return result;
+        // 前端 seat-store apply() 把 result.value 直接作为 current（string），
+        // 与原版 agent-presets select 返回 Promise<string>（preset.id）一致。
+        // 此前返回 {agentPreset:id} 对象 → current 变对象 → React 渲染对象报错
+        // → chip 被 error boundary 卸载，表现为「切换模式后消失」。
+        return id;
     }
 
     private Map<String, Object> agentPresetCopy(Object payload) {
