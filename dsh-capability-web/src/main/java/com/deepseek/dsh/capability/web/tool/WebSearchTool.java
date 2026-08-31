@@ -33,6 +33,12 @@ public final class WebSearchTool extends AbstractTool {
     protected String execute(ToolArgs args, ToolContext ctx) throws Exception {
         String query = args.requiredString("query");
         int max = args.optionalInt("max_results", 5);
+        // 单次请求最大搜索数取自 web-search-deepseek 配置卡片（settings.maxUses，缺省 5 与 harness 一致），截断 max_results
+        int cap = ctx.context().get(com.deepseek.dsh.settings.SettingsService.class)
+                .map(s -> s.getAll("web-search-deepseek").get("maxUses"))
+                .map(v -> { try { return (int) Double.parseDouble(v); } catch (Exception e) { return -1; } })
+                .orElse(5);
+        if (cap > 0 && max > cap) max = cap;
         var results = searchProvider.search(query, max);
         if (results.isEmpty()) return "（无搜索结果）";
         return results.stream()

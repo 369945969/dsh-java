@@ -1282,40 +1282,50 @@ public class ApiproxyController {
 
     // ---- 复刻 harness 设置页四个插件配置卡片：agent-loop / bash / web-search-deepseek / subagent ----
 
-    /** agent-loop：每 step 并行工具调用上限。 */
+    /** agent-loop：每 step 并行工具调用上限（harness 默认 10）。 */
     private Map<String, Object> agentLoopNamespace() {
         SettingsService s = settingsService();
+        Double mpc = (s != null) ? numOrNull(s.getAll("agent-loop").get("maxParallelToolCalls")) : null;
         Map<String, Object> value = new LinkedHashMap<>();
-        if (s != null) value.put("maxParallelToolCalls", numOrNull(s.getAll("agent-loop").get("maxParallelToolCalls")));
+        value.put("maxParallelToolCalls", mpc != null ? mpc : 10);
         Map<String, Object> dict = new LinkedHashMap<>();
         dict.put("maxParallelToolCalls", schemaNode("number"));
         return namespaceView("agent-loop", value, schemaNode("object", "dict", dict));
     }
 
-    /** bash（终端）：前台命令超时 ms + 每流输出上限 bytes。 */
+    /** bash（终端，namespace=shell）：前台命令超时 ms + 每流输出上限 bytes。
+     *  namespace 用 'shell' 与前端 BashCard 的 SHELL_NS 一致（卡片 key 须与 served ns 匹配才显示）。 */
     private Map<String, Object> bashNamespace() {
         SettingsService s = settingsService();
         Map<String, Object> value = new LinkedHashMap<>();
         if (s != null) {
-            Map<String, String> all = s.getAll("bash");
-            value.put("timeoutMs", numOrNull(all.get("timeoutMs")));
-            value.put("maxOutputBytes", numOrNull(all.get("maxOutputBytes")));
+            Map<String, String> all = s.getAll("shell");
+            Double t = numOrNull(all.get("timeoutMs"));
+            Double o = numOrNull(all.get("maxOutputBytes"));
+            value.put("timeoutMs", t != null ? t : 120000);
+            value.put("maxOutputBytes", o != null ? o : 64000);
+        } else {
+            value.put("timeoutMs", 120000);
+            value.put("maxOutputBytes", 64000);
         }
         Map<String, Object> dict = new LinkedHashMap<>();
         dict.put("timeoutMs", schemaNode("number"));
         dict.put("maxOutputBytes", schemaNode("number"));
-        return namespaceView("bash", value, schemaNode("object", "dict", dict));
+        return namespaceView("shell", value, schemaNode("object", "dict", dict));
     }
 
-    /** web-search-deepseek：搜索 provider 的 key 引用、端点、单次请求最大搜索数。 */
+    /** web-search-deepseek：搜索 provider 的 key 引用、端点、单次请求最大搜索数（harness 默认 5）。 */
     private Map<String, Object> webSearchNamespace() {
         SettingsService s = settingsService();
         Map<String, Object> value = new LinkedHashMap<>();
         if (s != null) {
             Map<String, String> all = s.getAll("web-search-deepseek");
+            Double mu = numOrNull(all.get("maxUses"));
             value.put("apiKeyEnv", all.get("apiKeyEnv"));
             value.put("baseURL", all.get("baseURL"));
-            value.put("maxUses", numOrNull(all.get("maxUses")));
+            value.put("maxUses", mu != null ? mu : 5);
+        } else {
+            value.put("maxUses", 5);
         }
         Map<String, Object> dict = new LinkedHashMap<>();
         dict.put("apiKeyEnv", schemaNode("string"));
@@ -1324,14 +1334,17 @@ public class ApiproxyController {
         return namespaceView("web-search-deepseek", value, schemaNode("object", "dict", dict));
     }
 
-    /** subagent：是否对新会话启用模型面向的子路由选择 + 允许的子模型清单。 */
+    /** subagent（namespace=subagent-model-selection）：是否对新会话启用模型面向的子路由选择 + 允许的子模型清单。 */
     private Map<String, Object> subagentNamespace() {
         SettingsService s = settingsService();
         Map<String, Object> value = new LinkedHashMap<>();
         if (s != null) {
-            Map<String, String> all = s.getAll("subagent");
-            value.put("enabled", boolOrNull(all.get("enabled")));
+            Map<String, String> all = s.getAll("subagent-model-selection");
+            Boolean en = boolOrNull(all.get("enabled"));
+            value.put("enabled", en != null ? en : false);
             value.put("allowedModels", jsonListOrNull(all.get("allowedModels")));
+        } else {
+            value.put("enabled", false);
         }
         Map<String, Object> modelDict = new LinkedHashMap<>();
         modelDict.put("id", schemaNode("string"));
@@ -1339,7 +1352,7 @@ public class ApiproxyController {
         Map<String, Object> dict = new LinkedHashMap<>();
         dict.put("enabled", schemaNode("boolean"));
         dict.put("allowedModels", schemaNode("array", "inner", schemaNode("object", "dict", modelDict)));
-        return namespaceView("subagent", value, schemaNode("object", "dict", dict));
+        return namespaceView("subagent-model-selection", value, schemaNode("object", "dict", dict));
     }
 
     private Map<String, Object> profileView(String route, ModelProfile p) {

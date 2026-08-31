@@ -21,6 +21,10 @@
             <artifactId>dsh-tools</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-settings</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>okhttp</artifactId>
         </dependency>

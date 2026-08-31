@@ -185,7 +185,7 @@ public final class BaseBundle {
         toolRegistry.register(new TerminalTool(terminal));
 
         // Web 搜索/抓取
-        var searchProvider = new com.deepseek.dsh.capability.web.search.DeepSeekSearchProvider(modelConfig.apiKey());
+        var searchProvider = new com.deepseek.dsh.capability.web.search.DeepSeekSearchProvider(ctx, modelConfig.apiKey(), "https://api.deepseek.com");
         var fetchProvider = new com.deepseek.dsh.capability.web.fetch.HttpFetchProvider();
         toolRegistry.register(new com.deepseek.dsh.capability.web.tool.WebSearchTool(searchProvider));
         toolRegistry.register(new com.deepseek.dsh.capability.web.tool.WebFetchTool(fetchProvider));

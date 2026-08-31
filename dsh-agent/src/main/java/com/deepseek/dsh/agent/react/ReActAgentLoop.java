@@ -4,6 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
@@ -127,18 +131,51 @@ public class ReActAgentLoop implements Agent {
         if (o != null) o.onAssistantMessage(response.content(), response.reasoning(), assistantMsgId);
 
         if (response.toolCalls() != null && !response.toolCalls().isEmpty()) {
-            for (ChatMessage.ToolCall tc : response.toolCalls()) {
-                executeToolCall(sessionId, scopeKey, ctx, tc);
-            }
+            dispatchToolCalls(sessionId, scopeKey, ctx, response.toolCalls(), o);
         }
 
         if (o != null) o.onStepEnd(turn, stepNo);
         return new StepResult(response, messages);
     }
 
+    /**
+     * 派发本 step 的工具调用：按 agent-loop.maxParallelToolCalls 限流并行（默认 1=串行）。
+     * observer 由主线程捕获并显式传入（ThreadLocal 不会传播到工作线程，否则事件丢失）。
+     * SessionLog.append 为 synchronized + AtomicLong seq，并发追加安全；事件按 callId 关联。
+     */
+    protected void dispatchToolCalls(SessionId sessionId, ScopeKey scopeKey, Context ctx,
+                                     List<ChatMessage.ToolCall> calls, TurnObserver o) throws Exception {
+        int cap = maxParallelToolCalls(ctx);
+        if (cap <= 1 || calls.size() <= 1) {
+            for (ChatMessage.ToolCall tc : calls) executeToolCall(sessionId, scopeKey, ctx, tc, o);
+            return;
+        }
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(cap, calls.size()));
+        try {
+            CompletableFuture<?>[] futs = calls.stream()
+                    .map(tc -> CompletableFuture.runAsync(() -> {
+                        try { executeToolCall(sessionId, scopeKey, ctx, tc, o); }
+                        catch (Exception e) { throw new CompletionException(e); }
+                    }, pool))
+                    .toArray(CompletableFuture[]::new);
+            try { CompletableFuture.allOf(futs).join(); }
+            catch (CompletionException ce) {
+                Throwable c = ce.getCause() instanceof CompletionException ? ce.getCause().getCause() : ce.getCause();
+                if (c instanceof Exception) throw (Exception) c;
+                throw ce;
+            }
+        } finally { pool.shutdownNow(); }
+    }
+
+    private int maxParallelToolCalls(Context ctx) {
+        return ctx.get(com.deepseek.dsh.settings.SettingsService.class)
+                .map(s -> s.getAll("agent-loop").get("maxParallelToolCalls"))
+                .map(v -> { try { int n = (int) Double.parseDouble(v); return n < 1 ? 10 : n; } catch (Exception e) { return 10; } })
+                .orElse(10);
+    }
+
     protected void executeToolCall(SessionId sessionId, ScopeKey scopeKey, Context ctx,
-                                    ChatMessage.ToolCall tc) throws Exception {
-        TurnObserver o = observer.get();
+                                    ChatMessage.ToolCall tc, TurnObserver o) throws Exception {
         String callId = (tc.id() == null || tc.id().isEmpty()) ? "call-" + UUID.randomUUID().toString().substring(0, 12) : tc.id();
         var perm = ctx.get(com.deepseek.dsh.interaction.permission.PermissionService.class).orElse(null);
         if (perm != null) {

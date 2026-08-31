@@ -18,6 +18,10 @@
         </dependency>
         <dependency>
             <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-settings</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
             <artifactId>dsh-session</artifactId>
         </dependency>
         <dependency>

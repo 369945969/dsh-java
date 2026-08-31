@@ -36,8 +36,20 @@ public final class BashTool extends AbstractTool {
         String command = args.requiredString("command");
         String workdir = args.optionalString("workdir", null);
         if (workdir == null) workdir = com.deepseek.dsh.core.context.SessionCwd.get();
-        int timeout = args.optionalInt("timeout", 120);
+        // 默认超时取自 shell 配置卡片（settings.shell.timeoutMs，毫秒→秒）；模型显式传 timeout 则覆盖
+        int defaultTimeout = ctx.context().get(com.deepseek.dsh.settings.SettingsService.class)
+                .map(s -> s.getAll("shell").get("timeoutMs"))
+                .map(v -> { try { return (int) Math.round(Double.parseDouble(v) / 1000.0); } catch (Exception e) { return 120; } })
+                .orElse(120);
+        int timeout = args.optionalInt("timeout", defaultTimeout);
         var result = shell.execute(command, Map.of(), workdir, timeout);
-        return result.combinedOutput();
+        String out = result.combinedOutput();
+        // 输出上限取自 shell 配置卡片（settings.shell.maxOutputBytes，缺省 64000 与 harness 一致）
+        int cap = ctx.context().get(com.deepseek.dsh.settings.SettingsService.class)
+                .map(s -> s.getAll("shell").get("maxOutputBytes"))
+                .map(v -> { try { return (int) Double.parseDouble(v); } catch (Exception e) { return -1; } })
+                .orElse(64000);
+        if (cap > 0 && out.length() > cap) out = out.substring(0, cap) + "\n…[truncated]";
+        return out;
     }
 }
