@@ -143,15 +143,16 @@ public class ApiproxyController {
                     records.add(rec);
                 }
             }
+            // title 与 buildControlBaseline/sessionFork 同款：用 generateTitle 跳过
+            // source.kind=plugin 的上下文/技能注入消息，取首条真实用户输入。
+            // 否则 live follow 快照会以高 seq 覆盖分叉响应下发的正确 title，
+            // 把 "Current runtime context…" 这类注入消息当成会话名（刷新才纠正）。
             String title = "新会话";
-            for (var entry : events) {
-                if (entry.get("event") instanceof Map<?, ?> e && "user/message".equals(e.get("type"))
-                        && e.get("data") instanceof Map<?, ?> d && d.get("content") instanceof List<?> parts
-                        && !parts.isEmpty() && parts.get(0) instanceof Map<?, ?> p && "text".equals(p.get("type"))
-                        && p.get("text") instanceof String t && !t.isBlank()) {
-                    title = t.length() > 40 ? t.substring(0, 40) + "…" : t;
-                    break;
-                }
+            try {
+                SessionLog sl = holder.context().require(Sessions.class).getOrCreate(SessionId.of(sessionId));
+                title = TurnOrchestrator.generateTitle(sl);
+            } catch (Exception ex) {
+                log.debug("buildFollowSnapshot title: {}", ex.toString());
             }
             String model = currentModelName();
             Map<String, Object> selection = Map.of("provider", "openai-compatible", "model", model);
