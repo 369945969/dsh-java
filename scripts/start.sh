@@ -12,10 +12,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${1:-8765}"
 CP_FILE="$ROOT/dsh-app/target/rpc-cp.txt"
 
-# 每次启动前重新编译后端（clean install 拾取任意 .java/pom 改动），再刷新 classpath
-echo "[start] 重新编译后端（mvn clean install）..." >&2
-mvn -q -f "$ROOT/pom.xml" -pl dsh-app -am clean install -DskipTests -Dmaven.test.skip=true
-mvn -q -f "$ROOT/pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="$CP_FILE"
+# 不在此编译——先运行 scripts/build-backend.sh 生成 target/classes + rpc-cp.txt，再启动。
+if [ ! -f "$CP_FILE" ]; then
+  echo "[start] 未找到 $CP_FILE：请先运行 scripts/build-backend.sh 编译后端。" >&2
+  exit 1
+fi
 
 # 释放端口：先 SIGTERM 优雅关闭（等 ~3s 触发 Spring Boot shutdown hook），仍占用则 SIGKILL 强杀
 free_port() {

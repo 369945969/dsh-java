@@ -37,10 +37,11 @@ if not "%JV_MAJOR%"=="21" (
 )
 echo [%SELF%] java %JV_VER% ok 1>&2
 
-rem recompile backend before launch (clean install picks up any .java/pom change), then refresh classpath
-echo [%SELF%] recompiling backend (mvn clean install)... 1>&2
-call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app -am clean install -DskipTests -Dmaven.test.skip=true || ( echo [%SELF%] mvn clean install failed 1>&2 & exit /b 1 )
-call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%CP_FILE%" || ( echo [%SELF%] mvn build-classpath failed 1>&2 & exit /b 1 )
+rem 不在此编译——先运行 scripts\build-backend.bat 生成 target\classes + rpc-cp.txt，再启动。
+if not exist "%CP_FILE%" (
+  echo [%SELF%] 未找到 %CP_FILE%：请先运行 scripts\build-backend.bat 编译后端。 1>&2
+  exit /b 1
+)
 
 echo [%SELF%] launching CLI REPL (model from model-config.json) 1>&2
 

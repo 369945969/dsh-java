@@ -9,4 +9,6 @@ rm -rf "$ROOT"/dsh-*/target "$ROOT"/testcase/target
 echo "[build-backend] 编译后端（mvn clean install -DskipTests）..."
 cd "$ROOT"
 mvn -q clean install -DskipTests -Dmaven.test.skip=true
-echo "[build-backend] 完成：dsh-app/target/ + rpc-cp.txt 已生成"
+echo "[build-backend] 生成运行时 classpath（rpc-cp.txt）..."
+mvn -q -f "$ROOT/pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="$ROOT/dsh-app/target/rpc-cp.txt"
+echo "[build-backend] 完成：dsh-app/target/classes + rpc-cp.txt 已生成"

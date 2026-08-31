@@ -10,10 +10,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CP_FILE="$ROOT/dsh-app/target/rpc-cp.txt"
 
-# 每次启动前重新编译后端（clean install 拾取任意 .java/pom 改动），再刷新 classpath
-echo "[start-cli] 重新编译后端（mvn clean install）..." >&2
-mvn -q -f "$ROOT/pom.xml" -pl dsh-app -am clean install -DskipTests -Dmaven.test.skip=true
-mvn -q -f "$ROOT/pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="$CP_FILE"
+# 不在此编译——先运行 scripts/build-backend.sh 生成 target/classes + rpc-cp.txt，再启动。
+if [ ! -f "$CP_FILE" ]; then
+  echo "[start-cli] 未找到 $CP_FILE：请先运行 scripts/build-backend.sh 编译后端。" >&2
+  exit 1
+fi
 
 echo "[start-cli] 启动中..." >&2
 exec java -Dlogback.configurationFile=logback-cli.xml \

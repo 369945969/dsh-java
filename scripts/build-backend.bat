@@ -1,24 +1,27 @@
 @echo off
-chcp 65001 >nul
+chcp 936 >nul
 setlocal
-rem ç¼–è¯‘åç«¯ï¼šclean -> installï¼ˆè·³è¿‡æµ‹è¯•ï¼‰ï¼Œåˆ é™¤æ—§ target/ åå…¨é‡é‡å»ºã€‚
-rem ç”¨æ³•ï¼š scripts\build-backend.bat
+rem ±àÒëºó¶Ë£ºclean -> install£¨Ìø¹ı²âÊÔ£©£¬É¾³ı¾É target/ ºóÈ«Á¿ÖØ½¨£¬ÔÙÉú³É rpc-cp.txt¡£
+rem ÓÃ·¨£º scripts\build-backend.bat
 pushd "%~dp0.." >nul
 set "ROOT=%CD%"
 popd >nul
 
-echo [build-backend] æ¸…ç†æ—§æ„å»ºäº§ç‰©...
+echo [build-backend] ÇåÀí¾É¹¹½¨²úÎï...
 for /d %%D in ("%ROOT%\dsh-*") do if exist "%%D\target" rd /s /q "%%D\target"
 if exist "%ROOT%\testcase\target" rd /s /q "%ROOT%\testcase\target"
 
-echo [build-backend] ç¼–è¯‘åç«¯ï¼ˆmvn clean install -DskipTestsï¼‰...
+echo [build-backend] ±àÒëºó¶Ë£¨mvn clean install -DskipTests£©...
 pushd "%ROOT%"
 call mvn -q clean install -DskipTests -Dmaven.test.skip=true
 set "EXITCODE=%ERRORLEVEL%"
 popd
 if not "%EXITCODE%"=="0" (
-    echo [build-backend] ç¼–è¯‘å¤±è´¥ 1>&2
+    echo [build-backend] ±àÒëÊ§°Ü 1>&2
     exit /b 1
 )
-echo [build-backend] å®Œæˆï¼šdsh-app\target\ + rpc-cp.txt å·²ç”Ÿæˆ
+echo [build-backend] Éú³ÉÔËĞĞÊ± classpath£¨rpc-cp.txt£©...
+call mvn -q -f "%ROOT%\pom.xml" -pl dsh-app dependency:build-classpath -Dmdep.outputFile="%ROOT%\dsh-app\target\rpc-cp.txt"
+if errorlevel 1 ( echo [build-backend] Éú³É classpath Ê§°Ü 1>&2 & exit /b 1 )
+echo [build-backend] Íê³É£ºdsh-app\target\classes + rpc-cp.txt ÒÑÉú³É
 exit /b 0
