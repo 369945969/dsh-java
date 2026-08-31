@@ -37,9 +37,9 @@ if not "%JV_MAJOR%"=="21" (
 )
 echo [%SELF%] java %JV_VER% ok 1>&2
 
-rem 不在此编译——先运行 scripts\build-backend.bat 生成 target\classes + rpc-cp.txt，再启动。
+rem No build here: run scripts\build-backend.bat first to produce target\classes + rpc-cp.txt, then launch.
 if not exist "%CP_FILE%" (
-  echo [%SELF%] 未找到 %CP_FILE%：请先运行 scripts\build-backend.bat 编译后端。 1>&2
+  echo [%SELF%] %CP_FILE% not found: run scripts\build-backend.bat to build the backend first. 1>&2
   exit /b 1
 )
 

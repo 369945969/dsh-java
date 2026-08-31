@@ -37,17 +37,18 @@ if not "%JV_MAJOR%"=="21" (
 )
 echo [%SELF%] java %JV_VER% ok 1>&2
 
-rem 不在此编译——先运行 scripts\build-backend.bat 生成 target\classes + rpc-cp.txt，再启动。
+rem No build here: run scripts\build-backend.bat first to produce target\classes + rpc-cp.txt, then launch.
 if not exist "%CP_FILE%" (
-  echo [%SELF%] 未找到 %CP_FILE%：请先运行 scripts\build-backend.bat 编译后端。 1>&2
+  echo [%SELF%] %CP_FILE% not found: run scripts\build-backend.bat to build the backend first. 1>&2
   exit /b 1
 )
 
 echo [%SELF%] launching CLI REPL (model from model-config.json) 1>&2
 
-rem 用 PowerShell 写 argfile（正确引用含空格的 classpath），再用 java @argfile 直接启动。
-rem 不经 PowerShell Process.Start 启动 java，使 java 直接继承 cmd 控制台 → System.console()
-rem 非 null，readLine 走 ReadConsoleW 宽字符 API，正确读取中文（与控制台代码页无关）。
+rem Write an argfile via PowerShell (correctly quotes the spaces in the classpath), then launch java @argfile.
+rem Do NOT launch java through PowerShell Process.Start: java inherits the cmd console directly, so
+rem System.console() is non-null and readLine uses ReadConsoleW wide-char API (reads CJK correctly
+rem regardless of the console code page).
 set "ARGF=%ROOT%\dsh-app\target\dsh-cli-%RANDOM%.arg"
 powershell -NoProfile -Command "$cp='%ROOT%\dsh-app\target\classes;'+[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp=$cp.Replace('\','\\'); $n=[char]10; $q=[char]34; [IO.File]::WriteAllText('%ARGF%', '-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dlogback.configurationFile=logback-cli.xml'+$n+'-cp'+$n+$q+$cp+$q+$n+'com.deepseek.dsh.app.cli.DshRepl'+$n)"
 if errorlevel 1 ( echo [%SELF%] failed to write argfile 1>&2 & exit /b 1 )

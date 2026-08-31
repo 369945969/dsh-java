@@ -1,21 +1,21 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
-rem Web 端端到端验证 —— 模拟前端 HTTP/SSE 交互，验证后端 Web 面（REST + SSE）。
-rem 方便用户接自己的前端：本脚本覆盖前端会调用的全部 HTTP 契约。
+rem Web end-to-end verification: simulate the frontend HTTP/SSE flow against the backend Web face (REST + SSE).
+rem Helps users wire their own frontend: this script covers every HTTP contract the frontend calls.
 rem
-rem 覆盖：
-rem   GET  /api/agent/health      健康检查
-rem   POST /api/agent/send        一次性对话（返回完整回复+历史）
-rem   POST /api/agent/stream     SSE 流式对话（session->delta*->done）
+rem Covers:
+rem   GET  /api/agent/health      health check
+rem   POST /api/agent/send        one-shot chat (returns full reply + history)
+rem   POST /api/agent/stream     SSE streaming chat (session->delta*->done)
 rem
-rem 用法： testcase\web-e2e.bat [web_port]
-rem 依赖：curl（Win10 1803+ 自带）、findstr（系统自带）；JSON 校验用 PowerShell。
-rem 模型取自 dataDir\model-config.json（网页保存的活跃档案），无需环境变量。
+rem Usage: testcase\web-e2e.bat [web_port]
+rem Deps: curl (built in on Win10 1803+), findstr (built in); JSON validation via PowerShell.
+rem Model comes from dataDir\model-config.json (web-saved active profile); no env vars.
 rem
-rem 认证：后端 /api 需要浏览器会话 cookie。本脚本启动（或复用）服务端后，从
-rem start.bat 捕获的 stderr 解析启动令牌，用 GET /?token=<token> 换取
-rem dsh-auth cookie（curl -c cookie.jar），后续所有 /api 调用带 -b cookie.jar。
+rem Auth: backend /api requires a browser session cookie. After starting (or reusing) the server,
+rem parse the launch token from start.bat's stderr and exchange it via GET /?token=<token> for a
+rem dsh-auth cookie (curl -c cookie.jar); all subsequent /api calls carry -b cookie.jar.
 
 pushd "%~dp0.." >nul
 set "ROOT=%CD%"
@@ -27,29 +27,29 @@ set "BASE=http://localhost:%PORT%"
 set /a PASS=0
 set /a FAIL=0
 
-rem 认证共享状态（run-all.bat 与 web-e2e.bat 共用同一路径，便于复用已启动的服务端）
+rem shared auth state (run-all.bat and web-e2e.bat share the same path so a running server can be reused)
 set "AUTH=%ROOT%\testcase\.auth"
 set "SRVLOG=%AUTH%\server.log"
 set "TOKEN_FILE=%AUTH%\token.txt"
 set "COOKIE=%AUTH%\cookie.jar"
 if not exist "%AUTH%" mkdir "%AUTH%" >nul
 
-rem 仅当端口未占用时启动自带服务端（用索引页探测端口，不看 /api 认证状态）
+rem start the bundled server only when the port is free (probe the index page, not the /api auth state)
 set "STARTED=0"
 set "CODE=000"
 curl -s -o nul -m 2 -w "%%{http_code}" "%BASE%/" >"%AUTH%\portchk.txt" 2>nul
 set /p CODE=<"%AUTH%\portchk.txt"
 del "%AUTH%\portchk.txt" >nul 2>nul
 if not "%CODE%"=="000" goto :server_ready
-  echo [web-e2e] 启动 Web 服务端 (port=%PORT%)... 1>&2
+  echo [web-e2e] starting web server (port=%PORT%)... 1>&2
   break > "%SRVLOG%"
   start "" /B cmd /c ""%ROOT%\scripts\start.bat" %PORT% >> "%SRVLOG%" 2>&1"
   set "STARTED=1"
 :server_ready
 
-rem 解析启动令牌并换取 cookie（握手）：等待 token 出现在日志里
-rem 正在启动本服务端则强制重握手（避免沿用上一次运行的过期 cookie）；复用已运行
-rem 服务端（如 run-all.bat 已启动）时，优先用现成 token/cookie，否则从日志解析。
+rem parse the launch token and exchange it for a cookie (handshake): wait for the token to appear in the log.
+rem When starting our own server, force a fresh handshake (do not reuse a stale cookie from a previous run);
+rem when reusing a running server (e.g. started by run-all.bat), prefer the existing token/cookie, else parse the log.
 set "TOKEN="
 if "%STARTED%"=="1" goto :force_handshake
 if exist "%TOKEN_FILE%" (
@@ -75,15 +75,15 @@ echo !TOKEN!> "%TOKEN_FILE%"
 curl -s -o nul "%BASE%/?token=!TOKEN!" -c "%COOKIE%"
 :handshake_done
 if "!TOKEN!"=="" (
-  echo [web-e2e] [FAIL] 无法获取认证令牌/cookie（端口 %PORT% 可能被外部服务占用且无 token 日志）
+  echo [web-e2e] [FAIL] could not obtain auth token/cookie (port %PORT% may be held by an external service with no token log)
   exit /b 1
 )
 if not exist "%COOKIE%" (
-  echo [web-e2e] [FAIL] 无法获取认证令牌/cookie（端口 %PORT% 可能被外部服务占用且无 token 日志）
+  echo [web-e2e] [FAIL] could not obtain auth token/cookie (port %PORT% may be held by an external service with no token log)
   exit /b 1
 )
 
-rem 等健康检查（带 cookie）返回 ok
+rem wait for the health check (with cookie) to return ok
 set /a hwtry=0
 :health_wait
 curl -s -b "%COOKIE%" "%BASE%/api/agent/health" | findstr /C:"\"status\":\"ok\"" >nul 2>nul
@@ -94,14 +94,14 @@ ping -n 2 127.0.0.1 >nul
 goto :health_wait
 :health_up
 
-rem 1) 健康检查
+rem 1) health check
 curl -s -b "%COOKIE%" "%BASE%/api/agent/health" | findstr /C:"\"status\":\"ok\"" >nul 2>nul
-if not errorlevel 1 ( call :pass "GET /api/agent/health" ) else ( call :fail "GET /api/agent/health" "未返回 ok" )
+if not errorlevel 1 ( call :pass "GET /api/agent/health" ) else ( call :fail "GET /api/agent/health" "did not return ok" )
 
-rem 2) 一次性对话（对瞬时模型失败重试 2 次）
+rem 2) one-shot chat (retry twice on transient model failure)
 set "TMPSEND=%TEMP%\dsh-send-%RANDOM%.json"
 set "TMPSENDOUT=%TMPSEND%.out"
-powershell -NoProfile -Command "[IO.File]::WriteAllText('%TMPSEND%', '{""message"":""你好，请用一句话介绍你自己。""}', [Text.Encoding]::UTF8)" 2>nul
+powershell -NoProfile -Command "[IO.File]::WriteAllText('%TMPSEND%', '{""message"":""Hello, introduce yourself in one sentence.""}', [Text.Encoding]::UTF8)" 2>nul
 set /a sendtry=1
 :sendloop
 curl -s -b "%COOKIE%" -X POST "%BASE%/api/agent/send" -H "Content-Type: application/json" --data-binary "@%TMPSEND%" -o "%TMPSENDOUT%" 2>nul
@@ -113,16 +113,16 @@ ping -n 3 127.0.0.1 >nul
 goto sendloop
 :send_pass
 call :pass "POST /api/agent/send"
-powershell -NoProfile -Command "$j=Get-Content -Raw '%TMPSENDOUT%' | ConvertFrom-Json; Write-Host ('    回复: ' + $j.reply.Substring(0,[Math]::Min(120,$j.reply.Length)))"
+powershell -NoProfile -Command "$j=Get-Content -Raw '%TMPSENDOUT%' | ConvertFrom-Json; Write-Host ('    reply: ' + $j.reply.Substring(0,[Math]::Min(120,$j.reply.Length)))"
 goto after_send
 :send_fail
-call :fail "POST /api/agent/send" "回复为空或异常"
+call :fail "POST /api/agent/send" "reply empty or abnormal"
 :after_send
 
-rem 3) SSE 流式对话
+rem 3) SSE streaming chat
 set "TMPSTREAMREQ=%TEMP%\dsh-stream-req-%RANDOM%.json"
 set "TMPSTREAM=%TEMP%\dsh-stream-%RANDOM%.txt"
-powershell -NoProfile -Command "[IO.File]::WriteAllText('%TMPSTREAMREQ%', '{""message"":""再说一句话。""}', [Text.Encoding]::UTF8)" 2>nul
+powershell -NoProfile -Command "[IO.File]::WriteAllText('%TMPSTREAMREQ%', '{""message"":""Say one more sentence.""}', [Text.Encoding]::UTF8)" 2>nul
 curl -sN -b "%COOKIE%" -X POST "%BASE%/api/agent/stream" -H "Content-Type: application/json" --data-binary "@%TMPSTREAMREQ%" -o "%TMPSTREAM%" 2>nul
 findstr /c:"event:session" "%TMPSTREAM%" >nul
 if errorlevel 1 goto stream_fail
@@ -135,17 +135,17 @@ if errorlevel 1 goto stream_fail
 call :pass "POST /api/agent/stream (SSE: session->delta*->done)"
 set /a deltacount=0
 for /f %%n in ('findstr /c:"event:delta" "%TMPSTREAM%" 2^>nul') do set /a deltacount+=1
-echo    收到 %deltacount% 个 delta 帧
+echo    received %deltacount% delta frames
 goto after_stream
 :stream_fail
-call :fail "POST /api/agent/stream" "SSE 帧不完整"
+call :fail "POST /api/agent/stream" "SSE frames incomplete"
 :after_stream
 
 echo.
-echo [web-e2e] 结果: %PASS% 通过, %FAIL% 失败
+echo [web-e2e] result: %PASS% passed, %FAIL% failed
 
 if "%STARTED%"=="1" (
-  rem 清理：杀死监听 %PORT% 的进程（注意：会杀掉该端口上的任意监听进程）
+  rem cleanup: kill the process listening on %PORT% (note: kills any listener on that port)
   for /f "tokens=5" %%P in ('netstat -ano -p tcp ^| findstr ":%PORT% " ^| findstr "LISTENING"') do taskkill /pid %%P /f >nul 2>nul
 )
 if exist "%TMPSEND%" del "%TMPSEND%" >nul 2>nul
