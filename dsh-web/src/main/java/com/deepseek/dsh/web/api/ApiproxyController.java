@@ -816,8 +816,17 @@ public class ApiproxyController {
             Object address = a.get("address");
             if (address instanceof Map<?, ?> addr && addr.get("sessionId") instanceof String sid) return sid;
             if (a.get("sessionId") instanceof String sid) return sid;
+            // Typert request 信封：args.request.address.sessionId
+            Object req = a.get("request");
+            if (req instanceof Map<?, ?> r) {
+                Object addr2 = r.get("address");
+                if (addr2 instanceof Map<?, ?> am && am.get("sessionId") instanceof String sid) return sid;
+                if (r.get("sessionId") instanceof String sid) return sid;
+            }
         }
+        // unwrap 后 payload 本身就是 args 内容
         if (payload.get("sessionId") instanceof String sid) return sid;
+        if (payload.get("address") instanceof Map<?, ?> addr && addr.get("sessionId") instanceof String sid) return sid;
         return "";
     }
 
