@@ -83,7 +83,7 @@ public final class TurnOrchestrator {
     public void prepareTurn(String sessionId, String text, int turn, String model,
                             String rpcId, SessionEventSink sink) {
         setupWorkspace(sessionId);
-        if (turn == 0) {
+        if (turn <= 1) {  // 首轮注入 request/header + 上下文（兼容 0-indexed 旧会话 turn=0 与 1-indexed 新会话 turn=1）
             injectRequestHeader(sessionId, model, sink);
             injectContextMessages(sessionId, sink);
         }
