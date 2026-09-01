@@ -235,8 +235,7 @@ public final class TurnOrchestrator {
              @Override public void onAssistantMessage(String content, String reasoning, String assistantMsgId, List<ChatMessage.ToolCall> toolCalls) {
                 boolean hasContent = content != null && !content.isEmpty();
                 boolean hasReasoning = reasoning != null && !reasoning.isEmpty();
-                boolean hasToolCalls = toolCalls != null && !toolCalls.isEmpty();
-                if (!hasContent && !hasReasoning && !hasToolCalls) return;
+                if (!hasContent && !hasReasoning) return; // 无文本不发（避免刷新显示 "-"）
                 if (step[0] >= 0) sink.emit(sessionId, "step/end", Map.of("turn", turn, "step", step[0]));
                 step[0]++;
                 sink.emit(sessionId, "step/start", Map.of("turn", turn, "step", step[0]));
@@ -249,29 +248,16 @@ public final class TurnOrchestrator {
                     sink.emit(sessionId, "assistant/chunk", Map.of(
                             "chunk", Map.of("type", "text-delta", "index", 0, "text", content),
                             "turn", turn, "step", step[0]));
+                    // assistant/message 只带纯文本 content（与改前一致），
+                    // 不混 tool-call block——聊天视图的 assistant 定义不处理 tool-call block 会显示 "-"。
+                    // 工具轨迹排序问题需前端修改 toolResultNode 读 turn/step 或 pushStep 用 node.turn/step。
+                    sink.emit(sessionId, "assistant/message", Map.of(
+                            "message", Map.of(
+                                    "id", "a-" + UUID.randomUUID().toString().substring(0, 8),
+                                    "content", List.of(Map.of("type", "text", "text", content)),
+                                    "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", model)),
+                            "turn", turn, "step", step[0]));
                 }
-                // assistant/message 带 toolCalls：前端 indexAssistantCallIds 据此知道哪些
-                // 工具调用已由 assistant 节点覆盖 → tool-result 不再走 pushStep(0,1) 硬编码 →
-                // 工具不再全堆顶部，而是在其 step 内。
-                Map<String, Object> message = new LinkedHashMap<>();
-                message.put("id", "a-" + UUID.randomUUID().toString().substring(0, 8));
-                message.put("content", hasContent
-                        ? List.of(Map.of("type", "text", "text", content))
-                        : List.of());
-                if (hasToolCalls) {
-                    List<Map<String, Object>> tcList = new ArrayList<>();
-                    for (var tc : toolCalls) {
-                        Map<String, Object> tcm = new LinkedHashMap<>();
-                        tcm.put("id", tc.id());
-                        tcm.put("name", tc.name());
-                        tcm.put("arguments", tc.argumentsJson());
-                        tcList.add(tcm);
-                    }
-                    message.put("toolCalls", tcList);
-                }
-                message.put("source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", model));
-                sink.emit(sessionId, "assistant/message", Map.of(
-                        "message", message, "turn", turn, "step", step[0]));
             }
             @Override public void onToolCall(String callId, String name, String argumentsJson) {
                 sink.emit(sessionId, "tool/call", Map.of(
