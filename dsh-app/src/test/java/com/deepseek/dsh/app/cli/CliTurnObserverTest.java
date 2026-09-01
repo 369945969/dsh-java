@@ -26,7 +26,7 @@ class CliTurnObserverTest {
 
     @Test
     void rendersThinkBlockThenContent() {
-        String out = render(o -> o.onAssistantMessage("final reply", "step one\nstep two", "a-test"));
+        String out = render(o -> o.onAssistantMessage("final reply", "step one\nstep two", "a-test", null));
         int thinkIdx = out.indexOf("-- think");
         int contentIdx = out.indexOf("final reply");
         assertTrue(thinkIdx >= 0, "think header present");
@@ -38,15 +38,15 @@ class CliTurnObserverTest {
 
     @Test
     void contentOnlyWhenNoReasoning() {
-        String out = render(o -> o.onAssistantMessage("just text", null, "a-test"));
+        String out = render(o -> o.onAssistantMessage("just text", null, "a-test", null));
         assertTrue(out.contains("just text"));
         assertFalse(out.contains("think"), "no think block when reasoning absent");
     }
 
     @Test
     void emptyMessagePrintsNothing() {
-        assertEquals("", render(o -> o.onAssistantMessage("", "", "a-test")));
-        assertEquals("", render(o -> o.onAssistantMessage(null, null, "a-test")));
+        assertEquals("", render(o -> o.onAssistantMessage("", "", "a-test", null)));
+        assertEquals("", render(o -> o.onAssistantMessage(null, null, "a-test", null)));
     }
 
     @Test
@@ -85,7 +85,7 @@ class CliTurnObserverTest {
         String out = render(o -> {
             o.onAssistantChunk(null, "think-1");   // reasoning delta -> opens think block
             o.onAssistantChunk("ans", null);       // content delta -> closes think, streams content
-            o.onAssistantMessage("ans", "think-1", "a-test"); // step end: streamed -> only trailing newline
+            o.onAssistantMessage("ans", "think-1", "a-test", null); // step end: streamed -> only trailing newline
         });
         assertTrue(out.contains("-- think ----------------"), "think header on first reasoning chunk");
         assertTrue(out.contains("think-1"), "reasoning streamed");
@@ -100,8 +100,8 @@ class CliTurnObserverTest {
         // step 1 streamed, step 2 non-streamed (fallback) — state resets between
         String out = render(o -> {
             o.onAssistantChunk("first", null);
-            o.onAssistantMessage("first", null, "a-test");
-            o.onAssistantMessage("second", "why", "a-test");   // no chunks this step -> fallback
+            o.onAssistantMessage("first", null, "a-test", null);
+            o.onAssistantMessage("second", "why", "a-test", null);   // no chunks this step -> fallback
         });
         assertTrue(out.contains("first"));
         assertTrue(out.contains("second"));

@@ -1,5 +1,9 @@
 package com.deepseek.dsh.agent;
 
+import java.util.List;
+
+import com.deepseek.dsh.session.log.ChatMessage;
+
 /**
  * Turn 观察者 —— 观察 ReAct 循环中的事件，供上层（如 apiproxy 网关）映射为前端事件帧。
  *
@@ -13,7 +17,7 @@ public interface TurnObserver {
 
     default void onUserMessage(String userMessage, String userMsgId) {}
 
-    default void onAssistantMessage(String content, String reasoning, String assistantMsgId) {}
+    default void onAssistantMessage(String content, String reasoning, String assistantMsgId, List<ChatMessage.ToolCall> toolCalls) {}
 
     default void onAssistantChunk(String contentDelta, String reasoningDelta) {}
 

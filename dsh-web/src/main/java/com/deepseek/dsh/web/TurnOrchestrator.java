@@ -2,6 +2,7 @@ package com.deepseek.dsh.web;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,7 +10,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-
+import com.deepseek.dsh.session.log.ChatMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -231,27 +232,46 @@ public final class TurnOrchestrator {
                                 "content", List.of(Map.of("type", "text", "text", "（已拒绝：" + reason + "）"))),
                         "turn", turn, "step", step[0]));
             }
-            @Override public void onAssistantMessage(String content, String reasoning, String assistantMsgId) {
-                if ((content == null || content.isEmpty()) && (reasoning == null || reasoning.isEmpty())) return;
+             @Override public void onAssistantMessage(String content, String reasoning, String assistantMsgId, List<ChatMessage.ToolCall> toolCalls) {
+                boolean hasContent = content != null && !content.isEmpty();
+                boolean hasReasoning = reasoning != null && !reasoning.isEmpty();
+                boolean hasToolCalls = toolCalls != null && !toolCalls.isEmpty();
+                if (!hasContent && !hasReasoning && !hasToolCalls) return;
                 if (step[0] >= 0) sink.emit(sessionId, "step/end", Map.of("turn", turn, "step", step[0]));
                 step[0]++;
                 sink.emit(sessionId, "step/start", Map.of("turn", turn, "step", step[0]));
-                if (reasoning != null && !reasoning.isEmpty()) {
+                if (hasReasoning) {
                     sink.emit(sessionId, "assistant/chunk", Map.of(
                             "chunk", Map.of("type", "reasoning-delta", "index", 0, "text", reasoning),
                             "turn", turn, "step", step[0]));
                 }
-                if (content != null && !content.isEmpty()) {
+                if (hasContent) {
                     sink.emit(sessionId, "assistant/chunk", Map.of(
                             "chunk", Map.of("type", "text-delta", "index", 0, "text", content),
                             "turn", turn, "step", step[0]));
-                    sink.emit(sessionId, "assistant/message", Map.of(
-                            "message", Map.of(
-                                    "id", "a-" + UUID.randomUUID().toString().substring(0, 8),
-                                    "content", List.of(Map.of("type", "text", "text", content)),
-                                    "source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", model)),
-                            "turn", turn, "step", step[0]));
                 }
+                // assistant/message 带 toolCalls：前端 indexAssistantCallIds 据此知道哪些
+                // 工具调用已由 assistant 节点覆盖 → tool-result 不再走 pushStep(0,1) 硬编码 →
+                // 工具不再全堆顶部，而是在其 step 内。
+                Map<String, Object> message = new LinkedHashMap<>();
+                message.put("id", "a-" + UUID.randomUUID().toString().substring(0, 8));
+                message.put("content", hasContent
+                        ? List.of(Map.of("type", "text", "text", content))
+                        : List.of());
+                if (hasToolCalls) {
+                    List<Map<String, Object>> tcList = new ArrayList<>();
+                    for (var tc : toolCalls) {
+                        Map<String, Object> tcm = new LinkedHashMap<>();
+                        tcm.put("id", tc.id());
+                        tcm.put("name", tc.name());
+                        tcm.put("arguments", tc.argumentsJson());
+                        tcList.add(tcm);
+                    }
+                    message.put("toolCalls", tcList);
+                }
+                message.put("source", Map.of("kind", "assistant", "provider", "openai-compatible", "model", model));
+                sink.emit(sessionId, "assistant/message", Map.of(
+                        "message", message, "turn", turn, "step", step[0]));
             }
             @Override public void onToolCall(String callId, String name, String argumentsJson) {
                 sink.emit(sessionId, "tool/call", Map.of(

@@ -70,7 +70,7 @@ public final class CliTurnObserver implements TurnObserver {
     }
 
     @Override
-    public void onAssistantMessage(String content, String reasoning, String assistantMsgId) {
+    public void onAssistantMessage(String content, String reasoning, String assistantMsgId, java.util.List<com.deepseek.dsh.session.log.ChatMessage.ToolCall> toolCalls) {
         if (streamed) {
             // 已逐 token 输出：收尾（关闭未闭合 think 块 + 换行），不重复打印正文
             if (inThink) {

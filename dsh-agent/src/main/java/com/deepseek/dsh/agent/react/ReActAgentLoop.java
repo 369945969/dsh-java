@@ -128,7 +128,7 @@ public class ReActAgentLoop implements Agent {
         });
 
         String assistantMsgId = "a-" + UUID.randomUUID().toString().substring(0, 8);
-        if (o != null) o.onAssistantMessage(response.content(), response.reasoning(), assistantMsgId);
+        if (o != null) o.onAssistantMessage(response.content(), response.reasoning(), assistantMsgId, response.toolCalls());
 
         if (response.toolCalls() != null && !response.toolCalls().isEmpty()) {
             dispatchToolCalls(sessionId, scopeKey, ctx, response.toolCalls(), o);

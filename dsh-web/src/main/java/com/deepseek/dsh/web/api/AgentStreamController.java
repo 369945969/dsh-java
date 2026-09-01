@@ -92,7 +92,7 @@ public class AgentStreamController {
                             log.debug("SSE chunk send failed: {}", e.toString());
                         }
                     }
-                    @Override public void onAssistantMessage(String content, String reasoning, String assistantMsgId) {
+                    @Override public void onAssistantMessage(String content, String reasoning, String assistantMsgId, java.util.List<com.deepseek.dsh.session.log.ChatMessage.ToolCall> toolCalls) {
                         // 逐 token 已下发，无需再整段重复，但须落日志以便刷新后历史恢复
                         Map<String, Object> msg = new LinkedHashMap<>();
                         msg.put("id", assistantMsgId);
