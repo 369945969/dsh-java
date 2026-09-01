@@ -1856,30 +1856,50 @@ public class ApiproxyController {
         } catch (Exception e) {
             slog = null;
         }
-        SessionEvent appended = null;
         if (slog != null) {
-            try {
-                appended = slog.append(eventType, data, surfaceOp);
-                holder.context().require(Sessions.class).persist(appended);
-            } catch (Exception e) {
-                log.debug("sendSessionEvent append ({}): {}", eventType, e.toString());
+            // 同步 append + 发送：并行工具调用下多个线程并发调用 sendSessionEvent，
+            // slog.append 是 synchronized（seq 正确递增），但 sendMuxFrame/broadcastFollowEvent
+            // 在各线程的调用顺序不确定 → WS 帧可能乱序到达前端 → 轨迹/聊天乱序。
+            // 把 append + persist + sendMuxFrame + broadcast 放在 synchronized(slog) 内，
+            // 保证 WS 帧按 seq 顺序发送。
+            synchronized (slog) {
+                SessionEvent appended = null;
+                try {
+                    appended = slog.append(eventType, data, surfaceOp);
+                    holder.context().require(Sessions.class).persist(appended);
+                } catch (Exception e) {
+                    log.debug("sendSessionEvent append ({}): {}", eventType, e.toString());
+                }
+                long eventSeq = appended != null ? appended.seq() : System.currentTimeMillis();
+                long eventTime = appended != null ? appended.time() : System.currentTimeMillis();
+                Map<String, Object> event = new LinkedHashMap<>();
+                event.put("type", eventType);
+                event.put("seq", eventSeq);
+                event.put("time", eventTime);
+                event.put("data", data);
+                if (surfaceOp != null) event.put("surfaceOp", surfaceOp);
+                Map<String, Object> payload = Map.of("sessionId", sessionId, "event", event);
+                try {
+                    downlink.sendMuxFrame(uuid(), muxFrame("session/event", payload));
+                } catch (Exception e) {
+                    log.debug("sendSessionEvent ({}): downlink disconnected: {}", eventType, e.toString());
+                }
+                if (broadcast) remoteMux.broadcastFollowEvent(sessionId, event);
             }
+        } else {
+            long now = System.currentTimeMillis();
+            Map<String, Object> event = new LinkedHashMap<>();
+            event.put("type", eventType);
+            event.put("seq", now);
+            event.put("time", now);
+            event.put("data", data);
+            if (surfaceOp != null) event.put("surfaceOp", surfaceOp);
+            Map<String, Object> payload = Map.of("sessionId", sessionId, "event", event);
+            try { downlink.sendMuxFrame(uuid(), muxFrame("session/event", payload)); } catch (Exception e) {
+                log.debug("sendSessionEvent ({}): downlink disconnected: {}", eventType, e.toString());
+            }
+            if (broadcast) remoteMux.broadcastFollowEvent(sessionId, event);
         }
-        long eventSeq = appended != null ? appended.seq() : System.currentTimeMillis();
-        long eventTime = appended != null ? appended.time() : System.currentTimeMillis();
-        Map<String, Object> event = new LinkedHashMap<>();
-        event.put("type", eventType);
-        event.put("seq", eventSeq);
-        event.put("time", eventTime);
-        event.put("data", data);
-        if (surfaceOp != null) event.put("surfaceOp", surfaceOp);
-        Map<String, Object> payload = Map.of("sessionId", sessionId, "event", event);
-        try {
-            downlink.sendMuxFrame(uuid(), muxFrame("session/event", payload));
-        } catch (Exception e) {
-            log.debug("sendSessionEvent ({}): downlink disconnected: {}", eventType, e.toString());
-        }
-        if (broadcast) remoteMux.broadcastFollowEvent(sessionId, event);
     }
 
 
