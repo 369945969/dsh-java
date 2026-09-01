@@ -69,7 +69,11 @@ public final class PwshLocalProvider implements ShellCapability {
         argv.add("-NoProfile");
         argv.add("-NonInteractive");
         argv.add("-Command");
-        argv.add(command);
+        // pwsh 默认输出系统代码页（中文 Windows=GBK/936），ProcessRunner 用 UTF-8 读取 → 乱码。
+        // 注入 [Console]::OutputEncoding = UTF8 使 pwsh 以 UTF-8 输出，与 ProcessRunner 的 UTF-8 解码匹配。
+        argv.add("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+                + "$OutputEncoding = [System.Text.Encoding]::UTF8; "
+                + command);
 
         // 模型友好的环境：禁用颜色、进度条、ANSI
         Map<String, String> childEnv = new java.util.HashMap<>(env);
