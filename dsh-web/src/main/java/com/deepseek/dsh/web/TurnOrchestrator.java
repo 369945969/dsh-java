@@ -74,7 +74,7 @@ public final class TurnOrchestrator {
                 if (e.data().get("source") instanceof Map<?, ?> src && "plugin".equals(src.get("kind"))) continue;
                 count++;
             }
-            return count;
+            return count + 1;  // 1-indexed：第一轮 turn=1（前端 firstVisibleTurn 检查 turn > 0）
         } catch (Exception ignored) {
             return 0;
         }
