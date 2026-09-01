@@ -1495,6 +1495,8 @@ window.__ModuleLoader__.load({
 				seq: match.event.seq,
 				time: match.event.time,
 				callId: String(match.event.data.message.source.callId),
+				turn: match.event.data.turn,
+				step: match.event.data.step,
 				call: previous === void 0 ? null : {
 					name: previous.name,
 					argsRaw: previous.argsRaw
@@ -7078,7 +7080,7 @@ window.__ModuleLoader__.load({
 							laidList.push(laid);
 							index = laid.cell.index;
 						}
-						pushStep(0, 1, laidList);
+						pushStep(node.turn || 0, node.step || 1, laidList);
 					}
 					prevAbsTime = finiteTime(node.time) ?? prevAbsTime;
 				}
