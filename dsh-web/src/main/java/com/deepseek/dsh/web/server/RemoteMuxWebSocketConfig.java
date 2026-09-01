@@ -113,19 +113,20 @@ public class RemoteMuxWebSocketConfig implements WebSocketConfigurer {
 
     private void handleSessionFollow(WebSocketSession session, String streamId, Object payload) throws IOException {
         String sessionId = null;
-        log.info("session/follow: rawPayload={}", payload);
+        int maxMessages = 50;
         if (payload instanceof Map<?, ?> pm && pm.get("args") instanceof Map<?, ?> args) {
-            log.info("session/follow: argsKeys={}", args.keySet());
             if (args.get("address") instanceof Map<?, ?> addr) {
                 sessionId = addr.get("sessionId") instanceof String s ? s : null;
-            } else if (args.get("request") instanceof Map<?, ?> req && req.get("address") instanceof Map<?, ?> addr) {
-                sessionId = addr.get("sessionId") instanceof String s ? s : null;
+            } else if (args.get("request") instanceof Map<?, ?> req) {
+                sessionId = req.get("address") instanceof Map<?, ?> addr
+                        && addr.get("sessionId") instanceof String s ? s : null;
+                if (req.get("maxMessages") instanceof Number n) maxMessages = n.intValue();
             }
+            if (args.get("maxMessages") instanceof Number n) maxMessages = n.intValue();
         }
-        log.info("session/follow: sessionId={}", sessionId);
         if (sessionId == null || sessionId.isEmpty()) return;
         registry.registerFollow(sessionId, session, streamId);
-        var snapshot = registry.buildFollowSnapshot(sessionId);
+        var snapshot = registry.buildFollowSnapshot(sessionId, maxMessages);
         if (snapshot != null) {
             registry.sendFollowSnapshot(session, streamId,
                     snapshot.cursor(), snapshot.records(), snapshot.hasMore(), snapshot.projections(),

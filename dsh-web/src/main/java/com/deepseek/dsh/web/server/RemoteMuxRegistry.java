@@ -43,10 +43,10 @@ public class RemoteMuxRegistry {
     private final List<FollowEntry> workspaceFollowers = new CopyOnWriteArrayList<>();
     private final List<FollowEntry> controlFollowers = new CopyOnWriteArrayList<>();
 
-    private Function<String, FollowSnapshot> snapshotProvider;
+    private java.util.function.BiFunction<String, Integer, FollowSnapshot> snapshotProvider;
     private java.util.function.Supplier<Map<String, Object>> controlBaselineProvider;
 
-    public void setSnapshotProvider(Function<String, FollowSnapshot> provider) {
+    public void setSnapshotProvider(java.util.function.BiFunction<String, Integer, FollowSnapshot> provider) {
         this.snapshotProvider = provider;
     }
 
@@ -169,8 +169,8 @@ public class RemoteMuxRegistry {
         }
     }
 
-    public FollowSnapshot buildFollowSnapshot(String sessionId) {
-        return snapshotProvider != null ? snapshotProvider.apply(sessionId) : null;
+    public FollowSnapshot buildFollowSnapshot(String sessionId, int maxMessages) {
+        return snapshotProvider != null ? snapshotProvider.apply(sessionId, maxMessages) : null;
     }
 
     void sendFollowSnapshot(WebSocketSession ws, String streamId,

@@ -124,7 +124,7 @@ public class ApiproxyController {
         return Map.of("queues", Map.of(), "jobs", Map.of(), "projections", projections);
     }
 
-    private RemoteMuxRegistry.FollowSnapshot buildFollowSnapshot(String sessionId) {
+    private RemoteMuxRegistry.FollowSnapshot buildFollowSnapshot(String sessionId, int maxMessages) {
         try {
             Map<String, Object> histResult = sessionHistory(Map.of("sessionId", sessionId));
             @SuppressWarnings("unchecked")
@@ -135,6 +135,12 @@ public class ApiproxyController {
                     if (n.longValue() > maxSeq) maxSeq = n.longValue();
                 }
             }
+            // 按 maxMessages 截断：只发最后 N 条，hasMore=true 使前端显示「加载更多」
+            boolean hasMore = false;
+            if (maxMessages > 0 && events.size() > maxMessages) {
+                events = new ArrayList<>(events.subList(events.size() - maxMessages, events.size()));
+                hasMore = true;
+            }
             List<Map<String, Object>> records = new ArrayList<>();
             for (var entry : events) {
                 if (entry.get("event") instanceof Map<?, ?> e) {
@@ -144,10 +150,6 @@ public class ApiproxyController {
                     records.add(rec);
                 }
             }
-            // title 与 buildControlBaseline/sessionFork 同款：用 generateTitle 跳过
-            // source.kind=plugin 的上下文/技能注入消息，取首条真实用户输入。
-            // 否则 live follow 快照会以高 seq 覆盖分叉响应下发的正确 title，
-            // 把 "Current runtime context…" 这类注入消息当成会话名（刷新才纠正）。
             String title = "新会话";
             try {
                 SessionLog sl = holder.context().require(Sessions.class).getOrCreate(SessionId.of(sessionId));
@@ -163,7 +165,7 @@ public class ApiproxyController {
             values.put("modelSelection", modelSelection);
             values.put("agentPreset", defaultPreset);
             return new RemoteMuxRegistry.FollowSnapshot(
-                    records, maxSeq, false,
+                    records, maxSeq, hasMore,
                     Map.of("asOfSeq", maxSeq, "values", values),
                     Map.of("version", 0, "id", sessionId, "createdAt", System.currentTimeMillis()));
         } catch (Exception e) {
