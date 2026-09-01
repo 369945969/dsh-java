@@ -30,20 +30,36 @@ class RemoteMuxRegistryTest {
     @Test
     void buildFollowSnapshotWithoutProviderReturnsNull() {
         RemoteMuxRegistry registry = new RemoteMuxRegistry();
-        assertNull(registry.buildFollowSnapshot("any-session"));
+        assertNull(registry.buildFollowSnapshot("any-session", 50));
     }
 
     @Test
     void buildFollowSnapshotWithProviderReturnsSnapshot() {
         RemoteMuxRegistry registry = new RemoteMuxRegistry();
-        registry.setSnapshotProvider(sid -> new RemoteMuxRegistry.FollowSnapshot(
+        registry.setSnapshotProvider((sid, maxMessages) -> new RemoteMuxRegistry.FollowSnapshot(
                 List.of(Map.of("type", "event")), 5L, false,
                 Map.of("asOfSeq", 5L, "values", Map.of("title", "test")),
                 Map.of("version", 0, "id", sid)));
-        var snapshot = registry.buildFollowSnapshot("test-session");
+        var snapshot = registry.buildFollowSnapshot("test-session", 50);
         assertNotNull(snapshot);
         assertEquals(5L, snapshot.cursor());
         assertEquals(1, snapshot.records().size());
+    }
+
+    @Test
+    void buildFollowSnapshotWithMaxMessagesTruncates() {
+        RemoteMuxRegistry registry = new RemoteMuxRegistry();
+        registry.setSnapshotProvider((sid, maxMessages) -> {
+            int count = 100;
+            boolean hasMore = count > maxMessages;
+            return new RemoteMuxRegistry.FollowSnapshot(
+                    List.of(Map.of("type", "event")), 99L, hasMore,
+                    Map.of("asOfSeq", 99L, "values", Map.of()),
+                    Map.of("version", 0, "id", sid));
+        });
+        var snapshot = registry.buildFollowSnapshot("test", 50);
+        assertNotNull(snapshot);
+        assertTrue(snapshot.hasMore());
     }
 
     @Test
