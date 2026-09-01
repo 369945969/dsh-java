@@ -20,13 +20,13 @@ dsh-java/
 ├── dsh-session-sqlite/          # SQLite 会话持久化 + FTS5 全文/语义会话查询
 ├── dsh-tools/                   # 工具注册表、执行管线、JSON Schema 装配、ToolArgs/ToolSchema 构建器
 ├── dsh-llm/                     # LLM 能力缝、DeepSeek 适配器、流式/重试/Token 计量、会话标题提供程序、模型配置中心（多档案 + 页面配置 + reasoning_content 捕获）
-├── dsh-agent/                   # Agent 接口、ReAct loop、turn/step/round 生命周期（可注入中间件管线）、TurnObserver（事件映射）、setSystemPrompt（预设切换）
-├── dsh-capability-shell/         # shell/bash 能力缝 + 本地提供者 + bash 工具
+├── dsh-agent/                   # Agent 接口、ReAct loop（maxParallelToolCalls 并行限流）、turn/step/round 生命周期、TurnObserver、setSystemPrompt
+├── dsh-capability-shell/         # shell/bash 能力缝 + 本地提供者 + bash 工具（timeoutMs/maxOutputBytes 从 settings 读取）
 ├── dsh-capability-fs/            # 文件系统能力缝 + 本地提供者 + read/write/edit/glob/grep 工具
-├── dsh-capability-web/           # Web 搜索/抓取能力缝 + DeepSeek 搜索 + HTTP 抓取 + web_search/web_fetch 工具
+├── dsh-capability-web/           # Web 搜索/抓取能力缝 + DeepSeek 搜索 + HTTP 抓取 + web_search/web_fetch 工具（apiKeyEnv/baseURL/maxUses 从 settings 读取）
 ├── dsh-terminal/                 # 持久终端/PTY 能力缝 + bash 终端 + terminal 工具
 ├── dsh-compaction/               # 上下文压缩能力缝 + 摘要 provider + 工具结果裁剪器
-├── dsh-subagent/                 # subagent 委派能力缝 + in-process fork + task 工具
+├── dsh-subagent/                 # subagent 委派能力缝 + in-process fork + task 工具（per-delegation 模型选择 via allowedModels）
 ├── dsh-goal/                     # 同会话目标持久化 + goal 命令 + goal-round
 ├── dsh-plan/                     # 计划模式（日志化状态 + reviewed exit）
 ├── dsh-workflow/                 # 工作流能力缝 + 虚拟线程引擎 + 异步任务 + Ralph 循环
@@ -53,10 +53,11 @@ dsh-java/
 ├── dsh-telemetry/                # 遥测能力缝 (OpenTelemetry) + no-op/日志后端 + 工具中间件
 ├── dsh-acp/                     # Automation-only ACP 服务器（JSON-RPC over stdio）
 ├── dsh-sdk/                     # JSON-RPC 协议 + 客户端 + 服务端（进程外运行时 SDK）
-├── dsh-web/                     # Spring Boot Web 服务、apiproxy JSON-RPC 网关（settings/llm/credentials/agentPreset/commands/pluginInventory/messageFeedback）、SPA 托管、WebSocket 下行流（mux + host）、Session 导出
+├── dsh-web/                     # Spring Boot Web 服务、apiproxy JSON-RPC 网关、SPA 托管、WebSocket 下行流、Session 导出
 ├── dsh-app/                     # 启动引导、Profile/Bundle 组合、Spring Boot 入口、RPC/ACP/CLI 入口、前端静态资源
-├── frontend/                    # 原版 deepseek-harness Cordis 前端（原封复制，原版构建链；dist+启动快照已托管于 dsh-app/static）
-└── testcase/                    # 端到端测试（16 项 TS 测试 + run-e2e.sh）
+├── frontend/                    # 原版 deepseek-harness Cordis 前端（原封复制，dist+启动快照已托管于 dsh-app/static）
+├── scripts/                     # 构建 + 启动脚本（sh + bat 各一套）
+└── testcase/                    # 端到端测试（TS + Python + sh + bat）
 ```
 
 ## 核心概念与设计模式
@@ -71,7 +72,7 @@ dsh-java/
 | dsh-tools | Tool / ToolRegistry / ToolPipeline | 命令、注册表、责任链 |
 | dsh-llm | LlmModel / DeepSeekLlmAdapter / RetryLlmModel | 适配器、策略、装饰器 |
 | dsh-llm | TokenMeter + reasoning_content 捕获 | 观察者（聚合统计） |
-| dsh-agent | ReActAgentLoop（turn→step→round）+ TurnObserver + setSystemPrompt | 模板方法 + 状态机 + 策略 + 观察者 |
+| dsh-agent | ReActAgentLoop（turn→step→round + maxParallelToolCalls 并行限流）+ TurnObserver + setSystemPrompt | 模板方法 + 状态机 + 策略 + 观察者 |
 | dsh-capability-* | 能力缝（定义/提供者/消费者） | 策略 + SPI + 工厂 |
 | dsh-interaction | Approval / Permission / Commands | 责任链 + 代理 + 命令 |
 | dsh-mcp | StdioMcpClient | 适配器（MCP ↔ 内部工具）+ 桥接 |
@@ -94,6 +95,7 @@ dsh-java/
 - **turn** —— 一次已准入输入的排空，在模型+工具停止或终止策略介入时结束。
 - **step** —— 一次模型请求加上其响应引起的工具执行；一个 turn 有零或多个 step。
 - **round** —— 包含一个 turn 的外层策略迭代。
+- **maxParallelToolCalls** —— 每 step 并行工具调用上限（settings `agent-loop` namespace，默认 10，harness 对齐）；`ReActAgentLoop.dispatchToolCalls` 按 cap 用 `ExecutorService` 并行派发，`executeToolCall` 接收 `TurnObserver` 参数（ThreadLocal 不传播到工作线程）。
 
 不变式：**"模型可见 ⟺ 已记录"** —— 所有发送给模型的消息都从 `SessionLog` 投影得到。
 
@@ -102,33 +104,37 @@ dsh-java/
 ### 环境要求
 - JDK 21
 - Maven 3.9+
-- Node.js 22+ / pnpm（前端，运行时无需）
+- Node.js 22+ / pnpm（仅前端构建时需要，运行时无需）
 
-### 一键启动
+### 构建后端
+```bash
+scripts/build-backend.sh        # Linux/macOS
+scripts\build-backend.bat       # Windows
+```
+构建产物：`dsh-app/target/classes/` + `dsh-app/target/rpc-cp.txt`（运行时 classpath）。
+
+### 构建前端（可选，已预构建提交）
+```bash
+scripts/build-frontend.sh       # Linux/macOS（需 Node 22.19+/pnpm）
+scripts\build-frontend.bat      # Windows
+```
+前端静态资源已构建并提交于 `dsh-app/src/main/resources/static`，无需运行时重建。
+
+### 启动
 ```bash
 scripts/start.sh [port]        # 打开 http://localhost:8765
 ```
-脚本自动加载 `.env`、首次构建 classpath（缓存）、启动 Spring Boot Web 服务。
-前端（原版 Cordis SPA）已预构建托管于 `dsh-app/src/main/resources/static`，无需额外构建。
+启动脚本检查 `rpc-cp.txt` 是否存在（不存在则提示先运行 `build-backend`），然后直接启动 Spring Boot Web 服务。不再在启动时编译——编译由 `build-backend` 负责。
+
+> Windows 每个脚本均有同名 `.bat`，与 `.sh` 一一对应。所有 `.bat` 为纯 ASCII 英文（编码无关）。
 
 ### 配置（模型 Key）
 
-支持**两种配置方式并存**，页面配置覆盖环境变量初值：
+模型配置**完全来自网页保存**，不再从环境变量读取。后端启动时从 `~/.dsh/model-config.json` 加载活跃模型档案（含 API Key、端点、模型名）。
 
-#### 1. 环境变量 / .env
-```bash
-cp .env.example .env      # 复制模板，填入 DEEPSEEK_API_KEY
-```
-| 变量 | 必填 | 说明 |
-|------|------|------|
-| `DEEPSEEK_API_KEY` | 是 | 模型 API Key |
-| `DSH_BASE_URL` | 否 | OpenAI 兼容端点；glm-5.2 用 `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| `DSH_MODEL` | 否 | 模型名；默认 `deepseek-chat`，glm-5.2 用 `glm-5.2` |
-
-#### 2. 页面配置（Web 设置页）
 打开 http://localhost:8765 → 设置 → 模型：
 - 添加自定义模型档案（显示名 / 模型名 / API Key / 端点）
-- 切换当前活跃模型（即时生效）
+- 切换当前活跃模型（即时生效，广播 `modelSelection` 投影，无需刷新）
 - 删除模型档案
 - 模型清单持久化到 `~/.dsh/model-config.json`（每个档案含 route + models 数组，跨重启存活）
 
@@ -136,60 +142,70 @@ cp .env.example .env      # 复制模板，填入 DEEPSEEK_API_KEY
 
 ### 模型管理（设置 → 模型）
 - **添加/编辑/删除模型**：支持自定义 OpenAI 兼容提供方（DeepSeek、GLM、Qwen、OpenAI 等）
-- **即时切换**：活跃模型切换后下一回合即生效
+- **即时切换**：活跃模型切换后广播 `modelSelection` 投影帧，前端实时反映（无需刷新页面）
 - **持久化**：模型档案 + 路由 + models 数组持久化到 `~/.dsh/model-config.json`
-- **route 字段**：每个档案持久化 route（llm-pi-ai namespace 的 settingsPath），跨重启自动重建映射
-- **schema 信封**：返回 schemastery 兼容的 `llm-pi-ai` namespace schema（providers dict → profile {apiKeyEnv, api, baseURL, models[]}）
-- **即时回显**：保存后推送 `settings/document-updated` + `llm/adapters-updated` remote 事件，前端立即刷新
-- **删除按钮**：namespace 视图设 `user=providers, base={}` 使 `removable=true`
+- **/model 切换**：聊天页 /model 弹窗 + composer 模型 seat 均调 `session.selectModel`，后端广播投影
+- **schema 信封**：返回 schemastery 兼容的 `llm-pi-ai` namespace schema
 
 ### Agent 预设（设置 → Agent 预设）
-- **三个系统预设**：standard（标准）、code（PTC 模式）、headless（无界面）
+- **四个系统预设**：standard（标准）、ptc（PTC 模式）、minimal（极简）、cordis（创造模式）
 - **切换预设**：select 后全局切换 agent 系统提示（`Agent.setSystemPrompt`），下一回合生效
-- **默认预设**：写入 `agent-presets` settings namespace 的 `default` 字段，`agentPreset.list` 的 `isDefault` 反映用户选择
-- **用户预设**：复制到 `~/.dsh/presets/{id}.yml`，支持 read/copy/openDocument/remove
-- **限制**：单 agent 架构下为全局切换（非按会话重组）
+- **返回 id 字符串**：`agentPresetSelect` 返回 preset id 字符串（与原版 `Promise<string>` 一致），非对象（否则前端 React 渲染对象报错 → chip 消失）
+- **基线一致性**：`buildControlBaseline` 的 `agentPreset` 用 `defaultPreset`（非硬编码 `"standard"`），与 `buildFollowSnapshot`/`sessionCreate` 一致
 
-### 插件清单（设置 → Plugins）
-- `pluginInventory/list` 返回 40 个已装配模块（对应原版 TS 的 @deepseek-ai/dsh-* 插件包）
-- `dynamicCordisRunner/inventory` → `[]`（无动态包）、`syncInspectManifest` → `null`
-- `commands/list` → `[]`（无命令目录）
-- `messageFeedback/list` → `{items:[]}`（无反馈 sidecar）
+### 插件配置卡片（设置 → Plugins）
+复刻 harness 四个插件配置卡片，每个 namespace 带 schema + 默认值（harness 对齐）：
+
+| 卡片 | namespace | 字段 | 默认值 | 行为接入 |
+|------|-----------|------|--------|---------|
+| agent 循环 | `agent-loop` | `maxParallelToolCalls: number` | 10 | → ReActAgentLoop 并行限流 |
+| 终端 | `shell` | `timeoutMs: number, maxOutputBytes: number` | 120000, 64000 | → BashTool 超时/输出截断 |
+| 网页搜索 | `web-search-deepseek` | `apiKeyEnv: string, baseURL: string, maxUses: number` | -, -, 5 | → DeepSeekSearchProvider/WebSearchTool |
+| subagent | `subagent-model-selection` | `enabled: boolean, allowedModels: array<{id,name}>` | false, [] | → SubagentTaskTool model 枚举 + per-delegation 子 agent |
 
 ### 欢迎声明（onboarding）
 - `ui-onboarding` namespace 返回 + `welcomeNoticeVersion` 持久化到 `~/.dsh/settings.json`
-- 点击「继续」确认后记录版本，刷新不再弹出
 
 ### 打开配置文件
 - `settings.openDocument` → `{opened:true}` + best-effort `Desktop.open(~/.dsh/model-config.json)`
+
+## 认证（浏览器会话 Cookie）
+
+后端 `/api/**` 和 `/ws/**` 需要浏览器会话 cookie 认证：
+1. 后端启动时生成随机启动令牌，打印 `dsh web authentication URL: http://localhost:8765/?token=<token>`
+2. 浏览器访问该 URL → 303 换发 `dsh-auth-<sha256(authority)>` cookie（HMAC-SHA256 签名，持久化到 `~/.dsh/browser-session.json`）
+3. 后续所有 `/api` + `/ws` 请求凭 cookie 认证
+
+E2E 测试脚本（`web-e2e.sh` / `run-all.sh`）自动从后端日志解析 token → `GET /?token=` 换 cookie → `-b cookie.jar` 带在所有 `/api` 调用上。
 
 ## 会话与工作区
 
 ### 会话标题
 - **自动生成**：从原始事件流过滤 `source.kind=plugin` 的上下文注入消息，取首条真实用户消息前 40 字符
-- **投影推送**：`session.prompt` 时推送 `session/projection` control 帧（key=title, seq=lastSeq），克服 `ProjectionValueStore` 的 stale 检查
-- **侧边栏即时显示**：control 流连接时推送所有会话的 title 投影，刷新后无需点击即可显示标题
-- **手动重命名**：`session.rename` 存储标题 + 推送投影（自动剥离 `(N)` fork 后缀）
+- **投影推送**：`session.prompt` 时推送 `session/projection` control 帧（key=title, seq=lastSeq）
+- **分叉标题**：`buildFollowSnapshot` 复用 `generateTitle(sl)`（与 `buildControlBaseline`/`sessionFork` 同款，跳过 plugin 注入消息），live 与刷新一致
+- **手动重命名**：`session.rename` 存储标题 + 推送投影
 
 ### 工作区
 - **自动分组**：未分组会话发送消息时自动按 `yyyy-MM-dd-HH` 创建/复用时段工作区
-- **持久化**：工作区 + 归档集持久化到 `~/.dsh/workspaces.json`，跨重启存活
+- **持久化**：工作区 + 归档集持久化到 `~/.dsh/workspaces.json`
 - **管理操作**：create / rename / delete / archiveSession / insertBefore / insertSessionBefore / list
-- **下行帧推送**：workspace-changed / workspace-removed / archived-sessions-changed
 
 ### 会话操作
 - **session.create** → 返回 sessionId
 - **session.prompt** → 异步运行 agent turn（ReAct 循环，含工具调用）
 - **session.history** → 分页返回事件 + projections 块（title 投影）
-- **session.fork** → 复制父会话全部事件 + 注入 forked-from 上下文消息（父标题+sessionId），挂到父同工作区，推送 `workspace/upsert` + `projection/title` 帧
-- **session.cancel** → 中断运行中的 agent turn 线程 + cancelledSessions 标记 + turn/end reason=aborted
+- **session.fork** → 复制父会话全部事件 + 注入 forked-from 上下文消息，推送 title 投影（与刷新一致）
+- **session.cancel** → 中断运行中的 agent turn 线程
 - **session.rename** → 更新会话标题
+- **session.selectModel** → 切换活跃模型 + 广播 `modelSelection` 投影（实时，无需刷新）
 - **session.list** → 返回所有会话（含 title / blank / running / updatedAt）
 - **session.export** → `GET /api/session.export?sessionId=…` → ZIP 下载（.jsonl）
 
 ### 事件信封（apiproxy → 前端）
-- `surfaceOp:'append'` 标记在 `user/message`、`assistant/message`、`tool/result`（surface 事件）
-- `tool/result` content block 为 `{type:'tool-result', toolCallId, content:[{type:'text',text}], isError:false}`
+- `request/header` 带 `reason:'initial'`（与 harness 对齐，使轨迹渲染系统提示词）
+- `surfaceOp:'append'` 标记在 `user/message`、`assistant/message`、`tool/result`
+- `user/message` 的 `source.rpcId` 与前端 `beginSubmission` 的 `requestId` 对齐（echo retire 去重，避免发送内容显示两次）
 - `assistant/chunk` 支持 `reasoning-delta`（思考内容）+ `text-delta`（回复内容）
 - `turn/end` reason: `complete` 或 `aborted`（取消时）
 
@@ -197,21 +213,22 @@ cp .env.example .env      # 复制模板，填入 DEEPSEEK_API_KEY
 
 | 脚本 | 入口类 | 传输/模式 | 说明 |
 |------|--------|-----------|------|
-| `start.sh` | `DshApplication` | Web（SPA+REST+SSE+WS） | 一键构建前端并启动 Web 服务（推荐） |
+| `start.sh` | `DshApplication` | Web（SPA+REST+SSE+WS） | 启动 Web 服务（推荐） |
 | `start-rpc.sh` | `DshRpcServer` | stdio JSON-RPC | 运行时 SDK 全功能（进程外子进程） |
 | `start-acp.sh` | `DshAcpServer` | stdio JSON-RPC | ACP 自动化最小方法集 |
 | `start-cli.sh` | `DshRepl` | 终端 REPL | 交互式对话（斜杠命令） |
 
-> 四种模式共享 `TurnOrchestrator`：系统提示词注入、上下文注入、事件日志、TurnObserver 回调统一处理。Web 用 `sendSessionEvent`（SessionLog + WS 广播），CLI 用 `CliEventSink`（SessionLog + stdout），RPC 用 `RpcEventSink`（SessionLog + stderr 日志），ACP 用 `AcpEventSink`（同 RPC）。
-
-> 启动脚本每次执行前会 `clean install` 重编译后端并刷新共享 classpath（`dsh-app/target/rpc-cp.txt`），从仓库根 `.env` 自动加载模型配置。
->
-> Windows：每个脚本均有同名 `.bat`（如 `scripts\start.bat`），与 `.sh` 一一对应，同样自动加载 `.env`、构建并缓存 classpath（依赖 mvn + Java；端到端脚本 `run-all.bat` / `web-e2e.bat` 另需 curl 与 PowerShell）。
+> 启动脚本不再编译——先运行 `build-backend` 生成 `target/classes` + `rpc-cp.txt`，再启动。
+> 模型/key/端点取自 `~/.dsh/model-config.json`（网页保存的活跃档案），不从环境变量读取。
 
 ### 下行流（WebSocket）
 - `/api/events.mux` → mux WS（session/event + session/projection + session/subscribed 帧）
 - `/api/events.host` → host WS（host/session-added / session-status / workspace-changed / archived-sessions-changed / remote-event 帧）
 - mux WS 连接时自动推送所有会话的 title 投影
+
+### CLI 输出
+- 推理块显示 `---think---` ... `-----------`（非 `-- think --`，无 ✓ 勾）
+- 工具结果：换行 + 工具名（DIM），不再显示 `✓` 勾
 
 ### CLI 斜杠命令
 
@@ -219,9 +236,9 @@ cp .env.example .env      # 复制模板，填入 DEEPSEEK_API_KEY
 |------|------|
 | `/help` | 显示帮助 |
 | `/model [id]` | 列出/切换模型 |
-| `/sessions` | 列出全部会话（含持久化，显示短ID/标题/轮次） |
+| `/sessions` | 列出全部会话（含持久化） |
 | `/session <id>` | 按前缀切换会话 |
-| `/fork` | 分叉当前会话（注入 forked-from 上下文） |
+| `/fork` | 分叉当前会话 |
 | `/compact` | 压缩上下文 |
 | `/new` | 新建会话 |
 | `/tokens` | 查看 token 用量 |
@@ -231,10 +248,9 @@ cp .env.example .env      # 复制模板，填入 DEEPSEEK_API_KEY
 
 Web/CLI/RPC/ACP 四种入口共享 `TurnOrchestrator`（`dsh-web` 模块）：
 
-- **`prepareTurn`** — turn 0 时注入 `request/header`（系统提示词 `{{cwd}}`/`{{model}}`/`{{platform}}`）+ `request/context` + 上下文消息（AGENTS.md / runtime context / skills），后续轮不重复注入
-- **`runAgent`** — `agent.runObserved` + TurnObserver → `SessionEventSink.emit`（step/start/end、assistant/chunk/message、tool/call/result、turn/end）
-- **`forkSession`** — 复制父事件 + 注入 forked-from `user/message`（父标题+sessionId）
-- **`nextTurn`** — 从 SessionLog 计数 USER 消息轮次
+- **`prepareTurn`** — turn 0 时注入 `request/header`（含 `reason:'initial'` + 系统提示词 `{{cwd}}`/`{{model}}`/`{{platform}}`）+ `request/context` + 上下文消息（AGENTS.md / runtime context / skills），后续轮不重复注入
+- **`runAgent`** — `agent.runObserved` + TurnObserver → 事件日志（step/start/end、assistant/chunk/message、tool/call/result、turn/end）
+- **`forkSession`** — 复制父事件 + 注入 forked-from `user/message`
 - **`generateTitle`** — 从原始事件过滤 `source.kind=plugin`，取首条真实用户消息前 40 字符
 
 ### 系统提示词模板
@@ -243,11 +259,9 @@ Web/CLI/RPC/ACP 四种入口共享 `TurnOrchestrator`（`dsh-web` 模块）：
 |------|------|
 | `{{cwd}}` | 会话工作区路径（`SessionCwd`，虚拟线程 ThreadLocal） |
 | `{{model}}` | 当前活跃模型名 |
-| `{{platform}}` | OS 名 + 架构 + shell 类型（如 `Mac OS X (aarch64), shell: bash`） |
+| `{{platform}}` | OS 名 + 架构 + shell 类型 |
 
-### 平台互斥 Shell
-
-Unix → `bash`，Windows → `pwsh`。模型只看到当前平台可用的 shell 工具（镜像 harness 的 `disabled` 逻辑）。
+## REST / SSE API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -264,73 +278,76 @@ Unix → `bash`，Windows → `pwsh`。模型只看到当前平台可用的 shel
 | DELETE | `/api/config/models/{id}` | 删除模型档案 |
 | PUT | `/api/config/models/active` | 切换当前活跃模型（即时生效） |
 
+> 所有 `/api/**` 和 `/ws/**` 需要浏览器会话 cookie 认证（见「认证」节）。
+
 ## 端到端测试
 
+### 运行
 ```bash
-bash testcase/run-e2e.sh          # 启动后端 + 运行 16 项 TS 测试 + 报告通过情况
+# 先构建后端
+scripts/build-backend.sh
+
+# 运行全部 e2e（启动后端 + 认证握手 + 依次跑 5 项）
+bash testcase/run-all.sh
+
+# 单独运行
+bash testcase/web-e2e.sh [port]       # HTTP/SSE 契约（health/send/stream）
+python3 testcase/ws-e2e.py            # WebSocket（并发多 session + 流式 + 取消）
+mvn -o -pl testcase exec:java -Dexec.mainClass=com.deepseek.dsh.testcase.RpcE2e  # RPC stdio
+node testcase/e2e.ts                  # TS 协议验证（需 DSH_TOKEN）
+python3 testcase/frontend-e2e.py      # SPA chromium 交互（需 playwright + chromium）
 ```
 
-### 16 项测试用例
+### 测试覆盖
 
-| # | 测试名 | 验证内容 |
-|---|--------|---------|
-| 1 | 基础agent会话返回 | session.create + prompt + history → assistant 回复 |
-| 2 | 流读取返回(SSE) | POST /api/agent/stream → SSE chunks |
-| 3 | 完整性推理完返回 | 推理任务（123×456）→ 完整推理 + 回复 |
-| 4 | 多agent协同 | subagent/task + team/run 调用 |
-| 5 | WebSocket连接 | /ws/agent action:prompt → done 帧 |
-| 6 | session多轮对话(记忆) | 第一条消息记住信息 → 第二条回忆验证 |
-| 7 | fork保留记忆 | session.fork → 子会话继承父历史 → 提问验证记忆 |
-| 8 | fork不保留记忆 | 新 session.create → 无记忆 |
-| 9 | 取消会话和管理会话 | session.cancel → accepted |
-| 10 | 查询所有会话 | session.list → items 数组 |
-| 11 | 查询问答记录(分页) | session.history → events 数组 |
-| 12 | 创建session返回sessionId | session.create → 非空 sessionId + 出现在 list |
-| 13 | 根据sessionId查看历史 | session.history → user/message + assistant/message + surfaceOp + projections |
-| 14 | 继续发送消息到同一sessionId | 同一 session 连续两条消息 → 第二条回复记得第一条 |
-| 15 | 查看session列表(字段完整性) | session.list → title/updatedAt/running/blank/sessionId 均存在 |
-| 16 | 工具调用验证 | prompt 触发 read 工具 → tool/call + tool/result 事件 + tool-result content block 类型 |
+| 脚本 | 验证内容 | 测试数 |
+|------|---------|--------|
+| `web-e2e.sh` | health + send（完整回复）+ stream（SSE delta） | 3 |
+| `ws-e2e.py` | 并发多 session + 流式 + 会话取消 | 2 |
+| `RpcE2e.java` | 基础问候 / 完整返回 / 记忆保存 / fork / 列表 / 压缩 / 删除 / 技能 / subagent 委派 | 12 |
+| `e2e.ts` | 认证 / session.create / prompt / history / fork / compact / WebSocket / 模型切换 / 工具调用 / packed history | 14 |
+| `frontend-e2e.py` | SPA 渲染 → 输入 → 发送 → 回复渲染（chromium） | 1 |
 
-> 测试文件：`testcase/e2e.ts`（Node 25+ 原生 TS，无外部依赖）
-> 运行脚本：`testcase/run-e2e.sh`（自动启动后端 + 运行测试 + 报告通过情况）
+> 认证握手：所有 e2e 脚本自动从后端日志解析启动令牌 → `GET /?token=` 换 cookie → 后续调用带 `-b cookie.jar`。
 
 ## 单元测试
 
+```bash
+mvn test                          # 运行全部单元测试（全模块，离线）
+```
+
 230+ 个单元测试覆盖全部后端模块的核心纯逻辑（无网络、无外部依赖）。
 
-```bash
-mvn test                          # 运行全部单元测试
-```
+## 数据文件
+
+| 文件 | 说明 |
+|------|------|
+| `~/.dsh/model-config.json` | 模型档案（id/displayName/apiKey/baseUrl/model/route/models） |
+| `~/.dsh/settings.json` | 用户设置（ui-onboarding/agent-presets/shell/agent-loop/web-search-deepseek/subagent-model-selection 等命名空间） |
+| `~/.dsh/workspaces.json` | 工作区注册表（workspaces + archived sessions） |
+| `~/.dsh/presets/*.yml` | 用户自定义 agent 预设 |
+| `~/.dsh/sessions/*.jsonl` | 会话事件日志（事件溯源，JSONL 追加） |
+| `~/.dsh/browser-session.json` | 浏览器认证签名密钥 |
+
+> 所有数据文件已 gitignore，绝不提交 API Key。
 
 ## 会话持久化
 
 - `SessionStore.listAll()` — 扫描持久化目录（JSONL 文件 / SQLite `SELECT DISTINCT`）
 - `SessionManager.list()` — 合并内存活跃 + 持久化会话，跨重启存活
-- `getOrCreate(id)` — 自动从持久化重放历史（旧格式事件通过 `FAIL_ON_UNKNOWN_PROPERTIES=false` 兼容）
+- `getOrCreate(id)` — 自动从持久化重放历史
 - `sessionList` / `buildControlBaseline` — 用 `getOrCreate` 加载，`cwd` 取工作区路径，`updatedAt` 取最后事件时间，`running` 取 `runningTurns` 实时状态
-
-## REST / SSE API
-
-| 文件 | 说明 |
-|------|------|
-| `~/.dsh/model-config.json` | 模型档案（id/displayName/apiKey/baseUrl/model/route/models） |
-| `~/.dsh/settings.json` | 用户设置（ui-onboarding/agent-presets 等命名空间） |
-| `~/.dsh/workspaces.json` | 工作区注册表（workspaces + archived sessions） |
-| `~/.dsh/presets/*.yml` | 用户自定义 agent 预设 |
-| `~/.dsh/sessions/*.jsonl` | 会话事件日志（事件溯源，JSONL 追加） |
-
-> 所有数据文件已 gitignore，绝不提交 API Key。
 
 ## 与原项目的关系
 
-已实现（41 个模块，221+ Java 源文件，230+ 个单元测试全绿，14 项 E2E 全绿）：
+已实现（41 个模块，230+ Java 源文件，230+ 个单元测试全绿）：
 
 **核心层**：插件基座（Context/Plugin + 可逆副作用 + 作用域遮蔽 + Event Bus 四模式 + Middleware 链）、
-agent loop（ReAct + turn/step/round + TurnObserver 事件映射 + setSystemPrompt 预设切换）、
+agent loop（ReAct + turn/step/round + maxParallelToolCalls 并行限流 + TurnObserver 事件映射 + setSystemPrompt 预设切换）、
 事件溯源会话日志、工具注册表与执行管线、DeepSeek LLM 适配器（流式 + 重试 + Token 计量 + reasoning_content 捕获 + 模型配置中心）。
 
-**能力层**：bash/shell、文件系统（read/write/edit/glob/grep）、持久终端/PTY、
-代码运行时（Python）、LSP、Web 搜索/抓取、沙箱、托管子进程组。
+**能力层**：bash/shell（timeoutMs/maxOutputBytes 从 settings 读取）、文件系统（read/write/edit/glob/grep）、持久终端/PTY、
+代码运行时（Python）、LSP、Web 搜索/抓取（apiKeyEnv/baseURL/maxUses 从 settings 读取）、沙箱、托管子进程组。
 
 **交互层**：审批、权限预设、斜杠命令、ask-user、计划模式、目标、后台任务、任务清单、
 重复调用提醒 + 超时策略、AGENTS.md + 时间注入 + @file 引用解析。
@@ -339,12 +356,13 @@ agent loop（ReAct + turn/step/round + TurnObserver 事件映射 + setSystemProm
 通用存储中心、外溢存储、技能目录/加载器、SQLite + FTS5、上下文压缩、
 内容寻址附件、工作区注册表（~/.dsh/workspaces.json 持久化 + 归档 + 自动时段分组）。
 
-**集成层**：subagent 委派（in-process fork + ACP 桥接）、工作流引擎、Agent Teams、
+**集成层**：subagent 委派（in-process fork + task 工具 + per-delegation 模型选择 via allowedModels）、工作流引擎、Agent Teams、
 遥测、MCP 客户端、ACP 服务器、SDK。
 
-**Web 层**：Spring Boot + apiproxy JSON-RPC 网关（settings/llm/credentials/agentPreset/commands/pluginInventory/messageFeedback）、
+**Web 层**：Spring Boot + apiproxy JSON-RPC 网关、
 WebSocket mux/host 下行流（session/event + session/projection + host/* 帧）、
-SPA 托管、Session 导出 ZIP、WorkspaceRegistry 持久化。
+SPA 托管、Session 导出 ZIP、WorkspaceRegistry 持久化、
+浏览器会话 cookie 认证（token→cookie 握手）。
 
 **前端**：React + Vite，保留原 `--dsw-*` 设计令牌的深色对话式风格，对接 Java 后端 apiproxy。
 
@@ -355,20 +373,11 @@ Java 重写版与原版 TS Harness 的主要架构差异：
 | 领域 | TS 原版 | Java 重写 | 说明 |
 |------|---------|-----------|------|
 | 插件加载 | Cordis Loader（动态 cordis.yml 组合） | Spring DI + 静态 BaseBundle | Java 用 Spring 依赖注入替代动态 Loader |
-| 插件清单 | `pluginInventory/list`（Loader 条目） | 返回 40 个已装配模块 | Java 无 Loader，以模块列表替代 |
 | Agent 预设 | 按会话重组 agent 组合 | 全局 setSystemPrompt | 单 agent 架构，select 为全局切换提示 |
-| 动态包 | `dynamicCordisRunner`（node:vm 沙箱） | 不支持 | Java 无 JS 沙箱，返回空清单 |
-| Typert Remote | Typert 协议 + 生成编解码 | slash-path + JSON 直返 | Java 用 REST 路径替代 Typert 编解码 |
 | 模型管理 | settings-driven provider profiles | ModelProfileStore + route 持久化 | Java 用 JSON 档案 + route 映射 |
-| 会话流式 | 逐 token 流式（model.stream） | 非流式（model.chat）+ reasoning 捕获 | Java 用非流式 chat + reasoning_content |
 | 工具结果 | SessionEvent.Payload | Map<String,Object> wire 格式 | deriveMessages 递归提取 tool-result 嵌套 content |
 | Shell | bash + pwsh 同时注册 | 平台互斥（Unix→bash, Windows→pwsh） | 模型只看到当前平台可用的 shell |
 | Turn 逻辑 | 各入口独立 | TurnOrchestrator 共享 | Web/CLI/RPC/ACP 统一注入+事件+错误处理 |
-
-> Web apiproxy 已支持 WebSocket 下行流（mux/host）、session/event 帧（surfaceOp:'append'）、tool-result content block（type:'tool-result'）、session/projection 帧（title 投影，seq=lastSeq）、reasoning-delta chunk（思考内容）、workspace/upsert 增量帧、control 流 projection 增量帧。
->
-> `SessionLog.deriveMessages` 递归提取 `tool-result` 嵌套 `content` 块中的 `text`，确保模型看到工具输出。
->
-> `messageFeedback` REST 端点支持 `unwrapArgs`（解包 Typert `args.request` 信封），`ensureSession` 用 `getOrCreate` 加载持久化会话。
->
-> `dsh-schedule` 的 `ScheduleChangeCodec` 已适配 wire 格式（`SessionEvent.Type.COMMAND` → `String "schedule/change"`，`SessionEvent.Payload` → `Map`）。
+| 认证 | TS 原版认证 | BrowserAuthFilter（token→cookie 握手） | Java 实现等价的浏览器会话认证 |
+| 并行工具 | agent-loop maxParallelToolCalls | ReActAgentLoop.dispatchToolCalls | 按 settings cap 用 ExecutorService 并行 |
+| 插件配置 | Cordis plugin cards | settings.describe 四 namespace | agent-loop/shell/web-search-deepseek/subagent-model-selection |
