@@ -66,8 +66,13 @@ public final class TurnOrchestrator {
             Sessions sessions = ctx.require(Sessions.class);
             SessionLog slog = sessions.getOrCreate(SessionId.of(sessionId));
             int count = 0;
-            for (var m : slog.deriveMessages().messages()) {
-                if (m.role() != null && "USER".equals(m.role().name())) count++;
+            // 从原始事件计数 user/message，跳过 source.kind=plugin 的上下文/技能注入消息
+            // （deriveMessages 把注入消息也投影为 USER → 多算 → 轮次跳跃 0→3 而非 0→1）
+            for (SessionEvent e : slog.events()) {
+                if (!"user/message".equals(e.type())) continue;
+                if (e.data() == null) continue;
+                if (e.data().get("source") instanceof Map<?, ?> src && "plugin".equals(src.get("kind"))) continue;
+                count++;
             }
             return count;
         } catch (Exception ignored) {
