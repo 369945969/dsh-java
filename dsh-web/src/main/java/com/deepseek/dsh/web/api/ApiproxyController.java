@@ -723,6 +723,13 @@ public class ApiproxyController {
         } catch (Exception e) {
             log.warn("session.history failed: {}", e.toString());
         }
+        // 按 seq 升序排序——slog.events() 按插入序（通常即 seq 序），
+        // 但并发追加 / 重放后可能乱序；显式排序确保轨迹与聊天对齐。
+        events.sort(Comparator.comparing(e -> {
+            if (e.get("event") instanceof Map<?, ?> ev && ev.get("seq") instanceof Number n)
+                return n.longValue();
+            return Long.MAX_VALUE;
+        }));
         String histTitle = "新会话";
         long lastSeq = -1;
         for (var entry : events) {
