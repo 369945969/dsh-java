@@ -2,6 +2,7 @@ package com.deepseek.dsh.web.api;
 
 import com.deepseek.dsh.web.TurnOrchestrator;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -750,19 +751,61 @@ public class ApiproxyController {
     private Map<String, Object> sessionPage(Object rawPayload) {
         Map<String, Object> payload = rawPayload instanceof Map ? (Map<String, Object>) rawPayload : Map.of();
         String sessionId = extractSessionIdFromArgs(payload);
+        long throughSeq = extractLongFromArgs(payload, "throughSeq", -1L);
+        int maxMessages = (int) extractLongFromArgs(payload, "maxMessages", -1L);
         Map<String, Object> histResult = sessionHistory(Map.of("sessionId", sessionId));
-        List<Map<String, Object>> events = (List<Map<String, Object>>) histResult.get("events");
+        List<Map<String, Object>> events = new ArrayList<>(
+                (List<Map<String, Object>>) histResult.get("events"));
+
+        // 按 seq 升序排序（轨迹与聊天对齐）
+        events.sort(Comparator.comparing(e -> {
+            if (e.get("event") instanceof Map<?, ?> ev && ev.get("seq") instanceof Number n)
+                return n.longValue();
+            return Long.MAX_VALUE;
+        }));
+
+        // 过滤到 seq <= throughSeq（前端 page 协议要求 page 尾部 seq == throughSeq，
+        // 否则 "session event stream page did not end at its requested cursor"）
+        if (throughSeq >= 0) {
+            events = events.stream().filter(e -> {
+                if (e.get("event") instanceof Map<?, ?> ev && ev.get("seq") instanceof Number n)
+                    return n.longValue() <= throughSeq;
+                return false;
+            }).collect(java.util.stream.Collectors.toList());
+        }
+
+        // maxMessages 分页：取最后 maxMessages 条，hasMore=true 表示有更早的页
+        boolean hasMore = false;
+        if (maxMessages > 0 && events.size() > maxMessages) {
+            events = new ArrayList<>(events.subList(events.size() - maxMessages, events.size()));
+            hasMore = true;
+        }
+
         List<Map<String, Object>> records = new ArrayList<>();
         for (var entry : events) {
             if (entry.get("event") instanceof Map<?, ?> e) {
                 Map<String, Object> rec = new LinkedHashMap<>();
                 rec.put("type", "event");
-                Map<String, Object> ev = new LinkedHashMap<>((Map<String, Object>) e);
-                rec.put("event", ev);
+                rec.put("event", new LinkedHashMap<>((Map<String, Object>) e));
                 records.add(rec);
             }
         }
-        return Map.of("records", records, "hasMore", false);
+        return Map.of("records", records, "hasMore", hasMore);
+    }
+
+    /** 从 0.1.2 RPC 的 args（或 args.request）提取 long 字段。 */
+    private static long extractLongFromArgs(Map<String, Object> payload, String key, long fallback) {
+        Object args = payload.get("args");
+        if (args instanceof Map<?, ?> a) {
+            Object v = a.get(key);
+            if (v instanceof Number n) return n.longValue();
+            Object req = a.get("request");
+            if (req instanceof Map<?, ?> r) {
+                v = r.get(key);
+                if (v instanceof Number n) return n.longValue();
+            }
+        }
+        return fallback;
     }
 
     /** 从 0.1.2 RPC 的 args.address.sessionId 提取会话 ID（兼容旧直传格式）。 */
