@@ -45,6 +45,8 @@ if not exist "%CP_FILE%" (
 
 echo [%SELF%] launching CLI REPL (model from model-config.json) 1>&2
 
+if not defined DSH_TOKEN set "DSH_TOKEN=ECkvAL8rG-BYj_ex_B8hleaq8mk88ncheFEor1SoDkg"
+
 rem Write an argfile via PowerShell (correctly quotes the spaces in the classpath), then launch java @argfile.
 rem Do NOT launch java through PowerShell Process.Start: java inherits the cmd console directly, so
 rem System.console() is non-null and readLine uses ReadConsoleW wide-char API (reads CJK correctly

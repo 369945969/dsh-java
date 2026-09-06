@@ -7,7 +7,12 @@
 """
 import os
 import sys
-from playwright.sync_api import sync_playwright
+
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    print("[frontend] [SKIP] playwright not installed (pip install playwright)")
+    sys.exit(0)
 
 URL = os.environ.get("DSH_WEB_URL", "http://localhost:8765/")
 CHROME = os.environ.get("CHROMIUM_PATH", "/usr/bin/chromium-browser")

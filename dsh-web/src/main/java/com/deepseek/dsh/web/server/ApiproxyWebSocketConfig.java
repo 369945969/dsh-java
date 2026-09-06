@@ -56,10 +56,10 @@ public class ApiproxyWebSocketConfig implements WebSocketConfigurer {
         public void afterConnectionEstablished(WebSocketSession session) {
             if (session.getUri() != null && session.getUri().toString().contains("events.mux")) {
                 registry.registerMux(session);
+                sessionBroadcaster.ensureSubscribed();
                 Thread.startVirtualThread(() -> pushAllSessionTitles());
             } else {
                 registry.registerHost(session);
-                // host 已连接即订阅会话创建事件，使后续任意入口新建会话都能实时推送 session-added
                 sessionBroadcaster.ensureSubscribed();
             }
         }

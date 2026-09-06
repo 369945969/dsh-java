@@ -12,6 +12,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${1:-8765}"
 CP_FILE="$ROOT/dsh-app/target/rpc-cp.txt"
 
+# Set a fixed launch token so it stays the same across restarts.
+# Override by setting DSH_TOKEN env var before running this script.
+if [ -z "${DSH_TOKEN:-}" ]; then
+  export DSH_TOKEN="ECkvAL8rG-BYj_ex_B8hleaq8mk88ncheFEor1SoDkg"
+fi
+echo "[start] launch token: $DSH_TOKEN" >&2
+
 # 不在此编译——先运行 scripts/build-backend.sh 生成 target/classes + rpc-cp.txt，再启动。
 if [ ! -f "$CP_FILE" ]; then
   echo "[start] 未找到 $CP_FILE：请先运行 scripts/build-backend.sh 编译后端。" >&2
@@ -38,19 +45,17 @@ free_port() {
   sleep 0.3
 }
 
-echo "[start] 启动 Web 服务端: port=$PORT" >&2
+echo "[start] launching web server: port=$PORT" >&2
 free_port "$PORT"
 
-# 捕获 Java 输出，提取 token URL 后打印到 stderr
-java -Dserver.port="$PORT" \
+SRVLOG="$ROOT/testcase/.auth/server.log"
+mkdir -p "$(dirname "$SRVLOG")"
+: > "$SRVLOG"
+
+# Launch in background (non-blocking): java output goes to server.log
+nohup java -Dserver.port="$PORT" \
   -cp "$ROOT/dsh-app/target/classes:$(cat "$CP_FILE")" \
-  com.deepseek.dsh.app.boot.DshApplication 2>&1 | while IFS= read -r line; do
-  echo "$line" >&2
-  if echo "$line" | grep -q "authentication URL:"; then
-    echo "" >&2
-    echo "================================================" >&2
-    echo "$line" | sed 's/.*authentication URL: //' >&2
-    echo "================================================" >&2
-    echo "" >&2
-  fi
-done
+  com.deepseek.dsh.app.boot.DshApplication >> "$SRVLOG" 2>&1 &
+
+echo "[start] web server started in background (port=$PORT)"
+echo "[start] URL: http://localhost:$PORT/?token=$DSH_TOKEN"

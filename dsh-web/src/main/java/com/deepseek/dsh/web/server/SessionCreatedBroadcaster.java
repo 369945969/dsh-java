@@ -25,12 +25,21 @@ public class SessionCreatedBroadcaster {
 
     private final AgentContextHolder holder;
     private final ApiproxyDownlinkRegistry downlink;
+    private final RemoteMuxRegistry remoteMux;
     private final java.util.concurrent.atomic.AtomicReference<Disposable> subscription =
             new java.util.concurrent.atomic.AtomicReference<>();
 
-    public SessionCreatedBroadcaster(AgentContextHolder holder, ApiproxyDownlinkRegistry downlink) {
+    public SessionCreatedBroadcaster(AgentContextHolder holder, ApiproxyDownlinkRegistry downlink,
+                                     RemoteMuxRegistry remoteMux) {
         this.holder = holder;
         this.downlink = downlink;
+        this.remoteMux = remoteMux;
+    }
+
+    /** Subscribe on application ready (context is assembled by then), not waiting for a host WebSocket. */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        ensureSubscribed();
     }
 
     /** 惰性建立订阅：上下文在 ApplicationReadyEvent 后才装配完成。host 下行流建立时调用。 */
@@ -52,10 +61,23 @@ public class SessionCreatedBroadcaster {
 
     private void broadcast(SessionCreatedEvent event) {
         try {
+            String sid = event.sessionId().value();
+            long now = System.currentTimeMillis();
+            // 1) legacy host/session-added frame (events.host downlink)
             var frame = hostFrame("host/session-added", java.util.Map.of(
-                    "sessionId", event.sessionId().value(),
+                    "sessionId", sid,
                     "blank", true));
             downlink.sendHostFrame(java.util.UUID.randomUUID().toString(), frame);
+            // 2) new-protocol api-session/added emit ($events stream on remote.mux)
+            var summary = java.util.Map.of(
+                    "sessionId", sid,
+                    "updatedAt", now,
+                    "running", false,
+                    "blank", true,
+                    "cwd", System.getProperty("user.dir"),
+                    "projections", java.util.Map.of("asOfSeq", 0, "values",
+                            java.util.Map.of("title", "新会话", "blank", true)));
+            remoteMux.broadcastEmit("api-session/added", new Object[]{summary});
         } catch (Exception e) {
             log.warn("broadcast session-added failed for {}: {}", event.sessionId(), e.toString());
         }

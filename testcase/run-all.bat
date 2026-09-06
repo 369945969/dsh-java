@@ -92,11 +92,11 @@ if not defined web_ok set "web_ok=0"
 call "%ROOT%\testcase\web-e2e.bat" 8765
 if errorlevel 1 set web_ok=1
 
-rem 4b) WebSocket E2E (concurrent multi-session + streaming + cancel)
+rem 4b) WebSocket E2E (basic chat + session memory + real-time + error handling)
 echo.
-echo [run-all] 4b/4 WebSocket E2E (concurrent multi-session + streaming + cancel)...
+echo [run-all] 4b/4 WebSocket E2E (basic chat + session memory + real-time + error handling)...
 set ws_ok=0
-python "%ROOT%\testcase\ws-e2e.py"
+call "%ROOT%\testcase\ws-e2e.bat" 8765
 if errorlevel 1 set ws_ok=1
 
 rem 4c) frontend real-interaction E2E (SPA render -> input -> send -> reply render; needs playwright + chromium)

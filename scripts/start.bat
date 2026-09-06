@@ -47,11 +47,27 @@ if not exist "%CP_FILE%" (
   exit /b 1
 )
 
+rem Set a fixed launch token so it stays the same across restarts.
+rem Override by setting DSH_TOKEN env var before running this script.
+if not defined DSH_TOKEN set "DSH_TOKEN=ECkvAL8rG-BYj_ex_B8hleaq8mk88ncheFEor1SoDkg"
+echo [start] launch token: %DSH_TOKEN% 1>&2
+
 echo [start] launching web server: port=%PORT% (model from model-config.json) 1>&2
 
-rem Launch via PowerShell: pipe java stdout+stderr, highlight token auth URL.
-powershell -NoProfile -Command "$cp=[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp='%ROOT%\dsh-app\target\classes;'+$cp; & '%JAVABIN%' '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.encoding=UTF-8' '-Dserver.port=%PORT%' -cp $cp com.deepseek.dsh.app.boot.DshApplication 2>&1 | ForEach-Object { $line=$_.ToString(); [Console]::Error.WriteLine($line); if($line -match 'authentication URL:'){$url=($line -replace '.*authentication URL: ',''); [Console]::Error.WriteLine(''); [Console]::Error.WriteLine('================================================'); [Console]::Error.WriteLine($url); [Console]::Error.WriteLine('================================================'); [Console]::Error.WriteLine('')}}; exit $LASTEXITCODE"
-exit /b %ERRORLEVEL%
+rem Write argfile (classpath may exceed 8KB; java @argfile handles this correctly)
+set "ARGF=%ROOT%\dsh-app\target\dsh-web-%RANDOM%.arg"
+set "SRVLOG=%ROOT%\testcase\.auth\server.log"
+if not exist "%ROOT%\testcase\.auth" mkdir "%ROOT%\testcase\.auth" >nul
+break > "%SRVLOG%"
+powershell -NoProfile -Command "$cp='%ROOT%\dsh-app\target\classes;'+[IO.File]::ReadAllText('%CP_FILE%').TrimEnd(); $cp=$cp.Replace('\','\\'); $n=[char]10; $q=[char]34; [IO.File]::WriteAllText('%ARGF%', '-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dserver.port=%PORT%'+$n+'-cp'+$n+$q+$cp+$q+$n+'com.deepseek.dsh.app.boot.DshApplication'+$n)"
+if errorlevel 1 ( echo [start] failed to write argfile 1>&2 & exit /b 1 )
+
+rem Launch in background (non-blocking): java output goes to server.log
+start "" /B cmd /c ""%JAVABIN%" @%ARGF% >> "%SRVLOG%" 2>&1"
+
+echo [start] web server started in background (port=%PORT%)
+echo [start] URL: http://localhost:%PORT%/?token=%DSH_TOKEN%
+exit /b 0
 
 :kill_port
 rem free port %PORT%: netstat for LISTENING PID, taskkill /F /T the tree, retry until free

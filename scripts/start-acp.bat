@@ -47,6 +47,8 @@ if not exist "%CP_FILE%" (
 
 echo [%SELF%] launching ACP server (model from model-config.json) 1>&2
 
+if not defined DSH_TOKEN set "DSH_TOKEN=ECkvAL8rG-BYj_ex_B8hleaq8mk88ncheFEor1SoDkg"
+
 rem Classpath may exceed 8KB and the .m2 path contains spaces. java @argfile cannot quote-group
 rem backslashed Windows paths, so launch via PowerShell + ProcessStartInfo (CreateProcess ~32KB line,
 rem CRT parses -cp "..." correctly).

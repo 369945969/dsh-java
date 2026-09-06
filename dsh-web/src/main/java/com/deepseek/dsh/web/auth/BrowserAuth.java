@@ -66,9 +66,16 @@ public final class BrowserAuth {
      */
     public static BrowserAuth create(Path secretFile, int maxAgeDays) throws IOException {
         byte[] secret = loadOrCreateSecret(secretFile);
-        byte[] tokenBytes = new byte[SECRET_BYTES];
-        new SecureRandom().nextBytes(tokenBytes);
-        return new BrowserAuth(secret, encodeBase64Url(tokenBytes), (long) maxAgeDays * DAY_MILLIS);
+        String fixedToken = System.getenv("DSH_TOKEN");
+        String launchToken;
+        if (fixedToken != null && !fixedToken.isBlank()) {
+            launchToken = fixedToken;
+        } else {
+            byte[] tokenBytes = new byte[SECRET_BYTES];
+            new SecureRandom().nextBytes(tokenBytes);
+            launchToken = encodeBase64Url(tokenBytes);
+        }
+        return new BrowserAuth(secret, launchToken, (long) maxAgeDays * DAY_MILLIS);
     }
 
     /** 带启动令牌的应用根 URL（对应 TS authenticatedUrl）。 */

@@ -17,6 +17,7 @@ if [ ! -f "$CP_FILE" ]; then
 fi
 
 echo "[start-cli] 启动中..." >&2
+export DSH_TOKEN="${DSH_TOKEN:-ECkvAL8rG-BYj_ex_B8hleaq8mk88ncheFEor1SoDkg}"
 exec java -Dlogback.configurationFile=logback-cli.xml \
   -cp "$ROOT/dsh-app/target/classes:$(cat "$CP_FILE")" \
   com.deepseek.dsh.app.cli.DshRepl

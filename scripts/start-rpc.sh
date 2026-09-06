@@ -17,6 +17,7 @@ if [ ! -f "$CP_FILE" ]; then
 fi
 
 echo "[start-rpc] 启动 RPC 服务端（模型取自 dataDir/model-config.json）..." >&2
+export DSH_TOKEN="${DSH_TOKEN:-ECkvAL8rG-BYj_ex_B8hleaq8mk88ncheFEor1SoDkg}"
 exec java -Dlogback.configurationFile=logback-rpc.xml \
   -cp "$ROOT/dsh-app/target/classes:$(cat "$CP_FILE")" \
   com.deepseek.dsh.app.rpc.DshRpcServer
