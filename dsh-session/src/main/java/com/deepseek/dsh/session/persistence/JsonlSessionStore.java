@@ -69,6 +69,12 @@ public final class JsonlSessionStore implements SessionStore {
         return ids;
     }
 
+    @Override
+    public boolean delete(SessionId sessionId) throws IOException {
+        Path file = pathFor(sessionId);
+        return Files.deleteIfExists(file);
+    }
+
     private Path pathFor(SessionId id) {
         return baseDir.resolve(id.value().replaceAll("[^A-Za-z0-9_-]", "_") + ".jsonl");
     }

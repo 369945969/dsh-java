@@ -109,9 +109,17 @@ else
 fi
 
 # 3) SSE 流式对话
-STREAM=$(curl -sN -b "$COOKIE" -X POST "$BASE/api/agent/stream" \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"再说一句话。"}' 2>/dev/null || true)
+STREAM=""
+for _ in 1 2 3; do
+  STREAM=$(curl -sN -b "$COOKIE" -X POST "$BASE/api/agent/stream" \
+    -H 'Content-Type: application/json' \
+    -d '{"message":"再说一句话。"}' 2>/dev/null || true)
+  echo "$STREAM" | grep -q 'event:session' \
+    && echo "$STREAM" | grep -q 'event:delta' \
+    && echo "$STREAM" | grep -q 'event:done' \
+    && echo "$STREAM" | grep -q '\[DONE\]' && break
+  sleep 2
+done
 if echo "$STREAM" | grep -q 'event:session' \
    && echo "$STREAM" | grep -q 'event:delta' \
    && echo "$STREAM" | grep -q 'event:done' \
@@ -121,6 +129,243 @@ if echo "$STREAM" | grep -q 'event:session' \
   echo "    收到 $deltas 个 delta 帧"
 else
   fail "POST /api/agent/stream" "SSE 帧不完整: $(echo "$STREAM" | head -c 200)"
+fi
+
+# ---- 以下用例与 RpcE2e 对齐：补齐 web 端缺失的会话/记忆/技能/fork/cancel 覆盖 ----
+
+# 4) 一次性对话：完整响应（reply + totalTokens + history 齐全）
+SEND2=""
+for _ in 1 2 3; do
+  SEND2=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+    -H 'Content-Type: application/json' \
+    -d '{"message":"Reply with just the word PONG."}' || true)
+  echo "$SEND2" | jq -e '.reply and (.totalTokens != null) and (.history|type=="array")' >/dev/null 2>&1 && break
+  sleep 2
+done
+if echo "$SEND2" | jq -e '.reply and (.totalTokens != null) and (.history|type=="array")' >/dev/null 2>&1; then
+  pass "POST /api/agent/send (full response: reply+tokens+history)"
+else
+  fail "POST /api/agent/send (full response)" "缺 totalTokens/history: $(echo "$SEND2" | head -c 200)"
+fi
+
+# 5) 上下文记忆：多轮（同 sessionId 记住→回忆）—— 对齐 RPC context memory
+MEM=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Please remember: my name is Alice and my web code is WEB999."}' || true)
+MEM_SID=$(echo "$MEM" | jq -r '.sessionId // empty')
+RECALL=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+  -H 'Content-Type: application/json' \
+  -d "{\"sessionId\":\"$MEM_SID\",\"message\":\"What is my name and my web code?\"}" || true)
+if [ -n "$MEM_SID" ] && echo "$RECALL" | tr '[:upper:]' '[:lower:]' | grep -q "alice" \
+   && echo "$RECALL" | tr '[:upper:]' '[:lower:]' | grep -q "web999"; then
+  pass "context memory (multi-turn recall via same sessionId)"
+else
+  fail "context memory (multi-turn)" "未回忆出 alice/web999: $(echo "$RECALL" | jq -r '.reply // empty' | head -c 120)"
+fi
+
+# 6) session.list（含上述会话）—— 对齐 RPC session list
+SL=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.list" \
+  -H 'Content-Type: application/json' -d '{"rpcId":"w","payload":{}}' || true)
+if echo "$SL" | jq -e '.result.value.items | length > 0' >/dev/null 2>&1 \
+   && echo "$SL" | jq -r '.result.value.items[].sessionId' | grep -q "^$MEM_SID$"; then
+  pass "POST /api/session.list (contains active session)"
+else
+  fail "POST /api/session.list" "未列出会话或缺少 $MEM_SID"
+fi
+
+# 7) skill.list（含已注册技能）—— 对齐 RPC skill discovery
+SK=$(curl -s -b "$COOKIE" -X POST "$BASE/api/skill.list" \
+  -H 'Content-Type: application/json' -d '{"rpcId":"w","payload":{}}' || true)
+if echo "$SK" | jq -r '.result.value.skills[].name' 2>/dev/null | grep -q "^code-review$"; then
+  pass "POST /api/skill.list (contains code-review)"
+else
+  fail "POST /api/skill.list" "未列出 code-review: $(echo "$SK" | head -c 200)"
+fi
+
+# 8) session.fork：子会话继承父会话记忆 —— 对齐 RPC fork child inherits parent memory
+FRK=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.fork" \
+  -H 'Content-Type: application/json' \
+  -d "{\"rpcId\":\"w\",\"payload\":{\"sessionId\":\"$MEM_SID\"}}" || true)
+CHILD_SID=$(echo "$FRK" | jq -r '.result.value.sessionId // empty')
+CHILD_RECALL=""
+for _ in 1 2 3; do
+  CHILD_RECALL=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+    -H 'Content-Type: application/json' \
+    -d "{\"sessionId\":\"$CHILD_SID\",\"message\":\"What is my name and my web code?\"}" || true)
+  echo "$CHILD_RECALL" | tr '[:upper:]' '[:lower:]' | grep -q "web999" && break
+  sleep 2
+done
+if [ -n "$CHILD_SID" ] && echo "$CHILD_RECALL" | tr '[:upper:]' '[:lower:]' | grep -q "alice" \
+   && echo "$CHILD_RECALL" | tr '[:upper:]' '[:lower:]' | grep -q "web999"; then
+  pass "POST /api/session.fork (child inherits parent memory)"
+else
+  fail "POST /api/session.fork" "子会话未回忆出 alice/web999: $(echo "$CHILD_RECALL" | jq -r '.reply // empty' | head -c 120)"
+fi
+
+# 9) 新会话无对话记忆（不继承上个会话的对话专属事实）—— 对齐 RPC new session isolation
+FRESH=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"What is my name and my web code?"}' || true)
+if ! echo "$FRESH" | tr '[:upper:]' '[:lower:]' | grep -q "web999"; then
+  pass "new session has no conversation memory (no WEB999)"
+else
+  fail "new session isolation" "新会话不应知道上个会话对话专属事实 web999"
+fi
+
+# 10) 对话专属事实（仅对话不落盘，同 session 内存储）—— 对齐 RPC conversation-only fact (store)
+CONVO_SID=$(echo "$MEM" | jq -r '.sessionId // empty')
+CONVO_STORE=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+  -H 'Content-Type: application/json' \
+  -d "{\"sessionId\":\"$CONVO_SID\",\"message\":\"Just for THIS conversation, my one-time passphrase is CONVO777. Do NOT write it to any file - keep it only in chat context.\"}" || true)
+if echo "$CONVO_STORE" | tr '[:upper:]' '[:lower:]' | grep -q "convo777"; then
+  pass "conversation-only fact (store in-session)"
+else
+  fail "conversation-only fact (store)" "未确认存储: $(echo "$CONVO_STORE" | jq -r '.reply // empty' | head -c 100)"
+fi
+
+# 11) 回忆对话专属事实（同 session 内可回忆）—— 对齐 RPC recall conversation-only fact
+CONVO_RECALL=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+  -H 'Content-Type: application/json' \
+  -d "{\"sessionId\":\"$CONVO_SID\",\"message\":\"What is my one-time passphrase?\"}" || true)
+if echo "$CONVO_RECALL" | tr '[:upper:]' '[:lower:]' | grep -q "convo777"; then
+  pass "conversation-only fact (recall in-session)"
+else
+  fail "conversation-only fact (recall)" "未回忆出 convo777: $(echo "$CONVO_RECALL" | jq -r '.reply // empty' | head -c 100)"
+fi
+
+# 11) query by sessionId（不同会话历史隔离）—— 对齐 RPC query by sessionId
+SID1=""; SID2=""
+for _ in 1 2 3; do
+  D1=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+    -H 'Content-Type: application/json' -d '{"message":"Remember: my city is Tokyo."}' || true)
+  SID1=$(echo "$D1" | jq -r '.sessionId // empty')
+  [ -n "$SID1" ] && break; sleep 2
+done
+for _ in 1 2 3; do
+  D2=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+    -H 'Content-Type: application/json' -d '{"message":"Remember: my city is Paris."}' || true)
+  SID2=$(echo "$D2" | jq -r '.sessionId // empty')
+  [ -n "$SID2" ] && break; sleep 2
+done
+H1=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.history" \
+  -H 'Content-Type: application/json' -d "{\"rpcId\":\"w\",\"payload\":{\"sessionId\":\"$SID1\"}}" 2>/dev/null || true)
+H2=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.history" \
+  -H 'Content-Type: application/json' -d "{\"rpcId\":\"w\",\"payload\":{\"sessionId\":\"$SID2\"}}" 2>/dev/null || true)
+if echo "$H1" | tr '[:upper:]' '[:lower:]' | grep -q "tokyo" \
+   && echo "$H2" | tr '[:upper:]' '[:lower:]' | grep -q "paris"; then
+  pass "query by sessionId (distinct histories)"
+else
+  fail "query by sessionId" "历史未隔离: sid1=$(echo "$H1"|head -c 80) sid2=$(echo "$H2"|head -c 80)"
+fi
+
+# 12) host.describe（provider/model）—— 对齐 RPC initialize
+HD=$(curl -s -b "$COOKIE" -X POST "$BASE/api/host.describe" \
+  -H 'Content-Type: application/json' -d '{"rpcId":"w","payload":{}}' 2>/dev/null || true)
+if echo "$HD" | jq -e '.result.value.model // .result.value.providers' >/dev/null 2>&1; then
+  pass "POST /api/host.describe (provider/model non-empty)"
+else
+  fail "POST /api/host.describe" "未返回 provider/model: $(echo "$HD" | head -c 200)"
+fi
+
+# 13) skill.get（加载渲染技能）—— 对齐 RPC skill load (skill/get)
+SG=$(curl -s -b "$COOKIE" -X POST "$BASE/api/skill.get" \
+  -H 'Content-Type: application/json' -d '{"rpcId":"w","payload":{"name":"code-review"}}' 2>/dev/null || true)
+if echo "$SG" | jq -e '.result.value.found == true' >/dev/null 2>&1 \
+   && echo "$SG" | grep -q 'skill_content'; then
+  pass "POST /api/skill.get (code-review found + rendered)"
+else
+  fail "POST /api/skill.get" "未渲染 code-review: $(echo "$SG" | head -c 200)"
+fi
+
+# 14) session.compact（上下文压缩）—— 对齐 RPC context compaction
+SC=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.compact" \
+  -H 'Content-Type: application/json' -d "{\"rpcId\":\"w\",\"payload\":{\"sessionId\":\"$MEM_SID\",\"maxTokens\":2048}}" 2>/dev/null || true)
+if echo "$SC" | jq -e '.result.value.before != null and .result.value.after != null' >/dev/null 2>&1; then
+  pass "POST /api/session.compact (before→after)"
+else
+  fail "POST /api/session.compact" "未返回 before/after: $(echo "$SC" | head -c 200)"
+fi
+
+# 15) session.delete（创建+删除+验证消失）—— 对齐 RPC session deletion
+DEL_SID=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.create" \
+  -H 'Content-Type: application/json' -d '{"rpcId":"w","payload":{}}' 2>/dev/null | jq -r '.result.value.sessionId // empty')
+DEL1=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.delete" \
+  -H 'Content-Type: application/json' -d "{\"rpcId\":\"w\",\"payload\":{\"sessionId\":\"$DEL_SID\"}}" 2>/dev/null || true)
+DEL2=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.delete" \
+  -H 'Content-Type: application/json' -d "{\"rpcId\":\"w\",\"payload\":{\"sessionId\":\"$DEL_SID\"}}" 2>/dev/null || true)
+if echo "$DEL1" | jq -e '.result.value.deleted == true' >/dev/null 2>&1 \
+   && echo "$DEL2" | jq -e '.result.value.deleted == false' >/dev/null 2>&1; then
+  pass "POST /api/session.delete (first true, second false)"
+else
+  fail "POST /api/session.delete" "删除语义不符: $(echo "$DEL1"|head -c 80) / $(echo "$DEL2"|head -c 80)"
+fi
+
+# 16) subagent.task（委派子任务）—— 对齐 RPC subagent delegation
+SUB_SID=$(echo "$MEM" | jq -r '.sessionId // empty')
+SUB_OK=0
+for _ in 1 2; do
+  SUB=$(curl -s -b "$COOKIE" -X POST "$BASE/api/subagent.task" \
+    -H 'Content-Type: application/json' \
+    -d "{\"rpcId\":\"w\",\"payload\":{\"sessionId\":\"$SUB_SID\",\"task\":\"Summarize the ReAct pattern in one sentence.\"}}" 2>/dev/null || true)
+  echo "$SUB" | jq -e '.result.value.success == true' >/dev/null 2>&1 && SUB_OK=1 && break
+  sleep 2
+done
+if [ "$SUB_OK" = "1" ]; then
+  pass "POST /api/subagent.task (delegation success)"
+else
+  fail "POST /api/subagent.task" "委派未成功: $(echo "$SUB" | head -c 200)"
+fi
+
+# 17) team.run（多 agent 并行编排）—— 对齐 RPC multi-agent team
+TEAM_OK=0
+for _ in 1 2; do
+  TM=$(curl -s -b "$COOKIE" -X POST "$BASE/api/team.run" \
+    -H 'Content-Type: application/json' \
+    -d '{"rpcId":"w","payload":{"task":"Explain the value of unit testing in one sentence."}}' 2>/dev/null || true)
+  echo "$TM" | jq -e '.result.value.allSucceeded == true and .result.value.memberCount == 2' >/dev/null 2>&1 && TEAM_OK=1 && break
+  sleep 2
+done
+if [ "$TEAM_OK" = "1" ]; then
+  pass "POST /api/team.run (both members succeed)"
+else
+  fail "POST /api/team.run" "成员未全成功: $(echo "$TM" | head -c 200)"
+fi
+
+# 18) shutdown（协议握手）—— 对齐 RPC shutdown
+SH=$(curl -s -b "$COOKIE" -X POST "$BASE/api/shutdown" \
+  -H 'Content-Type: application/json' -d '{"rpcId":"w","payload":{}}' 2>/dev/null || true)
+if echo "$SH" | jq -e '.result.value.status == "ok"' >/dev/null 2>&1; then
+  pass "POST /api/shutdown (status ok)"
+else
+  fail "POST /api/shutdown" "未返回 ok: $(echo "$SH" | head -c 200)"
+fi
+
+# 19) session.cancel：取消运行中的 turn —— 对齐 RPC session cancel（lenient：接受取消或完成）
+( curl -sN -b "$COOKIE" -X POST "$BASE/api/agent/stream" \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Reply with the word HELLO."}' > /tmp/web-cancel-stream.out 2>/dev/null ) &
+CAN_PID=$!
+CAN_SID=""
+for _ in $(seq 1 10); do
+  CAN_SID=$(awk '/^event:session$/{getline; sub(/^data:/,""); gsub(/ /,""); print; exit}' /tmp/web-cancel-stream.out 2>/dev/null)
+  [ -n "$CAN_SID" ] && break
+  sleep 0.3
+done
+CAN_RES=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.cancel" \
+  -H 'Content-Type: application/json' -d "{\"rpcId\":\"w\",\"payload\":{\"sessionId\":\"$CAN_SID\"}}" 2>/dev/null || true)
+CAN_HIST_OK=0
+if [ -n "$CAN_SID" ]; then
+  CAN_HIST=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.history" \
+    -H 'Content-Type: application/json' -d "{\"rpcId\":\"w\",\"payload\":{\"sessionId\":\"$CAN_SID\"}}" 2>/dev/null || true)
+  echo "$CAN_HIST" | jq -e '.result.value.events' >/dev/null 2>&1 && CAN_HIST_OK=1
+fi
+# 等流结束（取消或自然完成，对齐 RPC lenient 语义）
+for _ in $(seq 1 30); do kill -0 $CAN_PID 2>/dev/null || break; sleep 1; done
+kill -9 $CAN_PID 2>/dev/null || true
+if [ -n "$CAN_SID" ] && echo "$CAN_RES" | grep -q '"accepted":true' && [ "$CAN_HIST_OK" = "1" ]; then
+  pass "POST /api/session.cancel (accepted + session survives)"
+else
+  fail "POST /api/session.cancel" "未返回 accepted 或会话不可查询 (sid=$CAN_SID)"
 fi
 
 echo

@@ -218,6 +218,12 @@ public class ApiproxyController {
                 case "workspace.list" -> response(rpcId, ok(Map.of("items", filterWorkspaceSessionIds(), "archivedSessionIds", workspaces.archivedSessionIds())));
                 case "host.listDirectory" -> response(rpcId, ok(listDirectory(payload)));
                 case "skill.list" -> response(rpcId, ok(skillList()));
+                case "skill.get" -> response(rpcId, ok(skillGet(payload)));
+                case "session.delete" -> response(rpcId, ok(sessionDelete(payload)));
+                case "session.compact" -> response(rpcId, ok(sessionCompact(payload)));
+                case "subagent.task" -> response(rpcId, ok(subagentTask(payload)));
+                case "team.run" -> response(rpcId, ok(teamRun(payload)));
+                case "shutdown" -> response(rpcId, ok(facade().shutdown()));
                 case "messageFeedback.list", "messageFeedback.put", "messageFeedback.delete" ->
                         handleMessageFeedback(method.substring("messageFeedback.".length()), p, rpcId);
                 default -> response(rpcId, ok(valueOf(method)));
@@ -1068,6 +1074,43 @@ public class ApiproxyController {
             }
         });
         return Map.of("skills", entries);
+    }
+
+    /** skill.get：加载并渲染单个技能 —— 委托共享 facade。 */
+    private Map<String, Object> skillGet(Object payload) {
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        return facade().skillGet(String.valueOf(p.getOrDefault("name", "")));
+    }
+
+    /** session.delete：删除会话 —— 委托共享 facade。 */
+    private Map<String, Object> sessionDelete(Object payload) {
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        return facade().sessionDelete(String.valueOf(p.getOrDefault("sessionId", "")));
+    }
+
+    /** session.compact：上下文压缩 —— 委托共享 facade。 */
+    private Map<String, Object> sessionCompact(Object payload) {
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        int maxTokens = p.get("maxTokens") instanceof Number n ? n.intValue() : 2048;
+        return facade().sessionCompact(String.valueOf(p.getOrDefault("sessionId", "")), maxTokens);
+    }
+
+    /** subagent.task：委派子任务 —— 委托共享 facade。 */
+    private Map<String, Object> subagentTask(Object payload) {
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        return facade().subagentTask(String.valueOf(p.getOrDefault("sessionId", "")),
+                String.valueOf(p.getOrDefault("task", "")));
+    }
+
+    /** team.run：多 agent 并行编排 —— 委托共享 facade。 */
+    private Map<String, Object> teamRun(Object payload) {
+        Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
+        return facade().teamRun(String.valueOf(p.getOrDefault("task", "")));
+    }
+
+    /** 共享 facade（与 DshRpcServer 复用同一套 handler 实现，避免两套重复代码）。 */
+    private AgentApiFacade facade() {
+        return new AgentApiFacade(holder.context(), holder.agent());
     }
 
     /** host.listDirectory：真实目录列表（供前端 browse 选择器导航 → 选目录建工作区）。 */

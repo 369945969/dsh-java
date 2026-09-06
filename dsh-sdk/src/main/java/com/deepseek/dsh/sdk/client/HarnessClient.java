@@ -41,7 +41,11 @@ public final class HarnessClient implements AutoCloseable {
     public HarnessClient(String runtimeCommand) throws Exception {
         String[] cmd = runtimeCommand.split("\\s+");
         ProcessBuilder pb = new ProcessBuilder(cmd);
+        // stdout 仅承载 JSON-RPC 帧；stderr 承载服务端日志。若不接管 stderr，OS 管道缓冲
+        // （~64KB）写满后服务端会在日志写入处阻塞，导致整个 RPC 循环卡死（subagent/team
+        // 等大量日志场景尤为明显）。INHERIT 把子进程 stderr 直连父进程 stderr，消除管道缓冲。
         pb.redirectErrorStream(false);
+        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
         this.process = pb.start();
         this.transport = new JsonRpcClient(process.getInputStream(), process.getOutputStream());
     }

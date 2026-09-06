@@ -34,4 +34,7 @@ public interface Sessions extends Service {
 
     /** 列出全部会话 ID（活跃 + 持久化）。 */
     List<SessionId> list();
+
+    /** 删除会话（从活跃表移除 + 删除持久化文件）。返回是否曾存在。 */
+    boolean delete(SessionId id);
 }

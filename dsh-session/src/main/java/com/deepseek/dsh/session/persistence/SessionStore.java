@@ -23,4 +23,7 @@ public interface SessionStore {
 
     /** 列出全部已持久化的会话 ID（扫描存储介质）。 */
     List<SessionId> listAll() throws IOException;
+
+    /** 删除某会话的全部持久化事件。返回是否曾存在。 */
+    boolean delete(SessionId sessionId) throws IOException;
 }

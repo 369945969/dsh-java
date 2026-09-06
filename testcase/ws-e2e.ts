@@ -314,6 +314,112 @@ async function testSkillList(): Promise<void> {
     ok ? `${skills.length} skills` : 'skills field abnormal')
 }
 
+// ---- aligned with RpcE2e: health / conversation-only fact / fork / distinct histories ----
+
+async function testHealth(): Promise<void> {
+  const res = await fetch(`${API}/api/agent/health`, { headers: { cookie: COOKIE } })
+  const json: any = await res.json()
+  record('health (status ok)',
+    json?.status === 'ok',
+    json?.status === 'ok' ? 'status=ok' : `body=${JSON.stringify(json).slice(0, 80)}`)
+}
+
+async function testConversationOnlyFact(): Promise<void> {
+  const sid = await createSession()
+  await wsPrompt(sid, 'Just for THIS conversation, my one-time passphrase is CONVO777. Do NOT write it to any file - keep it only in chat context.')
+  const f2 = await wsPrompt(sid, 'What is my one-time passphrase?')
+  const reply = fullReply(f2).toLowerCase()
+  record('conversation-only fact (recall in-session)',
+    reply.includes('convo777'),
+    reply.includes('convo777') ? 'recalled CONVO777' : `reply: ${reply.slice(0, 80)}`)
+}
+
+async function testForkInheritsMemory(): Promise<void> {
+  const parent = await createSession()
+  await wsPrompt(parent, 'Please remember: my name is Alice and my code is FORK123.')
+  const v = await rpc('session', 'fork', { sessionId: parent })
+  const child = v?.sessionId
+  if (!child) { record('fork child inherits parent memory', false, 'no child sessionId'); return }
+  const f = await wsPrompt(child, 'What is my name and my code?')
+  const reply = fullReply(f).toLowerCase()
+  record('fork child inherits parent memory',
+    reply.includes('alice') && reply.includes('fork123'),
+    reply.includes('alice') && reply.includes('fork123') ? 'child recalled alice+fork123' : `reply: ${reply.slice(0, 80)}`)
+}
+
+async function testDistinctHistories(): Promise<void> {
+  const sid1 = await createSession()
+  const sid2 = await createSession()
+  await wsPrompt(sid1, 'Remember: my city is Tokyo.')
+  await wsPrompt(sid2, 'Remember: my city is Paris.')
+  const h1: any = await httpPost('session.history', { sessionId: sid1 })
+  const h2: any = await httpPost('session.history', { sessionId: sid2 })
+  // web apiproxy session.history 返回 events（不是 RPC 的 messages）
+  const m1 = JSON.stringify(h1?.result?.value?.events || h1?.result?.value?.messages || []).toLowerCase()
+  const m2 = JSON.stringify(h2?.result?.value?.events || h2?.result?.value?.messages || []).toLowerCase()
+  const distinct = m1.includes('tokyo') && m2.includes('paris')
+  record('query by sessionId (distinct histories)',
+    distinct,
+    distinct ? 'sid1=Tokyo, sid2=Paris, isolated' : `m1:${m1.slice(0, 40)} m2:${m2.slice(0, 40)}`)
+}
+
+// ---- aligned with RpcE2e: compact / delete / skill.get / subagent / team (via HTTP, shared facade) ----
+
+async function testCompact(): Promise<void> {
+  const sid = await createSession()
+  await wsPrompt(sid, 'Remember: my name is Alice.')
+  const v: any = await httpPost('session.compact', { sessionId: sid, maxTokens: 2048 })
+  const r = v?.result?.value || v
+  record('session.compact (before→after)',
+    r?.before != null && r?.after != null,
+    `before=${r?.before} after=${r?.after}`)
+}
+
+async function testDelete(): Promise<void> {
+  const sid = await createSession()
+  const d1: any = await httpPost('session.delete', { sessionId: sid })
+  const d2: any = await httpPost('session.delete', { sessionId: sid })
+  const ok = d1?.result?.value?.deleted === true && d2?.result?.value?.deleted === false
+  record('session.delete (first true, second false)',
+    ok,
+    ok ? `deleted ${sid.slice(0, 8)}…` : `d1=${JSON.stringify(d1?.result?.value)} d2=${JSON.stringify(d2?.result?.value)}`)
+}
+
+async function testSkillGet(): Promise<void> {
+  const v: any = await httpPost('skill.get', { name: 'code-review' })
+  const r = v?.result?.value || v
+  record('skill.get (code-review found + rendered)',
+    r?.found === true && (r?.rendered || '').includes('skill_content'),
+    r?.found ? 'found, rendered' : 'not found')
+}
+
+async function testSubagentTask(): Promise<void> {
+  const sid = await createSession()
+  let ok = false, last: any
+  for (let i = 0; i < 2; i++) {
+    const v: any = await httpPost('subagent.task', { sessionId: sid, task: 'Summarize the ReAct pattern in one sentence.' })
+    last = v?.result?.value || v
+    if (last?.success === true) { ok = true; break }
+    await new Promise(r => setTimeout(r, 2000))
+  }
+  record('subagent.task (delegation success)',
+    ok,
+    ok ? 'success' : `failed: ${JSON.stringify(last).slice(0, 80)}`)
+}
+
+async function testTeamRun(): Promise<void> {
+  let ok = false, last: any
+  for (let i = 0; i < 2; i++) {
+    const v: any = await httpPost('team.run', { task: 'Explain the value of unit testing in one sentence.' })
+    last = v?.result?.value || v
+    if (last?.allSucceeded === true && last?.memberCount === 2) { ok = true; break }
+    await new Promise(r => setTimeout(r, 2000))
+  }
+  record('team.run (both members succeed)',
+    ok,
+    ok ? 'all succeeded' : `failed: ${JSON.stringify(last).slice(0, 80)}`)
+}
+
 // ============================================================
 // main
 // ============================================================
@@ -334,10 +440,14 @@ async function main(): Promise<void> {
   await runTest('basic greeting', testBasicGreeting)
   await runTest('full response', testFullResponse)
   await runTest('streaming incremental', testStreamingDelta)
+  await runTest('health (status ok)', testHealth)
 
   group('session & memory mode')
   await runTest('multi-turn memory', testMultiTurnMemory)
+  await runTest('conversation-only fact', testConversationOnlyFact)
   await runTest('different session no memory', testDifferentSessionNoMemory)
+  await runTest('fork child inherits parent memory', testForkInheritsMemory)
+  await runTest('distinct histories by sessionId', testDistinctHistories)
   await runTest('session.list after chat', testSessionListAfterChat)
 
   group('real-time communication mode')
@@ -348,6 +458,11 @@ async function main(): Promise<void> {
 
   group('HTTP auxiliary')
   await runTest('skill.list', testSkillList)
+  await runTest('skill.get', testSkillGet)
+  await runTest('session.compact', testCompact)
+  await runTest('session.delete', testDelete)
+  await runTest('subagent.task', testSubagentTask)
+  await runTest('team.run', testTeamRun)
 
   const passed = results.filter(r => r.pass).length
   const total = results.length

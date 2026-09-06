@@ -163,6 +163,10 @@ public final class RpcE2e {
                 assertTrue(init.protocolVersion() != null && !init.protocolVersion().isBlank(), "protocolVersion should not be empty");
                 System.out.println("    model=" + init.model() + ", provider=" + init.provider());
             });
+            check("health (status ok)", () -> {
+                var h = client.health().join();
+                assertEquals("ok", h.status(), "health status should be ok");
+            });
             check("basic greeting (session/prompt)", () -> {
                 var r = timeout(client.prompt(createSession(client), "Hello, introduce yourself in one sentence."));
                 assertEquals("ok", r.status(), "status should be ok");
@@ -197,27 +201,51 @@ public final class RpcE2e {
                 System.out.println("    Reply: " + truncate(r.reply(), 120));
             });
 
+            // --- conversation-only fact (must NOT be persisted to any file) ---
+            // 永久记忆（USER_PROFILE.md）在同一工作区内共享；但"仅对话"事实只属于当前 session，
+            // 新 session 不应知道。用此隔离对话记忆与文件永久记忆。
+            check("context memory turn 3 (conversation-only fact)", () -> {
+                var r = timeout(client.prompt(memSid,
+                    "Just for THIS conversation, my one-time passphrase is EPHEMERAL4242. " +
+                    "Do NOT write it to USER_PROFILE.md or any file - keep it only in our chat context."));
+                assertTrue(r.reply().toLowerCase().contains("ephemeral4242"),
+                    "should acknowledge the conversation-only passphrase in-session");
+            });
+            check("context memory turn 4 (recall conversation-only fact)", () -> {
+                var r = timeout(client.prompt(memSid, "What is my one-time passphrase?"));
+                assertTrue(r.reply().toLowerCase().contains("ephemeral4242"),
+                    "should recall the conversation-only fact within the same session");
+            });
+
             // --- fork child inherits parent memory ---
             check("fork child inherits parent memory", () -> {
                 var f = client.forkSession(memSid).join();
                 assertNull(f.error(), "fork should have no error");
                 assertTrue(f.replayedEvents() > 0, "should replay parent events");
                 attachSession(f.childSessionId());
-                // ask the child about facts stored in parent
-                var r = timeout(client.prompt(f.childSessionId(), "What is my name and secret code?"));
+                // fork 子会话回放了父会话事件，应同时知道文件永久记忆与对话专属事实
+                var r = timeout(client.prompt(f.childSessionId(),
+                    "What is my name, my secret code, and my one-time passphrase?"));
                 String reply = r.reply().toLowerCase();
                 assertTrue(reply.contains("alice") && reply.contains("xyz789"),
                     "fork child should inherit parent memory (name=" + reply.contains("alice") + ", code=" + reply.contains("xyz789") + ")");
+                assertTrue(reply.contains("ephemeral4242"),
+                    "fork child should inherit conversation-only fact (passphrase=" + reply.contains("ephemeral4242") + ")");
                 System.out.println("    Reply: " + truncate(r.reply(), 100));
             });
 
-            // --- fork new session has no memory ---
-            check("fork new session has no memory", () -> {
+            // --- new session: file memory shared, conversation memory isolated ---
+            // 同一工作区内的新 session：应知道文件永久记忆（Alice/XYZ789），
+            // 但不应知道上个 session 的对话专属事实（EPHEMERAL4242 未落盘）。
+            check("new session shares file memory but not conversation memory", () -> {
                 String fresh = createSession(client);
-                var r = timeout(client.prompt(fresh, "What is my name and secret code?"));
+                var r = timeout(client.prompt(fresh,
+                    "What is my name, my secret code, and my one-time passphrase?"));
                 String reply = r.reply().toLowerCase();
-                assertTrue(!reply.contains("alice") && !reply.contains("xyz789"),
-                    "fresh session should not know parent facts");
+                assertTrue(reply.contains("alice") && reply.contains("xyz789"),
+                    "new session should know file-persisted permanent memory (name=" + reply.contains("alice") + ", code=" + reply.contains("xyz789") + ")");
+                assertTrue(!reply.contains("ephemeral4242"),
+                    "new session should NOT know previous session's conversation-only fact (passphrase=" + reply.contains("ephemeral4242") + ")");
                 System.out.println("    Reply: " + truncate(r.reply(), 100));
             });
 
@@ -306,7 +334,14 @@ public final class RpcE2e {
             check("subagent delegation (subagent/task)", () -> {
                 String sid = createSession(client);
                 var before = snapshotSessions(client);
-                var r = client.subagentTask(sid, "Summarize the ReAct pattern in one sentence.").join();
+                // qwen3.7-max 等推理模型的 LLM 流偶发被 provider 重置（stream was reset: CANCEL），
+                // 属 transient 错误，重试一次以容忍 provider 侧抖动。
+                com.deepseek.dsh.sdk.client.HarnessClient.SubagentTaskResult r = null;
+                for (int attempt = 0; attempt < 2; attempt++) {
+                    r = client.subagentTask(sid, "Summarize the ReAct pattern in one sentence.").join();
+                    if (r.success() && r.error() == null) break;
+                    if (attempt == 0) System.out.println("    (transient failure, retrying subagent)");
+                }
                 assertNull(r.error(), "subagent should have no error");
                 assertTrue(r.success(), "subagent should succeed");
                 assertTrue(r.report() != null && !r.report().isBlank(), "subagent report should not be empty");
@@ -315,7 +350,14 @@ public final class RpcE2e {
             });
             check("multi-agent team (team/run)", () -> {
                 var before = snapshotSessions(client);
-                var r = client.teamRun("Explain the value of unit testing in one sentence.").join();
+                // team 跑 2 个并发 LLM-heavy member，推理模型长流偶发被 provider 重置（transient），
+                // 重试一次以容忍 provider 侧抖动而非判定 team 编排本身失败。
+                com.deepseek.dsh.sdk.client.HarnessClient.TeamRunResult r = null;
+                for (int attempt = 0; attempt < 2; attempt++) {
+                    r = client.teamRun("Explain the value of unit testing in one sentence.").join();
+                    if (r.allSucceeded() && r.error() == null) break;
+                    if (attempt == 0) System.out.println("    (transient member failure, retrying team)");
+                }
                 assertNull(r.error(), "team should have no error");
                 assertEquals(2, r.memberCount(), "should have 2 members");
                 assertTrue(r.allSucceeded(), "both members should succeed");

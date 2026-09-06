@@ -22,6 +22,7 @@ import com.deepseek.dsh.agent.Agent;
 import com.deepseek.dsh.core.brand.ScopeKey;
 import com.deepseek.dsh.core.brand.SessionId;
 import com.deepseek.dsh.core.context.Context;
+import com.deepseek.dsh.web.api.SessionEventRecorder;
 
 /**
  * Agent WebSocket 端点处理器 —— {@code /ws/agent}。
@@ -45,12 +46,14 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     private static final Logger log = LoggerFactory.getLogger(AgentWebSocketHandler.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final AgentContextHolder holder;
+    private final SessionEventRecorder recorder;
     private final ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor();
     /** 每连接的运行中回合：sessionId → Future（取消句柄）。 */
     private final ConcurrentMap<WebSocketSession, ConcurrentMap<String, Future<?>>> running = new ConcurrentHashMap<>();
 
-    public AgentWebSocketHandler(AgentContextHolder holder) {
+    public AgentWebSocketHandler(AgentContextHolder holder, SessionEventRecorder recorder) {
         this.holder = holder;
+        this.recorder = recorder;
     }
 
     @Override
@@ -87,6 +90,11 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             Agent agent = holder.agent();
             SessionId sessionId = SessionId.of(sid);
             send(session, frame("session", sid, null));
+            // agent loop 自身不 append user/message（由调用方记录），须先落盘，
+            // 否则 deriveMessages 看不到用户消息 → 模型收到空消息。
+            recorder.record(ctx, sid, "user/message",
+                    Map.of("id", "u-" + java.util.UUID.randomUUID().toString().substring(0, 8),
+                            "content", message, "source", "browser"));
             StringBuilder acc = new StringBuilder();
             String reply = agent.streamChat(sessionId, ScopeKey.random(), ctx, message,
                     chunk -> {
@@ -97,6 +105,11 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             if (acc.length() == 0 && reply != null && !reply.isEmpty()) {
                 send(session, frame("delta", sid, reply));
             }
+            // 记录助手回复，供刷新后历史恢复（与 AgentController.send 一致）
+            recorder.record(ctx, sid, "assistant/message",
+                    Map.of("message", Map.of("id", "a-" + java.util.UUID.randomUUID().toString().substring(0, 8),
+                            "content", reply != null ? reply : ""),
+                            "turn", 1, "step", 0));
             send(session, frame("done", sid, null));
         } catch (Exception e) {
             if (Thread.currentThread().isInterrupted() || isInterrupted(e)) {

@@ -107,4 +107,18 @@ public final class SessionManager implements Plugin, Sessions, Service {
         }
         return List.copyOf(all);
     }
+
+    @Override
+    public boolean delete(SessionId id) {
+        // active 表移除（新会话可能从未落盘，仅存在于 active）；持久化文件删除。
+        // 二者任一命中即视为曾存在——对齐 RPC "首次 true、二次 false" 语义。
+        boolean inActive = active.remove(id) != null;
+        try {
+            boolean fileDeleted = store.delete(id);
+            return inActive || fileDeleted;
+        } catch (IOException e) {
+            log.warn("Failed to delete session {}: {}", id, e.toString());
+            return inActive;
+        }
+    }
 }

@@ -82,7 +82,7 @@ web_ok=0
 echo
 echo "[run-all] 4b/4 WebSocket E2E（并发多 session + 流式 + 取消）..."
 ws_ok=0
-python3 "$ROOT/testcase/ws-e2e.py" || ws_ok=1
+node "$ROOT/testcase/ws-e2e.ts" || ws_ok=1
 
 # 4c) 前端真实交互 E2E（SPA 渲染→输入→发送→回复渲染，需 playwright + chromium）
 echo

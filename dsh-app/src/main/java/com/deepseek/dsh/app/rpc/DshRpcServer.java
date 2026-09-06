@@ -56,6 +56,8 @@ public final class DshRpcServer {
     private final Context context;
     private final Agent agent;
     private final TurnOrchestrator orchestrator;
+    /** 与 Web apiproxy 共用的能力门面（compact/delete/skill.get/subagent/team 单点实现）。 */
+    private final com.deepseek.dsh.web.api.AgentApiFacade apiFacade;
     private final ConcurrentMap<String, SessionId> sessions = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> sessionCwds = new ConcurrentHashMap<>();
 
@@ -63,6 +65,7 @@ public final class DshRpcServer {
         this.context = context;
         this.agent = agent;
         this.orchestrator = new TurnOrchestrator(context, agent, null);
+        this.apiFacade = new com.deepseek.dsh.web.api.AgentApiFacade(context, agent);
         registerMethods();
     }
 
@@ -79,7 +82,13 @@ public final class DshRpcServer {
         dispatcher.register("initialize", (params, ctx) -> {
             ObjectNode r = ctx.mapper().createObjectNode();
             r.put("provider", "deepseek-official");
-            r.put("model", System.getenv().getOrDefault("DSH_MODEL", "deepseek-chat"));
+            // 上报运行时实际模型（由 ModelProfileStore 同步 dataDir/model-config.json 的活跃档案），
+            // 而非启动时的环境变量初值——否则网页配置的 glm-5.2 等自定义模型不会反映到 initialize。
+            String runtimeModel = context.get(ModelConfig.class)
+                    .map(ModelConfig::model)
+                    .filter(m -> m != null && !m.isBlank())
+                    .orElseGet(() -> System.getenv().getOrDefault("DSH_MODEL", "deepseek-chat"));
+            r.put("model", runtimeModel);
             r.put("cwd", System.getProperty("user.dir"));
             r.put("protocolVersion", "2025-01-stdio-jsonrpc");
             r.put("version", "0.1.2-alpha.1");
@@ -193,33 +202,15 @@ public final class DshRpcServer {
             return r;
         });
 
-        // session/compact —— 对会话历史触发上下文压缩
-        dispatcher.register("session/compact", (params, ctx) -> {
-            String sid = params.path("sessionId").asText();
-            int maxTokens = params.path("maxTokens").asInt(2048);
-            SessionId sessionId = sessions.get(sid);
-            ObjectNode r = ctx.mapper().createObjectNode();
-            if (sessionId == null) {
-                r.put("error", "Session not found: " + sid);
-                return r;
-            }
-            Sessions svc = context.require(Sessions.class);
-            SessionLog log = svc.getOrCreate(sessionId);
-            List<ChatMessage> msgs = log.deriveMessages().messages();
-            CompactionService comp = context.get(CompactionService.class).orElse(null);
-            r.put("sessionId", sid);
-            r.put("before", msgs.size());
-            if (comp == null) {
-                r.put("error", "compaction service not registered");
-                return r;
-            }
-            List<ChatMessage> compacted = comp.compact(msgs, maxTokens);
-            r.put("after", compacted.size());
-            r.put("compacted", compacted.size() < msgs.size());
-            return r;
-        });
+        // session/compact —— 委托共享 facade（compact/delete/skill.get/subagent/team 单点实现）
+        dispatcher.register("session/compact", (params, ctx) ->
+                toNode(ctx.mapper(), apiFacade.sessionCompact(
+                        params.path("sessionId").asText(),
+                        params.path("maxTokens").asInt(2048))));
 
-        // skill/list —— 列出已发现技能
+        // skill/list —— 列出已发现技能（字段契约与 web apiproxy 不同：含 source/provider，
+        // 不做 userInvocable 过滤；保留各自实现，facade 只托管契约一致的 compact/delete/
+        // skill.get/subagent/team/shutdown）
         dispatcher.register("skill/list", (params, ctx) -> {
             SkillService skills = context.get(SkillService.class).orElse(null);
             ObjectNode r = ctx.mapper().createObjectNode();
@@ -239,67 +230,31 @@ public final class DshRpcServer {
             return r;
         });
 
-        // skill/get —— 加载并渲染单个技能（<skill_content> 块）
-        dispatcher.register("skill/get", (params, ctx) -> {
-            String name = params.path("name").asText();
-            SkillService skills = context.get(SkillService.class).orElse(null);
-            ObjectNode r = ctx.mapper().createObjectNode();
-            if (skills == null) {
-                r.put("error", "skill service not registered");
-                return r;
-            }
-            java.util.Optional<SkillDefinition> def = skills.get(name, null);
-            if (def.isEmpty()) {
-                r.put("found", false);
-                r.put("name", name);
-                return r;
-            }
-            r.put("found", true);
-            r.put("name", name);
-            r.put("rendered", SkillRenderer.render(def.get()));
-            return r;
-        });
+        // skill/get —— 委托共享 facade
+        dispatcher.register("skill/get", (params, ctx) ->
+                toNode(ctx.mapper(), apiFacade.skillGet(params.path("name").asText())));
 
         // subagent/task —— 委派子任务给子 agent（多 agent 编排：父子委派）
-        dispatcher.register("subagent/task", (params, ctx) -> {
-            String sid = params.path("sessionId").asText();
-            String task = params.path("task").asText();
-            SessionId sessionId = sessions.computeIfAbsent(sid, SessionId::of);
-            SubagentService sub = context.get(SubagentService.class).orElse(null);
-            ObjectNode r = ctx.mapper().createObjectNode();
-            if (sub == null) {
-                r.put("error", "subagent service not registered");
-                return r;
-            }
-            DelegationResult res = sub.delegate(sessionId, ScopeKey.random(), context, agent, task);
-            r.put("report", res.report());
-            r.put("success", res.success());
-            if (res.childSessionId() != null) r.put("childSessionId", res.childSessionId());
-            r.put("forwardedEventCount", res.forwardedEventCount());
-            return r;
-        });
+        dispatcher.register("subagent/task", (params, ctx) ->
+                toNode(ctx.mapper(), apiFacade.subagentTask(
+                        params.path("sessionId").asText(),
+                        params.path("task").asText())));
 
         // team/run —— 多 agent 并行编排（临时团队，主 agent 扮演两名成员）
-        dispatcher.register("team/run", (params, ctx) -> {
-            String task = params.path("task").asText();
-            ObjectNode r = ctx.mapper().createObjectNode();
-            DefaultTeamsProvider teams = new DefaultTeamsProvider();
-            teams.setContext(context);
-            teams.registerMember("reviewer", agent);
-            teams.registerMember("tester", agent);
-            var res = teams.runTeamTask(task);
-            r.put("summary", res.summary());
-            r.put("memberCount", res.reports().size());
-            r.put("allSucceeded", res.allSucceeded());
-            return r;
-        });
+        dispatcher.register("team/run", (params, ctx) ->
+                toNode(ctx.mapper(), apiFacade.teamRun(params.path("task").asText())));
 
         // shutdown —— 对齐 TS SDK 协议
-        dispatcher.register("shutdown", (params, ctx) -> {
-            ObjectNode r = ctx.mapper().createObjectNode();
-            r.put("status", "ok");
-            return r;
-        });
+        dispatcher.register("shutdown", (params, ctx) ->
+                toNode(ctx.mapper(), apiFacade.shutdown()));
+    }
+
+    /** facade 返回 Map → RPC 的 ObjectNode（单点转换，供所有委托 handler 复用）。 */
+    private static ObjectNode toNode(com.fasterxml.jackson.databind.ObjectMapper mapper,
+                                     java.util.Map<String, Object> map) {
+        return mapper.valueToTree(map).isObject()
+                ? (ObjectNode) mapper.valueToTree(map)
+                : mapper.createObjectNode();
     }
 
     /** 在 stdio 上运行 newline-delimited JSON-RPC 循环。 */
