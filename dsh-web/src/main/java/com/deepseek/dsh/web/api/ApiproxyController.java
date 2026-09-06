@@ -215,7 +215,7 @@ public class ApiproxyController {
                 case "workspace.insertBefore" -> response(rpcId, ok(workspaceInsertBefore()));
                 case "workspace.insertSessionBefore" -> response(rpcId, ok(workspaceInsertSessionBefore(payload)));
                 case "workspace.archiveSession" -> response(rpcId, ok(workspaceArchiveSession(payload)));
-                case "workspace.list" -> response(rpcId, ok(Map.of("items", workspaces.list(), "archivedSessionIds", workspaces.archivedSessionIds())));
+                case "workspace.list" -> response(rpcId, ok(Map.of("items", filterWorkspaceSessionIds(), "archivedSessionIds", workspaces.archivedSessionIds())));
                 case "host.listDirectory" -> response(rpcId, ok(listDirectory(payload)));
                 case "skill.list" -> response(rpcId, ok(skillList()));
                 case "messageFeedback.list", "messageFeedback.put", "messageFeedback.delete" ->
@@ -476,16 +476,60 @@ public class ApiproxyController {
         return v;
     }
 
-    /** workspace.create({path})：采纳真实目录，建工作区，推 host/workspace-changed。 */
+    /** workspace.create({path})：采纳目录，建工作区。路径为绝对路径则直接用，相对路径则在 cwd 下创建。自动创建 user_profile.md 作为永久记忆。 */
     private Map<String, Object> workspaceCreate(Object payload) {
         @SuppressWarnings("unchecked")
         Map<String, Object> p = payload instanceof Map ? (Map<String, Object>) payload : Map.of();
         String path = p.get("path") != null ? String.valueOf(p.get("path")) : System.getProperty("user.dir");
         java.io.File dir = new java.io.File(path);
-        if (!dir.isDirectory()) {
-            throw new RuntimeException("workspace-invalid-path: " + path + " is not a directory");
+        if (!dir.isAbsolute()) {
+            dir = new java.io.File(System.getProperty("user.dir"), path);
         }
-        Map<String, Object> result = workspaces.ensure(path);
+        if (!dir.isDirectory()) {
+            dir.mkdirs();
+            if (!dir.isDirectory()) {
+                throw new RuntimeException("workspace-invalid-path: " + dir + " cannot be created");
+            }
+        }
+        // create AGENTS.md and USER_PROFILE.md as workspace templates if not exist
+        java.io.File agentsMd = new java.io.File(dir, "AGENTS.md");
+        if (!agentsMd.exists()) {
+            try {
+                java.nio.file.Files.writeString(agentsMd.toPath(), """
+                        # Agents
+
+                        Instructions for AI agents working in this workspace.
+
+                        ## Conventions
+                        - Use concise, clear language.
+                        - Follow existing code style.
+
+                        ## Build & Test
+                        <!-- Add build and test commands here -->
+                        """);
+            } catch (Exception ignored) { }
+        }
+        java.io.File profile = new java.io.File(dir, "USER_PROFILE.md");
+        if (!profile.exists()) {
+            try {
+                java.nio.file.Files.writeString(profile.toPath(), """
+                        # Workspace Memory
+
+                        This file stores important information for this workspace.
+                        The AI agent reads this file for context at the start of each session.
+
+                        ## User Preferences
+                        <!-- Add your preferences here -->
+
+                        ## Key Facts
+                        <!-- Add important facts here -->
+
+                        ## Session Notes
+                        <!-- Add notes from previous sessions here -->
+                        """);
+            } catch (Exception ignored) { }
+        }
+        Map<String, Object> result = workspaces.ensure(dir.getAbsolutePath());
         Map<String, Object> wsView = (Map<String, Object>) result.get("workspace");
         remoteMux.broadcastWorkspaceFrame(Map.of("type", "upsert", "workspace", wsView));
         return result;
@@ -1676,8 +1720,36 @@ public class ApiproxyController {
     }
 
     private Map<String, Object> workspaceInsertSessionBefore(Object payload) {
-        Map<String, Object> wv = workspaces.view(strField(payload, "workspaceId"));
+        String wsId = strField(payload, "workspaceId");
+        String sid = strField(payload, "sessionId");
+        if (wsId != null && sid != null) {
+            Map<String, Object> wv = workspaces.attachSession(wsId, sid);
+            if (wv != null) remoteMux.broadcastWorkspaceFrame(Map.of("type", "upsert", "workspace", wv));
+            return Map.of("workspace", wv != null ? wv : Map.of());
+        }
+        Map<String, Object> wv = workspaces.view(wsId);
         return Map.of("workspace", wv != null ? wv : Map.of());
+    }
+
+    /** Return workspace items with sessionIds filtered to only include sessions that still exist. */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> filterWorkspaceSessionIds() {
+        List<Map<String, Object>> items = workspaces.list();
+        try {
+            Context ctx = holder.context();
+            var sessions = ctx.require(com.deepseek.dsh.session.Sessions.class);
+            var validIds = new java.util.HashSet<String>();
+            for (var id : sessions.list()) validIds.add(id.value());
+            for (var item : items) {
+                Object sidsObj = item.get("sessionIds");
+                if (sidsObj instanceof List<?> sids) {
+                    item.put("sessionIds", sids.stream()
+                            .filter(s -> validIds.contains(String.valueOf(s)))
+                            .toList());
+                }
+            }
+        } catch (Exception ignored) { /* bridge not ready, return unfiltered */ }
+        return items;
     }
 
     /** 默认工作区（当前目录），sessionIds 取自 dsh-java 真实活跃会话，使侧边栏列出可点击的历史会话。 */

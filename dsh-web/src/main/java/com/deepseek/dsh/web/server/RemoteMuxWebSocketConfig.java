@@ -38,15 +38,18 @@ public class RemoteMuxWebSocketConfig implements WebSocketConfigurer {
 
     private final RemoteMuxRegistry registry;
     private final WorkspaceRegistry workspaces;
+    private final AgentContextHolder holder;
 
-    public RemoteMuxWebSocketConfig(RemoteMuxRegistry registry, WorkspaceRegistry workspaces) {
+    public RemoteMuxWebSocketConfig(RemoteMuxRegistry registry, WorkspaceRegistry workspaces,
+                                    AgentContextHolder holder) {
         this.registry = registry;
         this.workspaces = workspaces;
+        this.holder = holder;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(new RemoteMuxHandler(this.registry, this.workspaces), "/api/remote.mux")
+        registry.addHandler(new RemoteMuxHandler(this.registry, this.workspaces, this.holder), "/api/remote.mux")
                 .setAllowedOrigins("*");
     }
 
@@ -56,10 +59,12 @@ public class RemoteMuxWebSocketConfig implements WebSocketConfigurer {
         private final AtomicLong clientIdSeq = new AtomicLong();
         private final RemoteMuxRegistry registry;
         private final WorkspaceRegistry workspaces;
+        private final AgentContextHolder holder;
 
-        RemoteMuxHandler(RemoteMuxRegistry registry, WorkspaceRegistry workspaces) {
+        RemoteMuxHandler(RemoteMuxRegistry registry, WorkspaceRegistry workspaces, AgentContextHolder holder) {
             this.registry = registry;
             this.workspaces = workspaces;
+            this.holder = holder;
         }
 
         @Override
@@ -135,11 +140,32 @@ public class RemoteMuxWebSocketConfig implements WebSocketConfigurer {
     }
 
     private void handleWorkspaceFollow(WebSocketSession session, String streamId, Object payload) throws IOException {
-        List<?> items = workspaces.list();
+        List<?> items = filterWorkspaceItems();
         List<String> archived = workspaces.archivedSessionIds();
         Map<String, Object> baseline = Map.of("items", items, "archivedSessionIds", archived);
         sendItem(session, streamId, Map.of("type", "baseline", "value", baseline));
         registry.registerWorkspaceFollow(session, streamId);
+    }
+
+    /** Filter workspace sessionIds to only include sessions that still exist. */
+    @SuppressWarnings("unchecked")
+    private List<?> filterWorkspaceItems() {
+        List<?> items = workspaces.list();
+        try {
+            var ctx = holder.context();
+            var sessions = ctx.require(com.deepseek.dsh.session.Sessions.class);
+            var validIds = new java.util.HashSet<String>();
+            for (var id : sessions.list()) validIds.add(id.value());
+            for (var item : (List<Map<String, Object>>) items) {
+                Object sidsObj = item.get("sessionIds");
+                if (sidsObj instanceof List<?> sids) {
+                    item.put("sessionIds", sids.stream()
+                            .filter(s -> validIds.contains(String.valueOf(s)))
+                            .toList());
+                }
+            }
+        } catch (Exception ignored) { /* bridge not ready, return unfiltered */ }
+        return items;
     }
 
         void sendItem(WebSocketSession session, String streamId, Object value) throws IOException {

@@ -57,6 +57,7 @@ public final class DshRpcServer {
     private final Agent agent;
     private final TurnOrchestrator orchestrator;
     private final ConcurrentMap<String, SessionId> sessions = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, String> sessionCwds = new ConcurrentHashMap<>();
 
     public DshRpcServer(Context context, Agent agent) {
         this.context = context;
@@ -90,6 +91,8 @@ public final class DshRpcServer {
             String sid = params.path("sessionId").asText("");
             if (sid.isBlank()) sid = UUID.randomUUID().toString();
             sessions.put(sid, SessionId.of(sid));
+            String cwd = params.path("cwd").asText("");
+            if (!cwd.isBlank()) sessionCwds.put(sid, cwd);
             ObjectNode r = ctx.mapper().createObjectNode();
             r.put("sessionId", sid);
             return r;
@@ -108,6 +111,9 @@ public final class DshRpcServer {
             String sid = params.path("sessionId").asText();
             String message = params.path("message").asText();
             SessionId sessionId = sessions.computeIfAbsent(sid, SessionId::of);
+            // set session cwd so the agent's system prompt uses the workspace path
+            String cwd = sessionCwds.get(sid);
+            if (cwd != null) com.deepseek.dsh.core.context.SessionCwd.set(cwd);
             String model = context.get(ModelConfig.class).map(ModelConfig::model).orElse("deepseek-chat");
             Sessions svc = context.require(Sessions.class);
             var sink = new RpcEventSink(svc);
@@ -179,6 +185,8 @@ public final class DshRpcServer {
             var sink = new com.deepseek.dsh.app.rpc.RpcEventSink(svc);
             SessionLog child = orchestrator.forkSession(parentSid, sink);
             sessions.put(child.sessionId().value(), child.sessionId());
+            String parentCwd = sessionCwds.get(parentSid);
+            if (parentCwd != null) sessionCwds.put(child.sessionId().value(), parentCwd);
             r.put("childSessionId", child.sessionId().value());
             r.put("parentSessionId", parentSid);
             r.put("replayedEvents", child.size());

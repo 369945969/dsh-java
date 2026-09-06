@@ -83,6 +83,15 @@ public final class HarnessClient implements AutoCloseable {
                 .thenApply(n -> n.path("sessionId").asText());
     }
 
+    /** session.create —— 指定 sid 和 cwd 创建（cwd 传给 RPC server 设为 agent 工作目录）。 */
+    public CompletableFuture<String> createSession(String sessionId, String cwd) {
+        var params = new java.util.HashMap<String, Object>();
+        if (sessionId != null && !sessionId.isBlank()) params.put("sessionId", sessionId);
+        if (cwd != null && !cwd.isBlank()) params.put("cwd", cwd);
+        return transport.request("session.create", params)
+                .thenApply(n -> n.path("sessionId").asText());
+    }
+
     /** session.list —— 列出全部会话 ID。 */
     public CompletableFuture<SessionListResult> listSessions() {
         return transport.request("session.list", java.util.Map.of())

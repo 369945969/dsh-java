@@ -157,6 +157,7 @@ public final class TurnOrchestrator {
         if (wsPath == null || wsPath.isEmpty()) wsPath = SessionCwd.get() != null ? SessionCwd.get() : System.getProperty("user.dir");
 
         injectAgentsMd(sessionId, wsPath, sink);
+        injectUserProfile(sessionId, wsPath, sink);
         injectRuntimeContext(sessionId, wsPath, sink);
         injectSkillList(sessionId, sink);
     }
@@ -181,6 +182,28 @@ public final class TurnOrchestrator {
         }
     }
 
+    /** Inject USER_PROFILE.md as permanent workspace memory. */
+    private void injectUserProfile(String sessionId, String wsPath, SessionEventSink sink) {
+        java.io.File profile = new java.io.File(wsPath, "USER_PROFILE.md");
+        if (!profile.isFile()) return;
+        try {
+            String content = Files.readString(profile.toPath());
+            if (content.isBlank()) return;
+            if (content.length() > 8000) content = content.substring(0, 8000) + "\n…(truncated)";
+            sink.emit(sessionId, "user/message", Map.of(
+                    "id", "ctx-profile-" + UUID.randomUUID().toString().substring(0, 8),
+                    "content", List.of(Map.of("type", "text",
+                            "text", "<system-reminder>\nThe following is the permanent workspace memory from USER_PROFILE.md. "
+                                    + "This file persists across sessions. Use it to recall user preferences and key facts. "
+                                    + "You may update this file to store important information for future sessions.\n\n"
+                                    + content)),
+                    "source", Map.of("kind", "plugin", "plugin", "dsh-context", "form", "workspace-memory"),
+                    "role", "user"));
+        } catch (Exception e) {
+            log.debug("injectUserProfile: {}", e.toString());
+        }
+    }
+
     private void injectRuntimeContext(String sessionId, String wsPath, SessionEventSink sink) {
         sink.emit(sessionId, "user/message", Map.of(
                 "id", "ctx-runtime-" + UUID.randomUUID().toString().substring(0, 8),
@@ -189,6 +212,10 @@ public final class TurnOrchestrator {
                                 + "Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox "
                                 + "may modify files under the session workspace: \"" + wsPath + "\". "
                                 + "Some platform temporary areas may also be writable.\n\n"
+                                + "Workspace files: AGENTS.md contains workspace-level agent instructions. "
+                                + "USER_PROFILE.md contains permanent user preferences and key facts that persist across sessions. "
+                                + "Read these files at the start of each session. You may update USER_PROFILE.md to store important "
+                                + "information for future sessions.\n\n"
                                 + "Approval policy: ask. Operations that require approval may ask through the configured answerers; "
                                 + "without an available answerer, the request fails closed.")),
                 "source", Map.of("kind", "plugin", "plugin", "dsh-system-prompt", "form", "snapshot"),
