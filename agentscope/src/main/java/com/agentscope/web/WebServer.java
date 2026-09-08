@@ -109,9 +109,17 @@ public class WebServer {
                 String message = (String) req.getOrDefault("message", "");
                 String sessionId = (String) req.getOrDefault("sessionId", UUID.randomUUID().toString());
                 String userId = (String) req.getOrDefault("userId", "default");
+                // 按请求参数注入系统提示词 / skill 提示词（中间件从 RuntimeContext 读取）
+                String systemPrompt = (String) req.get("systemPrompt");
+                String skillPrompt = (String) req.get("skillPrompt");
 
-                RuntimeContext ctx = RuntimeContext.builder()
-                        .sessionId(sessionId).userId(userId).build();
+                var ctxBuilder = RuntimeContext.builder()
+                        .sessionId(sessionId).userId(userId);
+                if (systemPrompt != null && !systemPrompt.isBlank())
+                    ctxBuilder.put("customSysPrompt", systemPrompt);
+                if (skillPrompt != null && !skillPrompt.isBlank())
+                    ctxBuilder.put("skillPrompt", skillPrompt);
+                RuntimeContext ctx = ctxBuilder.build();
                 Object result = agent.call(new UserMessage(message), ctx).block();
 
                 // 从 AssistantMessage（extends Msg）提取文本内容

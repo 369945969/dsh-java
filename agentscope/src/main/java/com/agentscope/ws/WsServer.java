@@ -51,9 +51,17 @@ public class WsServer extends WebSocketServer {
 
             if ("prompt".equals(action)) {
                 String msg = (String) req.getOrDefault("message", "");
+                // 按请求参数注入系统提示词 / skill 提示词（中间件从 RuntimeContext 读取）
+                String systemPrompt = (String) req.get("systemPrompt");
+                String skillPrompt = (String) req.get("skillPrompt");
                 send(conn, frame("session", sid, sid));
-                RuntimeContext ctx = RuntimeContext.builder()
-                        .sessionId(sid).userId(uid).build();
+                var ctxBuilder = RuntimeContext.builder()
+                        .sessionId(sid).userId(uid);
+                if (systemPrompt != null && !systemPrompt.isBlank())
+                    ctxBuilder.put("customSysPrompt", systemPrompt);
+                if (skillPrompt != null && !skillPrompt.isBlank())
+                    ctxBuilder.put("skillPrompt", skillPrompt);
+                RuntimeContext ctx = ctxBuilder.build();
                 agent.streamEvents(new UserMessage(msg), ctx)
                     .doOnNext(event -> {
                         try {

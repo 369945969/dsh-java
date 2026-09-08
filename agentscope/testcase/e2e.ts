@@ -72,6 +72,34 @@ async function testUnauthorized() {
   record('unauthorized without token', r.status === 401, `status=${r.status}`)
 }
 
+async function testSkillPrompt() {
+  // 通过请求参数注入 skill 提示词，agent 应遵循执行
+  const r = await fetchWithCookie('/api/agent/send', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: 'What is 2+2? Answer with just the number.',
+      skillPrompt: 'Always prefix your reply with SKILL: to show you followed this instruction.'
+    })
+  })
+  const j: any = await r.json()
+  const ok = (j?.reply || '').toUpperCase().includes('SKILL:')
+  record('skill prompt injection (prefix SKILL:)', ok, `reply: ${(j?.reply || '').slice(0, 60)}`)
+}
+
+async function testSystemPromptOverride() {
+  // 通过请求参数覆盖系统提示词
+  const r = await fetchWithCookie('/api/agent/send', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: 'Who are you?',
+      systemPrompt: 'You are a DBA assistant. Always mention databases in your reply.'
+    })
+  })
+  const j: any = await r.json()
+  const ok = (j?.reply || '').toLowerCase().includes('database') || (j?.reply || '').toLowerCase().includes('dba')
+  record('system prompt override (mentions database)', ok, `reply: ${(j?.reply || '').slice(0, 60)}`)
+}
+
 // ---- WebSocket 辅助 ----
 function wsPrompt(sid: string, message: string): Promise<any[]> {
   return new Promise((resolve) => {
@@ -114,6 +142,8 @@ async function main() {
   const sid = await testSend()
   if (sid) await testMultiTurn(sid)
   await testUnauthorized()
+  await testSkillPrompt()
+  await testSystemPromptOverride()
   await testWsPrompt()
 
   const passed = results.filter(r => r.pass).length

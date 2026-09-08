@@ -32,6 +32,8 @@ public class AgentscopeApp {
                 .sysPrompt(cfg.sysPrompt)
                 .model(cfg.model)
                 .workspace(wsDir)
+                // 中间件：按请求参数注入系统提示词 / skill 提示词（从 RuntimeContext 读取）
+                .middleware(new com.agentscope.agent.CustomPromptMiddleware())
                 .build();
 
         WebServer web = new WebServer(port, agent, cfg);
