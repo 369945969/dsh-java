@@ -23,6 +23,20 @@ public final class SessionLog {
     private final SessionId sessionId;
     private final List<SessionEvent> events = new ArrayList<>();
     private final AtomicLong nextSeq = new AtomicLong(0);
+    /** 会话所属应用（默认 "default"，由 SessionAuth 从 header/env 注入）。 */
+    private String appid = "default";
+    /** 会话所属用户（默认 "" 匿名，由 SessionAuth 从 header/env 注入）。 */
+    private String userid = "";
+    /** 推理标记（true/false/auto，由 SessionAuth 从 header/env 注入；auto=模型默认）。 */
+    private String reasoning = "auto";
+    /** 本会话使用的模型 id（由 SessionAuth 从 header/env 注入；空=用活跃档案模型）。 */
+    private String modelId = "";
+    /** 所属工作区 id（由 SessionAuth 从 header/env 注入；空=不属于任何工作区）。 */
+    private String workspaceId = "";
+    /** 累计输入 token（prompt tokens，跨所有 turn）。 */
+    private long inputTokens = 0;
+    /** 累计输出 token（completion tokens，跨所有 turn）。 */
+    private long outputTokens = 0;
 
     public SessionLog(SessionId sessionId) {
         this.sessionId = sessionId;
@@ -30,6 +44,36 @@ public final class SessionLog {
 
     public SessionId sessionId() { return sessionId; }
     public int size() { return events.size(); }
+
+    /** 所属应用（appid）。 */
+    public String appid() { return appid; }
+    /** 所属用户（userid）。 */
+    public String userid() { return userid; }
+    /** 推理标记（true/false/auto）。 */
+    public String reasoning() { return reasoning; }
+    /** 本会话使用的模型 id（空=活跃档案模型）。 */
+    public String modelId() { return modelId; }
+    /** 所属工作区 id（空=不属于任何工作区）。 */
+    public String workspaceId() { return workspaceId; }
+    /** 由 SessionManager 在创建时从 SessionAuth 盖章（含 reasoning/modelId/workspaceId）。 */
+    public void setAuth(String appid, String userid, String reasoning, String modelId, String workspaceId) {
+        this.appid = appid == null ? "default" : appid;
+        this.userid = userid == null ? "" : userid;
+        this.reasoning = reasoning == null || reasoning.isBlank() ? "auto" : reasoning;
+        this.modelId = modelId == null ? "" : modelId;
+        this.workspaceId = workspaceId == null ? "" : workspaceId;
+    }
+    /** 累计输入 token。 */
+    public long inputTokens() { return inputTokens; }
+    /** 累计输出 token。 */
+    public long outputTokens() { return outputTokens; }
+    /** 本会话累计总 token（input+output），供客户端判断何时手动触发压缩。 */
+    public long totalSessionTokens() { return inputTokens + outputTokens; }
+    /** 累加本 turn 的 token 用量（由 web/ws 层在 turn 结束后从 TokenMeterService delta 盖章）。 */
+    public synchronized void addTokens(long in, long out) {
+        inputTokens += Math.max(0, in);
+        outputTokens += Math.max(0, out);
+    }
 
     public long lastSeq() {
         return events.isEmpty() ? -1 : events.get(events.size() - 1).seq();

@@ -148,6 +148,39 @@ else
   fail "POST /api/agent/send (full response)" "缺 totalTokens/history: $(echo "$SEND2" | head -c 200)"
 fi
 
+# 4b) appid/userid 从 header 注入（响应回显）—— SessionLog 支持 head 取 appid/userid
+AUTH=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+  -H 'Content-Type: application/json' \
+  -H 'X-DSH-APPID: acme-bot' -H 'X-DSH-USERID: user42' \
+  -H 'X-DSH-REASONING: true' -H 'X-DSH-MODEL: qwen3.7-max' \
+  -d '{"message":"Reply with just OK."}' || true)
+if echo "$AUTH" | jq -e '.appid == "acme-bot" and .userid == "user42" and .reasoning == "true" and .modelId == "qwen3.7-max"' >/dev/null 2>&1; then
+  pass "appid/userid/reasoning/modelId from header (echoed)"
+else
+  fail "headers from header" "未回显: $(echo "$AUTH" | jq -c '{appid:.appid,userid:.userid,reasoning:.reasoning,modelId:.modelId}' 2>/dev/null)"
+fi
+
+# 4c) 全部 header 缺省走默认值（appid=default, userid="", reasoning=auto, modelId=""）
+NOAUTH=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Reply with just OK."}' || true)
+if echo "$NOAUTH" | jq -e '.appid == "default" and (.userid // "") == "" and .reasoning == "auto" and (.modelId // "") == ""' >/dev/null 2>&1; then
+  pass "all headers default when absent"
+else
+  fail "headers default" "默认值不符: $(echo "$NOAUTH" | jq -c '{appid:.appid,userid:.userid,reasoning:.reasoning,modelId:.modelId}' 2>/dev/null)"
+fi
+
+# 4d) token 输入/输出量（inputTokens/outputTokens > 0）
+TOK=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Introduce Python in one sentence."}' || true)
+if echo "$TOK" | jq -e '.inputTokens > 0 and .outputTokens > 0' >/dev/null 2>&1; then
+  pass "token input/output tracked (in/out > 0)"
+  echo "    in=$(echo "$TOK" | jq -r '.inputTokens') out=$(echo "$TOK" | jq -r '.outputTokens')"
+else
+  fail "token input/output" "in/out 未正: $(echo "$TOK" | jq -c '{in:.inputTokens,out:.outputTokens}' 2>/dev/null)"
+fi
+
 # 5) 上下文记忆：多轮（同 sessionId 记住→回忆）—— 对齐 RPC context memory
 MEM=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" \
   -H 'Content-Type: application/json' \
@@ -284,6 +317,30 @@ if echo "$SC" | jq -e '.result.value.before != null and .result.value.after != n
   pass "POST /api/session.compact (before→after)"
 else
   fail "POST /api/session.compact" "未返回 before/after: $(echo "$SC" | head -c 200)"
+fi
+
+# 14b) 多轮对话累积 token → 客户端读 sessionTokens → 手动压缩（验证累积 + 压缩后缩减）
+MC_SID=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" -H 'Content-Type: application/json' \
+  -d '{"message":"Remember: my name is Bob."}' 2>/dev/null | jq -r '.sessionId // empty')
+T1=0; T2=0; T3=0
+for _ in 1 2 3; do [ -n "$MC_SID" ] && break; sleep 1; done
+[ -n "$MC_SID" ] && T1=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" -H 'Content-Type: application/json' \
+  -d "{\"sessionId\":\"$MC_SID\",\"message\":\"What is 2+2? Answer with just the number.\"}" 2>/dev/null | jq -r '.sessionTokens // 0')
+[ -n "$MC_SID" ] && T2=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" -H 'Content-Type: application/json' \
+  -d "{\"sessionId\":\"$MC_SID\",\"message\":\"What is 3+3? Answer with just the number.\"}" 2>/dev/null | jq -r '.sessionTokens // 0')
+[ -n "$MC_SID" ] && T3=$(curl -s -b "$COOKIE" -X POST "$BASE/api/agent/send" -H 'Content-Type: application/json' \
+  -d "{\"sessionId\":\"$MC_SID\",\"message\":\"What is 4+4? Answer with just the number.\"}" 2>/dev/null | jq -r '.sessionTokens // 0')
+MC_BEFORE=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.compact" -H 'Content-Type: application/json' \
+  -d "{\"rpcId\":\"w\",\"payload\":{\"sessionId\":\"$MC_SID\",\"maxTokens\":256}}" 2>/dev/null | jq -r '.result.value.before // 0')
+MC_AFTER=$(curl -s -b "$COOKIE" -X POST "$BASE/api/session.compact" -H 'Content-Type: application/json' \
+  -d "{\"rpcId\":\"w\",\"payload\":{\"sessionId\":\"$MC_SID\",\"maxTokens\":256}}" 2>/dev/null | jq -r '.result.value.after // 0')
+if [ -n "$MC_SID" ] && [ "$T3" -gt 0 ] 2>/dev/null \
+   && [ "$T3" -ge "$T1" ] 2>/dev/null \
+   && [ "$MC_AFTER" -le "$MC_BEFORE" ] 2>/dev/null; then
+  pass "manual compaction via sessionTokens (multi-turn accumulate→compact)"
+  echo "    sessionTokens: t1=$T1 t3=$T3 | compact before=$MC_BEFORE after=$MC_AFTER"
+else
+  fail "manual compaction (multi-turn)" "累积/压缩不符: t1=$T1 t3=$T3 compact before=$MC_BEFORE after=$MC_AFTER"
 fi
 
 # 15) session.delete（创建+删除+验证消失）—— 对齐 RPC session deletion

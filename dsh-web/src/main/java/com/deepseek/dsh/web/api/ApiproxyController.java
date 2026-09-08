@@ -555,6 +555,14 @@ public class ApiproxyController {
             s.put("projections", Map.of("asOfSeq", lastSeq, "values", Map.of("title", title, "blank", sl.size() == 0)));
             s.put("updatedAt", lastTime > 0 ? lastTime : System.currentTimeMillis());
             s.put("running", runningTurns.containsKey(id.value()));
+            s.put("appid", sl.appid());
+            s.put("userid", sl.userid());
+            s.put("reasoning", sl.reasoning());
+            s.put("modelId", sl.modelId());
+            s.put("workspaceId", sl.workspaceId());
+            s.put("inputTokens", sl.inputTokens());
+            s.put("outputTokens", sl.outputTokens());
+            s.put("sessionTokens", sl.totalSessionTokens());
             s.put("blank", sl.size() == 0);
             String wsPath = workspaces.findSessionWorkspacePath(id.value());
             s.put("cwd", wsPath != null ? wsPath : System.getProperty("user.dir"));

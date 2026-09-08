@@ -264,10 +264,18 @@ public final class DeepSeekLlmAdapter implements LlmModel {
 
     private ObjectNode buildRequestBody(LlmRequest request, boolean stream) {
         ObjectNode body = mapper.createObjectNode();
-        body.put("model", effectiveModel());
+        // 模型 id：header/env 的 modelId 覆盖活跃档案模型（空=用活跃档案）
+        String hdrModel = com.deepseek.dsh.core.context.SessionAuth.modelId();
+        body.put("model", (hdrModel != null && !hdrModel.isBlank()) ? hdrModel : effectiveModel());
         body.put("stream", stream);
         if (request.temperature() != null) body.put("temperature", request.temperature());
         if (request.maxTokens() != null) body.put("max_tokens", request.maxTokens());
+        // 推理标记位：从 SessionAuth（header/env 注入）。true=强制开 thinking，false=强制关，
+        // auto=不设该字段，按模型默认行为（缺省即 auto）。
+        String reasoning = com.deepseek.dsh.core.context.SessionAuth.reasoning();
+        if ("true".equals(reasoning)) body.put("enable_thinking", true);
+        else if ("false".equals(reasoning)) body.put("enable_thinking", false);
+        // "auto" 不写字段
 
         ArrayNode messages = body.putArray("messages");
         for (ChatMessage m : request.messages()) {

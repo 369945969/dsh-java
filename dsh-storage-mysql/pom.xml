@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.deepseek.dsh</groupId>
+        <artifactId>dsh-parent</artifactId>
+        <version>0.1.1-rc.2-java</version>
+    </parent>
+    <artifactId>dsh-storage-mysql</artifactId>
+    <name>DSH Storage MySQL</name>
+    <description>MySQL 存储后端（HikariCP 连接池）：session 日志读写 + 模型档案读取 + 系统提示词读取。</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-session</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-llm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-context</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.deepseek.dsh</groupId>
+            <artifactId>dsh-skill</artifactId>
+        </dependency>
+        <!-- 连接池 + MySQL 驱动（版本由 spring-boot-dependencies BOM 管理） -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+        </dependency>
+    </dependencies>
+</project>

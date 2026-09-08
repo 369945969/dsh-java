@@ -201,7 +201,15 @@ public final class HarnessClient implements AutoCloseable {
                 n.path("sessionId").asText(""),
                 n.path("reply").asText(""),
                 n.path("status").asText(""),
-                n.path("totalTokens").asLong(0));
+                n.path("totalTokens").asLong(0),
+                n.path("appid").asText("default"),
+                n.path("userid").asText(""),
+                n.path("reasoning").asText("auto"),
+                n.path("modelId").asText(""),
+                n.path("workspaceId").asText(""),
+                n.path("inputTokens").asLong(0),
+                n.path("outputTokens").asLong(0),
+                n.path("sessionTokens").asLong(0));
     }
 
     private static HistoryResult toHistory(JsonNode n) {
@@ -286,7 +294,9 @@ public final class HarnessClient implements AutoCloseable {
     public record SessionListResult(List<String> sessionIds, int count) {}
 
     /** session/prompt 结果。 */
-    public record PromptResult(String sessionId, String reply, String status, long totalTokens) {}
+    public record PromptResult(String sessionId, String reply, String status, long totalTokens,
+                               String appid, String userid, String reasoning, String modelId, String workspaceId,
+                               long inputTokens, long outputTokens, long sessionTokens) {}
 
     /** session.history 结果。 */
     public record HistoryResult(List<JsonNode> messages, String error) {}

@@ -51,6 +51,7 @@
         <module>dsh-goal</module>
         <module>dsh-plan</module>
         <module>dsh-session-sqlite</module>
+        <module>dsh-storage-mysql</module>
         <module>dsh-workflow</module>
         <module>dsh-code-runtime</module>
         <module>dsh-lsp</module>
@@ -164,6 +165,11 @@
             <dependency>
                 <groupId>com.deepseek.dsh</groupId>
                 <artifactId>dsh-session-sqlite</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.deepseek.dsh</groupId>
+                <artifactId>dsh-storage-mysql</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

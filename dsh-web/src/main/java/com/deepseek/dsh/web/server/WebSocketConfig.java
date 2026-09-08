@@ -20,9 +20,12 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final AgentWebSocketHandler agentWebSocketHandler;
+    private final SessionAuthHandshakeInterceptor sessionAuthInterceptor;
 
-    public WebSocketConfig(AgentWebSocketHandler agentWebSocketHandler) {
+    public WebSocketConfig(AgentWebSocketHandler agentWebSocketHandler,
+                          SessionAuthHandshakeInterceptor sessionAuthInterceptor) {
         this.agentWebSocketHandler = agentWebSocketHandler;
+        this.sessionAuthInterceptor = sessionAuthInterceptor;
     }
 
     @Bean
@@ -32,6 +35,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(agentWebSocketHandler, "/ws/agent").setAllowedOrigins("*");
+        registry.addHandler(agentWebSocketHandler, "/ws/agent")
+                .addInterceptors(sessionAuthInterceptor)
+                .setAllowedOrigins("*");
     }
 }

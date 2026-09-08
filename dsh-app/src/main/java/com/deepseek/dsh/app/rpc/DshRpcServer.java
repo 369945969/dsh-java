@@ -99,19 +99,45 @@ public final class DshRpcServer {
         dispatcher.register("session.create", (params, ctx) -> {
             String sid = params.path("sessionId").asText("");
             if (sid.isBlank()) sid = UUID.randomUUID().toString();
+            // 从 env 注入 appid/userid/reasoning/modelId（RPC 无 header，等价于 web 的 X-DSH-* header）
+            com.deepseek.dsh.core.context.SessionAuth.set(
+                    System.getenv("DSH_APP_ID"), System.getenv("DSH_USER_ID"),
+                    System.getenv("DSH_REASONING"), System.getenv("DSH_MODEL_ID"),
+                    System.getenv("DSH_WORKSPACE_ID"));
             sessions.put(sid, SessionId.of(sid));
+            SessionLog created = context.require(Sessions.class).getOrCreate(SessionId.of(sid));
             String cwd = params.path("cwd").asText("");
             if (!cwd.isBlank()) sessionCwds.put(sid, cwd);
             ObjectNode r = ctx.mapper().createObjectNode();
             r.put("sessionId", sid);
+            r.put("appid", created.appid());
+            r.put("userid", created.userid());
+            r.put("reasoning", created.reasoning());
+            r.put("modelId", created.modelId());
+            r.put("workspaceId", created.workspaceId());
             return r;
         });
 
         // 列出会话
         dispatcher.register("session.list", (params, ctx) -> {
+            Sessions svc = context.require(Sessions.class);
+            var arr = ctx.mapper().createArrayNode();
+            for (String sid : sessions.keySet()) {
+                SessionLog sl = svc.getOrCreate(SessionId.of(sid));
+                var o = arr.addObject();
+                o.put("sessionId", sid);
+                o.put("appid", sl.appid());
+                o.put("userid", sl.userid());
+                o.put("reasoning", sl.reasoning());
+                o.put("modelId", sl.modelId());
+                o.put("workspaceId", sl.workspaceId());
+                o.put("inputTokens", sl.inputTokens());
+                o.put("outputTokens", sl.outputTokens());
+            }
             ObjectNode r = ctx.mapper().createObjectNode();
             r.putPOJO("sessionIds", sessions.keySet());
             r.put("count", sessions.size());
+            r.putPOJO("items", arr);
             return r;
         });
 
@@ -120,17 +146,28 @@ public final class DshRpcServer {
             String sid = params.path("sessionId").asText();
             String message = params.path("message").asText();
             SessionId sessionId = sessions.computeIfAbsent(sid, SessionId::of);
+            // 从 env 注入 appid/userid/reasoning/modelId（RPC 无 header）
+            com.deepseek.dsh.core.context.SessionAuth.set(
+                    System.getenv("DSH_APP_ID"), System.getenv("DSH_USER_ID"),
+                    System.getenv("DSH_REASONING"), System.getenv("DSH_MODEL_ID"),
+                    System.getenv("DSH_WORKSPACE_ID"));
             // set session cwd so the agent's system prompt uses the workspace path
             String cwd = sessionCwds.get(sid);
             if (cwd != null) com.deepseek.dsh.core.context.SessionCwd.set(cwd);
             String model = context.get(ModelConfig.class).map(ModelConfig::model).orElse("deepseek-chat");
             Sessions svc = context.require(Sessions.class);
+            var meterOpt = context.get(TokenMeterService.class);
+            long inBefore = meterOpt.map(TokenMeterService::totalPromptTokens).orElse(0L);
+            long outBefore = meterOpt.map(TokenMeterService::totalCompletionTokens).orElse(0L);
             var sink = new RpcEventSink(svc);
             int turn = orchestrator.nextTurn(sid);
             orchestrator.prepareTurn(sid, message, turn, model, null, sink);
             orchestrator.runAgent(sid, message, turn, model, sink);
             String reply = "";
             SessionLog slog = svc.getOrCreate(sessionId);
+            long inDelta = meterOpt.map(TokenMeterService::totalPromptTokens).orElse(0L) - inBefore;
+            long outDelta = meterOpt.map(TokenMeterService::totalCompletionTokens).orElse(0L) - outBefore;
+            slog.addTokens(inDelta, outDelta);
             var msgs = slog.deriveMessages().messages();
             for (int i = msgs.size() - 1; i >= 0; i--) {
                 if (msgs.get(i).role() == ChatMessage.Role.ASSISTANT) {
@@ -138,13 +175,20 @@ public final class DshRpcServer {
                     break;
                 }
             }
-            long totalTokens = context.get(TokenMeterService.class)
-                    .map(TokenMeterService::totalTokens).orElse(0L);
+            long totalTokens = meterOpt.map(TokenMeterService::totalTokens).orElse(0L);
             ObjectNode r = ctx.mapper().createObjectNode();
             r.put("sessionId", sid);
             r.put("reply", reply);
             r.put("status", "ok");
             r.put("totalTokens", totalTokens);
+            r.put("appid", slog.appid());
+            r.put("userid", slog.userid());
+            r.put("reasoning", slog.reasoning());
+            r.put("modelId", slog.modelId());
+            r.put("workspaceId", slog.workspaceId());
+            r.put("inputTokens", slog.inputTokens());
+            r.put("outputTokens", slog.outputTokens());
+            r.put("sessionTokens", slog.totalSessionTokens());
             return r;
         });
 

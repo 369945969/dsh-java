@@ -16,8 +16,16 @@ if [ ! -f "$CP_FILE" ]; then
   exit 1
 fi
 
-echo "[start-rpc] 启动 RPC 服务端（模型取自 dataDir/model-config.json）..." >&2
+echo "[start-rpc] 启动 RPC 服务端（模型取自 dataDir/model-config.json 或 model_profile 表）..." >&2
 export DSH_TOKEN="${DSH_TOKEN:-ECkvAL8rG-BYj_ex_B8hleaq8mk88ncheFEor1SoDkg}"
+
+# DSH_STORAGE=mysql 时启动前引导 DB（非破坏：CREATE IF NOT EXISTS + seed）
+if [ "${DSH_STORAGE:-file}" = "mysql" ]; then
+  MYSQL_DB="${DSH_DB_NAME:-dsh-java}"
+  mysql -u "${DSH_DB_USER:-root}" -p"${DSH_DB_PASSWORD:?DSH_DB_PASSWORD required when DSH_STORAGE=mysql}" \
+    "$MYSQL_DB" < "$ROOT/db/mysql/bootstrap.sql" >/dev/null 2>&1 || true
+fi
+
 exec java -Dlogback.configurationFile=logback-rpc.xml \
   -cp "$ROOT/dsh-app/target/classes:$(cat "$CP_FILE")" \
   com.deepseek.dsh.app.rpc.DshRpcServer

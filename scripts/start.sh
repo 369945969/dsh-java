@@ -48,6 +48,20 @@ free_port() {
 echo "[start] launching web server: port=$PORT" >&2
 free_port "$PORT"
 
+# DSH_STORAGE=mysql 时启动前引导 DB（非破坏：CREATE IF NOT EXISTS + seed，不 DROP）
+if [ "${DSH_STORAGE:-file}" = "mysql" ]; then
+  echo "[start] DSH_STORAGE=mysql，引导 DB（非破坏）..." >&2
+  MYSQL_DB="${DSH_DB_NAME:-dsh-java}"
+  mysql -u "${DSH_DB_USER:-root}" -p"${DSH_DB_PASSWORD:?DSH_DB_PASSWORD required when DSH_STORAGE=mysql}" \
+    "$MYSQL_DB" < "$ROOT/db/mysql/bootstrap.sql" 2>&1 | grep -vE '^\s*$' >&2 || true
+  # 模型档案：若 DB 无 default 档案，从 model-config.json 导入（首次引导）
+  CNT=$(mysql -u "${DSH_DB_USER:-root}" -p"${DSH_DB_PASSWORD}" -N -e "SELECT COUNT(*) FROM model_profile WHERE appid='default'" "$MYSQL_DB" 2>/dev/null || echo 0)
+  if [ "${CNT:-0}" = "0" ]; then
+    echo "[start] DB 无模型档案，从 model-config.json 导入..." >&2
+    DSH_DB="$MYSQL_DB" MYSQL_PWD="$DSH_DB_PASSWORD" bash "$ROOT/db/mysql/load-model-profiles.sh" >&2 || true
+  fi
+fi
+
 SRVLOG="$ROOT/testcase/.auth/server.log"
 mkdir -p "$(dirname "$SRVLOG")"
 : > "$SRVLOG"

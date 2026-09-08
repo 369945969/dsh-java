@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -38,21 +39,29 @@ public final class ModelProfileStore implements Service {
     private static final Logger log = LoggerFactory.getLogger(ModelProfileStore.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final Path configFile;
+    private final ModelProfileBackend backend;
     private final ModelConfig runtimeConfig;
     private final CopyOnWriteArrayList<ModelProfile> profiles = new CopyOnWriteArrayList<>();
     private volatile String activeId;
 
     /**
-     * @param configFile     持久化文件路径（dataDir/model-config.json）
+     * 文件后端构造（兼容旧调用）：path → FileModelProfileBackend。
+     */
+    public ModelProfileStore(Path configFile, ModelConfig runtimeConfig,
+                              String initialEnvKey, String initialEnvBaseUrl, String initialEnvModel) {
+        this(new FileModelProfileBackend(configFile), runtimeConfig, initialEnvKey, initialEnvBaseUrl, initialEnvModel);
+    }
+
+    /**
+     * @param backend        持久化后端（file / mysql）
      * @param runtimeConfig  运行时配置持有者（活跃档案变更时同步）
      * @param initialEnvKey 启动时环境变量 API Key（作为默认档案的初值，无则空）
      * @param initialEnvBaseUrl 启动时环境变量端点
      * @param initialEnvModel   启动时环境变量模型名
      */
-    public ModelProfileStore(Path configFile, ModelConfig runtimeConfig,
+    public ModelProfileStore(ModelProfileBackend backend, ModelConfig runtimeConfig,
                               String initialEnvKey, String initialEnvBaseUrl, String initialEnvModel) {
-        this.configFile = configFile;
+        this.backend = backend;
         this.runtimeConfig = runtimeConfig;
         load();
         // 无任何档案时，从环境变量种入一个默认档案
@@ -173,12 +182,12 @@ public final class ModelProfileStore implements Service {
         // 无活跃档案时，runtimeConfig 保留环境变量初值（由 BaseBundle 装入）
     }
 
-    // ---- 持久化 ----
+    // ---- 持久化（委托 backend：file / mysql）----
 
     private void load() {
-        if (!Files.isReadable(configFile)) return;
+        JsonNode root = backend.load();
+        if (root == null || root.isMissingNode()) return;
         try {
-            var root = MAPPER.readTree(Files.readString(configFile));
             this.activeId = root.path("activeId").asText(null);
             ArrayNode arr = (ArrayNode) root.path("profiles");
             if (arr != null) {
@@ -201,7 +210,6 @@ public final class ModelProfileStore implements Service {
 
     synchronized void persist() {
         try {
-            Files.createDirectories(configFile.getParent());
             ObjectNode root = MAPPER.createObjectNode();
             root.put("activeId", activeId == null ? "" : activeId);
             ArrayNode arr = root.putArray("profiles");
@@ -215,8 +223,8 @@ public final class ModelProfileStore implements Service {
                 if (!p.models().isEmpty()) o.set("models", MAPPER.valueToTree(p.models()));
                 if (!p.route().isBlank()) o.put("route", p.route());
             }
-            Files.writeString(configFile, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(root));
-        } catch (IOException e) {
+            backend.persist(root);
+        } catch (Exception e) {
             log.warn("Failed to persist model profiles: {}", e.toString());
         }
     }

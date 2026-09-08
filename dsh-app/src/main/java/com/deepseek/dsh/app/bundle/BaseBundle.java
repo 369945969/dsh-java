@@ -76,8 +76,22 @@ public final class BaseBundle {
      * 将所有核心插件挂载到上下文，并返回一个已装配的 {@link Agent}。
      */
     public Agent assemble(Context ctx, PluginRunner runner) throws Exception {
-        // 会话持久化
-        SessionStore store = new JsonlSessionStore(dataDir.resolve("sessions"));
+        // 会话持久化：DSH_STORAGE=mysql 时用 MySQL（HikariCP 连接池），否则文件 jsonl
+        boolean mysql = "mysql".equalsIgnoreCase(System.getenv().getOrDefault("DSH_STORAGE", "file"));
+        com.deepseek.dsh.storage.mysql.MysqlStorage mysqlStorage = null;
+        SessionStore store;
+        com.deepseek.dsh.llm.config.ModelProfileBackend modelBackend = null;
+        com.deepseek.dsh.storage.mysql.MysqlSysPromptSource promptSource = null;
+        if (mysql) {
+            mysqlStorage = com.deepseek.dsh.storage.mysql.MysqlStorage.fromEnv();
+            store = new com.deepseek.dsh.storage.mysql.MysqlSessionStore(mysqlStorage);
+            modelBackend = new com.deepseek.dsh.storage.mysql.MysqlModelProfileBackend(mysqlStorage);
+            promptSource = new com.deepseek.dsh.storage.mysql.MysqlSysPromptSource(mysqlStorage);
+            final var toClose = mysqlStorage;
+            ctx.track(toClose::close);
+        } else {
+            store = new JsonlSessionStore(dataDir.resolve("sessions"));
+        }
         runner.add(new SessionManager(store));
 
         // 工具注册表
@@ -146,9 +160,11 @@ public final class BaseBundle {
         // 启动插件（所有能力缝须在此之前加入，apply 才会注册到上下文）
         runner.start(ctx);
 
-        // 模型配置中心（多自定义模型档案，持久化到 dataDir/model-config.json）
+        // 模型配置中心（多自定义模型档案；DSH_STORAGE=mysql 时落 model_profile 表，否则 model-config.json）
         var modelStore = new com.deepseek.dsh.llm.config.ModelProfileStore(
-                dataDir.resolve("model-config.json"), modelConfig, apiKey, baseUrl, this.model);
+                modelBackend != null ? modelBackend
+                        : new com.deepseek.dsh.llm.config.FileModelProfileBackend(dataDir.resolve("model-config.json")),
+                modelConfig, apiKey, baseUrl, this.model);
         ctx.register(com.deepseek.dsh.llm.config.ModelConfig.class, modelConfig);
         ctx.register(com.deepseek.dsh.llm.config.ModelProfileStore.class, modelStore);
 
@@ -199,9 +215,13 @@ public final class BaseBundle {
         // 大输出外溢策略中间件（spillStore 已在 start 前注册）
         var spillPolicy = new com.deepseek.dsh.spill.SpillPolicy(65_536L, spillStore);
 
-        // 技能：挂文件系统提供者 + skill 工具（skills 已注册为 SkillService）
-        skills.registerProvider(new com.deepseek.dsh.skill.FilesystemSkillProvider(
-                null, java.util.List.of(), dataDir.toString()));
+        // 技能：DSH_STORAGE=mysql 时挂 DB 提供者（app_skill 表），否则文件系统提供者
+        if (promptSource != null) {
+            skills.registerProvider(new com.deepseek.dsh.storage.mysql.MysqlSkillProvider(mysqlStorage));
+        } else {
+            skills.registerProvider(new com.deepseek.dsh.skill.FilesystemSkillProvider(
+                    null, java.util.List.of(), dataDir.toString()));
+        }
         toolRegistry.register(new com.deepseek.dsh.skill.SkillTool(skills));
 
         // 团队派发工具
@@ -227,7 +247,15 @@ public final class BaseBundle {
                 llm,
                 pipeline,
                 toolRegistry);
-        loop.setSystemPrompt(defaultSystemPrompt());
+        // 系统提示词：DSH_STORAGE=mysql 时把 DB 的 sys_prompt 块前置拼接
+        String sysPrompt = defaultSystemPrompt();
+        if (promptSource != null) {
+            String dbPrompt = promptSource.loadSystemPrompt();
+            if (dbPrompt != null && !dbPrompt.isBlank()) {
+                sysPrompt = dbPrompt + "\n\n" + sysPrompt;
+            }
+        }
+        loop.setSystemPrompt(sysPrompt);
         // subagent 委派工具：让主 agent 能把子任务委派给子 agent（ForkInProcessProvider 已注册为 SubagentService）
         toolRegistry.register(new com.deepseek.dsh.subagent.tool.SubagentTaskTool(loop, ctx));
         return loop;

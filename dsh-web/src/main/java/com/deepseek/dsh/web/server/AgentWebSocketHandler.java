@@ -86,6 +86,14 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     /** 运行一轮对话，流式下发事件；被取消（中断）时发 cancelled。 */
     private void runTurn(WebSocketSession session, String sid, String message) {
         try {
+            // 从握手 attributes 注入 appid/userid/reasoning/modelId（缺失走默认），供 SessionManager 盖章
+            java.util.Map<String, Object> attrs = session.getAttributes();
+            com.deepseek.dsh.core.context.SessionAuth.set(
+                    attrs.get("X-DSH-APPID") == null ? null : String.valueOf(attrs.get("X-DSH-APPID")),
+                    attrs.get("X-DSH-USERID") == null ? null : String.valueOf(attrs.get("X-DSH-USERID")),
+                    attrs.get("X-DSH-REASONING") == null ? null : String.valueOf(attrs.get("X-DSH-REASONING")),
+                    attrs.get("X-DSH-MODEL") == null ? null : String.valueOf(attrs.get("X-DSH-MODEL")),
+                    attrs.get("X-DSH-WORKSPACE") == null ? null : String.valueOf(attrs.get("X-DSH-WORKSPACE")));
             Context ctx = holder.context();
             Agent agent = holder.agent();
             SessionId sessionId = SessionId.of(sid);
@@ -96,11 +104,20 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                     Map.of("id", "u-" + java.util.UUID.randomUUID().toString().substring(0, 8),
                             "content", message, "source", "browser"));
             StringBuilder acc = new StringBuilder();
+            // turn 前全局 token 基线
+            var meterOpt = ctx.get(com.deepseek.dsh.llm.meter.TokenMeterService.class);
+            long inBefore = meterOpt.map(com.deepseek.dsh.llm.meter.TokenMeterService::totalPromptTokens).orElse(0L);
+            long outBefore = meterOpt.map(com.deepseek.dsh.llm.meter.TokenMeterService::totalCompletionTokens).orElse(0L);
             String reply = agent.streamChat(sessionId, ScopeKey.random(), ctx, message,
                     chunk -> {
                         acc.append(chunk);
                         send(session, frame("delta", sid, chunk));
                     });
+            // 累计本 turn token delta 到会话
+            com.deepseek.dsh.session.log.SessionLog slog = ctx.require(com.deepseek.dsh.session.Sessions.class).getOrCreate(sessionId);
+            long inDelta = meterOpt.map(com.deepseek.dsh.llm.meter.TokenMeterService::totalPromptTokens).orElse(0L) - inBefore;
+            long outDelta = meterOpt.map(com.deepseek.dsh.llm.meter.TokenMeterService::totalCompletionTokens).orElse(0L) - outBefore;
+            slog.addTokens(inDelta, outDelta);
             // 兜底：流式未产出时整段下发
             if (acc.length() == 0 && reply != null && !reply.isEmpty()) {
                 send(session, frame("delta", sid, reply));
@@ -121,6 +138,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
         } finally {
             ConcurrentMap<String, Future<?>> m = running.get(session);
             if (m != null) m.remove(sid);
+            com.deepseek.dsh.core.context.SessionAuth.clear();
         }
     }
 

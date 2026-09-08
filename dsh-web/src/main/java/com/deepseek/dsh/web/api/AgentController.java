@@ -46,8 +46,15 @@ public class AgentController {
      * 发送一条用户消息并返回 agent 回复。
      */
     @PostMapping("/send")
-    public SendMessageResponse send(@RequestBody SendMessageRequest request) {
+    public SendMessageResponse send(@RequestBody SendMessageRequest request,
+                                    @org.springframework.web.bind.annotation.RequestHeader(value = "X-DSH-APPID", required = false) String appidHdr,
+                                    @org.springframework.web.bind.annotation.RequestHeader(value = "X-DSH-USERID", required = false) String useridHdr,
+                                    @org.springframework.web.bind.annotation.RequestHeader(value = "X-DSH-REASONING", required = false) String reasoningHdr,
+                                    @org.springframework.web.bind.annotation.RequestHeader(value = "X-DSH-MODEL", required = false) String modelHdr,
+                                    @org.springframework.web.bind.annotation.RequestHeader(value = "X-DSH-WORKSPACE", required = false) String workspaceHdr) {
         try {
+            // 从 HTTP header 注入 appid/userid/reasoning/modelId/workspaceId（缺失走默认值）
+            com.deepseek.dsh.core.context.SessionAuth.set(appidHdr, useridHdr, reasoningHdr, modelHdr, workspaceHdr);
             Context ctx = holder.context();
             Agent agent = holder.agent();
             Sessions sessions = ctx.require(Sessions.class);
@@ -61,8 +68,17 @@ public class AgentController {
                     Map.of("id", "u-" + UUID.randomUUID().toString().substring(0, 8),
                             "content", request.message(), "source", "browser"));
 
+            // 记录 turn 前的全局 token 基线，turn 后取 delta 盖章到会话（输入/输出 token）
+            var meterOpt = ctx.get(TokenMeterService.class);
+            long inBefore = meterOpt.map(TokenMeterService::totalPromptTokens).orElse(0L);
+            long outBefore = meterOpt.map(TokenMeterService::totalCompletionTokens).orElse(0L);
+
             String reply = agent.run(sessionId, scopeKey, ctx, request.message());
             SessionLog sessionLog = sessions.getOrCreate(sessionId);
+
+            long inDelta = meterOpt.map(TokenMeterService::totalPromptTokens).orElse(0L) - inBefore;
+            long outDelta = meterOpt.map(TokenMeterService::totalCompletionTokens).orElse(0L) - outBefore;
+            sessionLog.addTokens(inDelta, outDelta);
 
             recorder.record(ctx, sessionId.value(), "assistant/message",
                     Map.of("message", Map.of("id", "a-" + UUID.randomUUID().toString().substring(0, 8),
@@ -71,14 +87,19 @@ public class AgentController {
 
             var projection = sessionLog.deriveMessages();
 
-            long totalTokens = ctx.get(TokenMeterService.class)
-                    .map(TokenMeterService::totalTokens).orElse(0L);
+            long totalTokens = meterOpt.map(TokenMeterService::totalTokens).orElse(0L);
 
             return new SendMessageResponse(sessionId.value(), reply,
-                    projection.messages(), totalTokens);
+                    projection.messages(), totalTokens,
+                    sessionLog.appid(), sessionLog.userid(), sessionLog.reasoning(), sessionLog.modelId(),
+                    sessionLog.workspaceId(),
+                    sessionLog.inputTokens(), sessionLog.outputTokens(),
+                    sessionLog.totalSessionTokens());
         } catch (Exception e) {
             log.error("Message processing failed", e);
             throw new RuntimeException("agent processing failed: " + e.getMessage(), e);
+        } finally {
+            com.deepseek.dsh.core.context.SessionAuth.clear();
         }
     }
 

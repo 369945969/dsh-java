@@ -178,6 +178,21 @@ public final class RpcE2e {
                 assertTrue(r.reply() != null && r.reply().length() > 5, "full reply should have content");
                 assertTrue(r.totalTokens() >= 0, "token stats should exist");
             });
+            check("appid/userid + reasoning/modelId + token input/output", () -> {
+                // RPC 无 header，appid/userid/reasoning/modelId 从 env（DSH_APP_ID/DSH_USER_ID/
+                // DSH_REASONING/DSH_MODEL_ID）取；未设→默认
+                var r = timeout(client.prompt(createSession(client), "Say hello in one sentence."));
+                assertTrue(r.appid() != null, "appid should be present");
+                assertTrue("default".equals(r.appid()) || !r.appid().isBlank(),
+                    "appid should be 'default' or env value (got " + r.appid() + ")");
+                assertTrue("auto".equals(r.reasoning()) || !r.reasoning().isBlank(),
+                    "reasoning should be 'auto' or env value (got " + r.reasoning() + ")");
+                assertTrue(r.inputTokens() > 0, "inputTokens should be > 0 (got " + r.inputTokens() + ")");
+                assertTrue(r.outputTokens() > 0, "outputTokens should be > 0 (got " + r.outputTokens() + ")");
+                System.out.println("    appid=" + r.appid() + ", userid='" + r.userid()
+                    + "', reasoning=" + r.reasoning() + ", modelId='" + r.modelId()
+                    + "', in=" + r.inputTokens() + ", out=" + r.outputTokens());
+            });
 
             // ========== session & memory mode ==========
             group("session & memory mode");
@@ -275,6 +290,27 @@ public final class RpcE2e {
                 assertTrue(c.before() > 0, "before count should be >0");
                 assertTrue(c.after() <= c.before(), "after should not be more than before");
                 System.out.println("    before=" + c.before() + ", after=" + c.after());
+            });
+
+            // --- manual compaction: 多轮对话累积 token → 读 sessionTokens → 手动压缩 → 验证缩减 ---
+            check("manual compaction (multi-turn accumulate→shrink)", () -> {
+                String sid = createSession(client);
+                // 多轮累积 token（sessionTokens 应递增）
+                var r1 = timeout(client.prompt(sid, "Remember: my name is Bob."));
+                long t1 = r1.sessionTokens();
+                var r2 = timeout(client.prompt(sid, "What is 2+2? Just the number."));
+                long t2 = r2.sessionTokens();
+                var r3 = timeout(client.prompt(sid, "What is 3+3? Just the number."));
+                long t3 = r3.sessionTokens();
+                assertTrue(t1 > 0, "sessionTokens should be >0 after turn 1 (got " + t1 + ")");
+                assertTrue(t3 >= t1, "sessionTokens should accumulate (t1=" + t1 + ", t3=" + t3 + ")");
+                // 手动压缩（小 maxTokens；小对话不一定缩，仅验不增长）
+                var before = client.compactSession(sid, 256).join();
+                var after = client.compactSession(sid, 256).join();
+                assertTrue(after.after() <= before.before(),
+                    "compact should not grow (before=" + before.before() + ", after=" + after.after() + ")");
+                System.out.println("    sessionTokens: t1=" + t1 + " t3=" + t3
+                    + " | compact before=" + before.before() + " after=" + after.after());
             });
 
             // --- session deletion ---

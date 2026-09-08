@@ -87,6 +87,33 @@ function wsConnect(): WebSocket {
   return new WebSocket(WS_URL, { headers: { cookie: COOKIE } } as any)
 }
 
+/** 带 appid/userid/reasoning/modelId 握手 header 的 WS 连接（测 SessionAuth 从 head 注入）。 */
+function wsConnectAuth(appid: string, userid: string, reasoning = 'auto', model = ''): WebSocket {
+  return new WebSocket(WS_URL, {
+    headers: {
+      cookie: COOKIE,
+      'X-DSH-APPID': appid, 'X-DSH-USERID': userid,
+      'X-DSH-REASONING': reasoning, 'X-DSH-MODEL': model
+    }
+  } as any)
+}
+
+async function wsPromptOn(ws: WebSocket, sid: string, message: string): Promise<WsFrame[]> {
+  const frames: WsFrame[] = []
+  const terminals = new Set(['done', 'cancelled', 'error'])
+  return new Promise<WsFrame[]>((resolve) => {
+    const timer = setTimeout(() => { ws.close(); resolve(frames) }, 120_000)
+    ws.onopen = () => { ws.send(JSON.stringify({ action: 'prompt', sessionId: sid, message })) }
+    ws.onmessage = (e: MessageEvent) => {
+      const f: WsFrame = JSON.parse(typeof e.data === 'string' ? e.data : String(e.data))
+      frames.push(f)
+      if (f.sessionId === sid && terminals.has(f.event)) { clearTimeout(timer); ws.close(); resolve(frames) }
+    }
+    ws.onerror = () => { clearTimeout(timer); resolve(frames) }
+    ws.onclose = () => { clearTimeout(timer); resolve(frames) }
+  })
+}
+
 async function wsPrompt(sid: string, message: string): Promise<WsFrame[]> {
   const ws = wsConnect()
   const frames: WsFrame[] = []
@@ -375,6 +402,25 @@ async function testCompact(): Promise<void> {
     `before=${r?.before} after=${r?.after}`)
 }
 
+async function testCompactMultiTurn(): Promise<void> {
+  // 多轮对话累积 token → 读 sessionTokens → 手动压缩 → 验证缩减
+  const sid = await createSession()
+  await wsPrompt(sid, 'Remember: my name is Bob.')
+  await wsPrompt(sid, 'What is 2+2? Just the number.')
+  await wsPrompt(sid, 'What is 3+3? Just the number.')
+  // 读压缩前 sessionTokens（session.list）
+  const before: any = await httpPost('session.list')
+  const itemBefore = (before?.result?.value?.items || []).find((s: any) => s.sessionId === sid)
+  const tokensBefore = itemBefore?.sessionTokens || 0
+  // 手动压缩（小 maxTokens 触发实际裁剪）
+  const c: any = await httpPost('session.compact', { sessionId: sid, maxTokens: 256 })
+  const beforeCnt = c?.result?.value?.before ?? 0
+  const afterCnt = c?.result?.value?.after ?? 0
+  record('manual compaction (multi-turn accumulate→shrink)',
+    tokensBefore > 0 && afterCnt <= beforeCnt,
+    `sessionTokens=${tokensBefore} | compact before=${beforeCnt} after=${afterCnt}`)
+}
+
 async function testDelete(): Promise<void> {
   const sid = await createSession()
   const d1: any = await httpPost('session.delete', { sessionId: sid })
@@ -420,6 +466,33 @@ async function testTeamRun(): Promise<void> {
     ok ? 'all succeeded' : `failed: ${JSON.stringify(last).slice(0, 80)}`)
 }
 
+// ---- appid/userid from WS handshake header + token input/output ----
+
+async function testAuthFromHeader(): Promise<void> {
+  // 用全新 sid，让 WS prompt 时由服务端创建会话（带上握手 header 的 auth 盖章）；
+  // 不走 createSession（HTTP，无 auth 头→默认值，会话已存在则 getOrCreate 不重盖章）
+  const sid = 'auth-' + Math.random().toString(36).slice(2, 12)
+  await wsPromptOn(wsConnectAuth('ws-app', 'ws-user', 'true', 'qwen3.7-max'), sid, 'Reply with OK.')
+  const v: any = await httpPost('session.list')
+  const items = v?.result?.value?.items || []
+  const found = items.find((s: any) => s.sessionId === sid)
+  record('appid/userid/reasoning/modelId from WS header',
+    found?.appid === 'ws-app' && found?.userid === 'ws-user'
+      && found?.reasoning === 'true' && found?.modelId === 'qwen3.7-max',
+    found ? `appid=${found.appid} userid=${found.userid} reasoning=${found.reasoning} model=${found.modelId}` : 'session not found in list')
+}
+
+async function testTokensTracked(): Promise<void> {
+  const sid = await createSession()
+  await wsPrompt(sid, 'Introduce Python in one sentence.')
+  const v: any = await httpPost('session.list')
+  const items = v?.result?.value?.items || []
+  const found = items.find((s: any) => s.sessionId === sid)
+  record('token input/output tracked (in/out > 0)',
+    found?.inputTokens > 0 && found?.outputTokens > 0,
+    found ? `in=${found.inputTokens} out=${found.outputTokens}` : 'session not found')
+}
+
 // ============================================================
 // main
 // ============================================================
@@ -460,9 +533,12 @@ async function main(): Promise<void> {
   await runTest('skill.list', testSkillList)
   await runTest('skill.get', testSkillGet)
   await runTest('session.compact', testCompact)
+  await runTest('manual compaction (multi-turn)', testCompactMultiTurn)
   await runTest('session.delete', testDelete)
   await runTest('subagent.task', testSubagentTask)
   await runTest('team.run', testTeamRun)
+  await runTest('appid/userid from WS header', testAuthFromHeader)
+  await runTest('token input/output', testTokensTracked)
 
   const passed = results.filter(r => r.pass).length
   const total = results.length

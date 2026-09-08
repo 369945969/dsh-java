@@ -52,6 +52,11 @@ public final class SessionManager implements Plugin, Sessions, Service {
     public SessionLog create() {
         SessionId id = SessionId.of(java.util.UUID.randomUUID().toString());
         SessionLog log = new SessionLog(id);
+        log.setAuth(com.deepseek.dsh.core.context.SessionAuth.appid(),
+                com.deepseek.dsh.core.context.SessionAuth.userid(),
+                com.deepseek.dsh.core.context.SessionAuth.reasoning(),
+                com.deepseek.dsh.core.context.SessionAuth.modelId(),
+                com.deepseek.dsh.core.context.SessionAuth.workspaceId());
         active.put(id, log);
         emitCreated(id);
         return log;
@@ -78,6 +83,12 @@ public final class SessionManager implements Plugin, Sessions, Service {
             if (fresh.size() == 0) {
                 emitCreated(id);
             }
+            // 盖章当前请求的 appid/userid/reasoning/modelId/workspaceId（从 SessionAuth；新建/重放会话继承调用方上下文）
+            fresh.setAuth(com.deepseek.dsh.core.context.SessionAuth.appid(),
+                    com.deepseek.dsh.core.context.SessionAuth.userid(),
+                    com.deepseek.dsh.core.context.SessionAuth.reasoning(),
+                    com.deepseek.dsh.core.context.SessionAuth.modelId(),
+                    com.deepseek.dsh.core.context.SessionAuth.workspaceId());
             return fresh;
         });
     }
